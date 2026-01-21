@@ -1,0 +1,419 @@
+{% extends "admin/trips/builder/base_builder.html" %}
+
+{% block builder_step_content %}
+<div class="max-w-4xl mx-auto">
+    <div class="mb-6">
+        <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:truncate sm:text-3xl sm:tracking-tight">Coupons</h2>
+        <p class="mt-1 text-sm text-gray-500">Create discount codes for your trip participants.</p>
+    </div>
+
+    <!-- Main Card -->
+    <!-- Empty State - 始终渲染，通过 JS 控制显示/隐藏 -->
+    <div id="empty-state" class="text-center py-12 bg-white rounded-lg border-2 border-dashed border-gray-300 {% if trip.discount_codes.count() %}hidden{% endif %}">
+        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+            aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
+                d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+        </svg>
+        <h3 class="mt-2 text-sm font-semibold text-gray-900">No coupons yet</h3>
+        <p class="mt-1 text-sm text-gray-500">Get started by creating a new discount code.</p>
+        <div class="mt-6">
+            <button type="button" onclick="openCouponModal()"
+                class="inline-flex items-center rounded-md bg-wetravel-cyan px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-wetravel-cyan-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wetravel-cyan">
+                <svg class="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path
+                        d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                </svg>
+                Create Coupon
+            </button>
+        </div>
+    </div>
+    
+    <!-- List State - 始终渲染，通过 JS 控制显示/隐藏 -->
+    <div id="list-state" class="bg-white shadow sm:rounded-lg border border-gray-200 {% if not trip.discount_codes.count() %}hidden{% endif %}">
+        <ul role="list" class="divide-y divide-gray-100" id="coupon-list">
+            <!-- Populated by JS -->
+        </ul>
+        <div class="bg-gray-50 px-4 py-4 sm:px-6 border-t border-gray-200">
+            <button type="button" onclick="openCouponModal()"
+                class="text-sm font-semibold text-wetravel-cyan hover:text-wetravel-cyan-dark flex items-center">
+                <svg class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                    <path
+                        d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                </svg>
+                Add another coupon
+            </button>
+        </div>
+    </div>
+
+    <form method="POST" id="couponsForm" class="mt-6">
+        {{ form.hidden_tag() }}
+        {{ form.coupons_json(id="coupons_json") }}
+
+        <div class="flex items-center justify-end gap-x-6">
+            <a href="{{ url_for('admin.trip_builder', id=trip.id, step='participants') }}"
+                class="text-sm font-semibold leading-6 text-gray-900">Back</a>
+            <button type="submit"
+                class="rounded-md bg-wetravel-cyan px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-wetravel-cyan-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wetravel-cyan">Save
+                & Finish</button>
+        </div>
+    </form>
+</div>
+
+<!-- Modal -->
+<div id="couponModal" class="relative z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+    <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+        <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+            <div
+                class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
+                <div class="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
+                    <h3 class="text-lg font-semibold leading-6 text-gray-900 mb-4" id="modal-title">Coupon Details</h3>
+
+                    <div class="space-y-5">
+                        <input type="hidden" id="c_id">
+
+                        <!-- Code -->
+                        <div>
+                            <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Coupon Code</label>
+                            <input type="text" id="c_code"
+                                class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6 uppercase"
+                                placeholder="e.g. EARLYBIRD">
+                        </div>
+
+                        <!-- Type & Amount -->
+                        <div class="border-t border-gray-200 pt-5">
+                            <div class="grid grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Discount
+                                        Type</label>
+                                    <select id="c_type"
+                                        class="block w-full rounded-md border-0 h-9 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
+                                        <option value="fixed">Fixed Amount ($)</option>
+                                        <option value="percent">Percentage (%)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Amount</label>
+                                    <input type="text" id="c_amount" inputmode="numeric" pattern="[0-9]*\.?[0-9]*"
+                                        class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6"
+                                        placeholder="0">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+                    <button type="button" onclick="saveCoupon()"
+                        class="inline-flex w-full justify-center rounded-md bg-wetravel-green px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-600 sm:ml-3 sm:w-auto">Save
+                        Coupon</button>
+                    <button type="button" onclick="closeCouponModal()"
+                        class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto">Cancel</button>
+                    <button type="button" id="deleteBtn" onclick="deleteCurrentCoupon()"
+                        class="hidden mt-3 inline-flex w-full justify-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:mt-0 sm:ml-3 sm:w-auto">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let coupons = [];
+    let currentEditIndex = -1;
+
+    let listContainer, listState, emptyState, hiddenInput;
+    
+    // 初始化 coupons 数组：从模板数据读取
+    function initializeCouponsFromTemplate() {
+        try {
+            // 从模板数据读取（这是页面加载时的数据源）
+            const templateData = {{ form.coupons_json.data|tojson if form.coupons_json.data else '[]' }};
+            if (typeof templateData === 'string') {
+                coupons = JSON.parse(templateData);
+            } else if (Array.isArray(templateData)) {
+                coupons = templateData;
+            } else {
+                coupons = [];
+            }
+        } catch (e) {
+            console.error('Error initializing coupons from template:', e);
+            coupons = [];
+        }
+    }
+    
+    // 初始化 coupons 数组：从 hiddenInput 读取（DOM 加载后）
+    function initializeCouponsFromInput() {
+        try {
+            if (hiddenInput && hiddenInput.value) {
+                const parsed = JSON.parse(hiddenInput.value);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    // 如果 hiddenInput 有数据，使用它（可能是用户修改后的数据）
+                    coupons = parsed;
+                    return true;
+                }
+            }
+            return false;
+        } catch (e) {
+            console.error('Error initializing coupons from input:', e);
+            return false;
+        }
+    }
+    
+    // 立即从模板数据初始化（在 DOM 加载前）
+    initializeCouponsFromTemplate();
+    
+    // Disable mouse wheel and middle click for c_amount input
+    document.addEventListener('DOMContentLoaded', function() {
+        const cAmountInput = document.getElementById('c_amount');
+        if (cAmountInput) {
+            cAmountInput.addEventListener('wheel', function(e) {
+                e.preventDefault();
+            });
+            cAmountInput.addEventListener('mousedown', function(e) {
+                if (e.button === 1) {
+                    e.preventDefault();
+                }
+            });
+            cAmountInput.addEventListener('input', function(e) {
+                this.value = this.value.replace(/[^0-9.]/g, '');
+                const parts = this.value.split('.');
+                if (parts.length > 2) {
+                    this.value = parts[0] + '.' + parts.slice(1).join('');
+                }
+            });
+            cAmountInput.addEventListener('paste', function(e) {
+                const paste = (e.clipboardData || window.clipboardData).getData('text');
+                const filteredPaste = paste.replace(/[^0-9.]/g, '');
+                const parts = filteredPaste.split('.');
+                const finalPaste = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : filteredPaste;
+                document.execCommand('insertText', false, finalPaste);
+                e.preventDefault();
+            });
+        }
+    });
+
+    function renderCoupons() {
+        // 确保 DOM 元素已获取
+        if (!listContainer) {
+            listContainer = document.getElementById('coupon-list');
+        }
+        if (!listState) {
+            listState = document.getElementById('list-state');
+        }
+        if (!hiddenInput) {
+            hiddenInput = document.getElementById('coupons_json');
+        }
+        if (!emptyState) {
+            emptyState = document.getElementById('empty-state');
+        }
+        
+        // 如果 DOM 元素不存在，直接返回
+        if (!hiddenInput) {
+            console.warn('hiddenInput not found, cannot render coupons');
+            return;
+        }
+        
+        // 确保hiddenInput的值始终是最新的
+        hiddenInput.value = JSON.stringify(coupons);
+
+        // Toggle Empty/List Views
+        if (!listContainer) {
+            console.warn('listContainer not found, cannot render coupon list');
+            return;
+        }
+
+        if (coupons.length > 0) {
+            // Ensure List Wrapper is visible, Empty state hidden
+            if (emptyState) emptyState.classList.add('hidden');
+            if (listState) listState.classList.remove('hidden');
+            
+            // Render coupon list
+            if (listContainer) {
+                listContainer.innerHTML = '';
+                coupons.forEach((item, index) => {
+                    const li = document.createElement('li');
+                    li.className = "px-4 py-4 sm:px-6 flex items-center justify-between hover:bg-gray-50 bg-white";
+
+                    const typeLabel = item.type === 'fixed' ? '$' : '%';
+                    const displayAmount = item.type === 'fixed' ? `$${item.amount}` : `${item.amount}%`;
+
+                    li.innerHTML = `
+                        <div class="flex items-center gap-4">
+                            <div class="h-10 w-10 flex-shrink-0 flex items-center justify-center rounded-full bg-green-100 text-green-600">
+                                 <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+                                </svg>
+                            </div>
+                            <div>
+                                <p class="text-sm font-bold text-gray-900 tracking-wide">${item.code}</p>
+                                <p class="text-xs text-gray-500">${displayAmount} OFF</p>
+                            </div>
+                        </div>
+                        <div>
+                             <button type="button" onclick="editCoupon(${index})" class="text-wetravel-cyan hover:text-wetravel-cyan-dark text-sm font-medium">Edit</button>
+                        </div>
+                    `;
+                    listContainer.appendChild(li);
+                });
+            }
+        } else {
+            // Show empty state if no coupons
+            if (emptyState) emptyState.classList.remove('hidden');
+            if (listState) listState.classList.add('hidden');
+            if (listContainer) listContainer.innerHTML = '';
+        }
+    }
+
+    function openCouponModal() {
+        currentEditIndex = -1;
+        document.getElementById('modal-title').innerText = 'Create Coupon';
+        document.getElementById('c_id').value = '';
+        document.getElementById('c_code').value = '';
+        document.getElementById('c_type').value = 'fixed';
+        document.getElementById('c_amount').value = '';
+
+        document.getElementById('deleteBtn').classList.add('hidden');
+        document.getElementById('couponModal').classList.remove('hidden');
+    }
+
+    function editCoupon(index) {
+        currentEditIndex = index;
+        const item = coupons[index];
+        document.getElementById('modal-title').innerText = 'Edit Coupon';
+        document.getElementById('c_id').value = item.id || '';
+        document.getElementById('c_code').value = item.code;
+        document.getElementById('c_type').value = item.type;
+        document.getElementById('c_amount').value = item.amount;
+
+        document.getElementById('deleteBtn').classList.remove('hidden');
+        document.getElementById('couponModal').classList.remove('hidden');
+    }
+
+    function closeCouponModal() {
+        document.getElementById('couponModal').classList.add('hidden');
+    }
+
+    async function saveCoupon() {
+        // 确保 DOM 元素已获取
+        if (!hiddenInput) {
+            hiddenInput = document.getElementById('coupons_json');
+        }
+        if (!emptyState) {
+            emptyState = document.getElementById('empty-state');
+        }
+        if (!listContainer) {
+            listContainer = document.getElementById('coupon-list');
+        }
+        
+        const code = document.getElementById('c_code').value.toUpperCase();
+        const type = document.getElementById('c_type').value;
+        const amount = document.getElementById('c_amount').value;
+
+        if (!code || !amount) {
+            await customAlert('Please fill in all fields', 'Validation Error');
+            return;
+        }
+
+        const data = {
+            id: document.getElementById('c_id').value ? parseInt(document.getElementById('c_id').value) : null,
+            code: code,
+            type: type,
+            amount: parseFloat(amount)
+        };
+
+        if (currentEditIndex === -1) {
+            coupons.push(data);
+            console.log('Added coupon:', data);
+            console.log('Coupons array:', coupons);
+        } else {
+            if (coupons[currentEditIndex].id) {
+                data.id = coupons[currentEditIndex].id;
+            }
+            coupons[currentEditIndex] = data;
+            console.log('Updated coupon:', data);
+            console.log('Coupons array:', coupons);
+        }
+
+        renderCoupons();
+        closeCouponModal();
+    }
+
+    async function deleteCurrentCoupon() {
+        if (currentEditIndex > -1) {
+            const confirmed = await customConfirm('Are you sure you want to delete this coupon? This action cannot be undone.', 'Delete Coupon', 'danger');
+            if (confirmed) {
+                // 确保 DOM 元素已获取
+                if (!hiddenInput) {
+                    hiddenInput = document.getElementById('coupons_json');
+                }
+                
+                coupons.splice(currentEditIndex, 1);
+                console.log('Deleted coupon, remaining:', coupons);
+                
+                // 更新 hiddenInput
+                if (hiddenInput) {
+                    hiddenInput.value = JSON.stringify(coupons);
+                }
+                
+                renderCoupons();
+                closeCouponModal();
+            }
+        }
+    }
+
+    // Init Logic
+    document.addEventListener('DOMContentLoaded', () => {
+        // 获取 DOM 元素
+        listContainer = document.getElementById('coupon-list');
+        listState = document.getElementById('list-state');
+        emptyState = document.getElementById('empty-state');
+        hiddenInput = document.getElementById('coupons_json');
+        
+        // 确保 coupons 数组正确初始化
+        if (!Array.isArray(coupons)) {
+            console.warn('Coupons data is not an array, re-initializing from template');
+            initializeCouponsFromTemplate();
+        }
+        
+        // 检查 hiddenInput 的初始值（从模板渲染的值）
+        if (hiddenInput && hiddenInput.value) {
+            try {
+                const inputData = JSON.parse(hiddenInput.value);
+                if (Array.isArray(inputData) && inputData.length > 0) {
+                    // 如果 hiddenInput 有数据，使用它（这是从数据库加载的数据）
+                    coupons = inputData;
+                    console.log('Loaded coupons from hiddenInput:', coupons);
+                }
+            } catch (e) {
+                console.error('Error parsing hiddenInput value:', e);
+            }
+        } else if (hiddenInput) {
+            // 如果 hiddenInput 没有值，确保它与 coupons 数组同步
+            hiddenInput.value = JSON.stringify(coupons);
+            console.log('Synced coupons to hiddenInput:', coupons);
+        }
+        
+        // 调试输出
+        console.log('Final coupons array:', coupons);
+        console.log('HiddenInput value:', hiddenInput ? hiddenInput.value : 'N/A');
+        
+        // 渲染优惠码列表
+        renderCoupons();
+        
+        // 监听表单提交，确保数据已保存
+        const form = document.getElementById('couponsForm');
+        if (form) {
+            form.addEventListener('submit', function(e) {
+                // 在提交前确保coupons_json是最新的
+                if (hiddenInput) {
+                    hiddenInput.value = JSON.stringify(coupons);
+                    console.log('Submitting coupons:', coupons);
+                    console.log('Submitting JSON:', hiddenInput.value);
+                }
+            });
+        }
+    });
+
+</script>
+{% endblock %}

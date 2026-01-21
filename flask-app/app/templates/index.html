@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}Nexus Horizons | Say YES to Adventure{% endblock %}
+
+{% block description %}Nexus Horizons is a leading provider of unique educational and personalized tours throughout Asia and North America.{% endblock %}
+
+{% block og_title %}Nexus Horizons | Say YES to Adventure{% endblock %}
+
+{% block og_description %}Nexus Horizons is a leading provider of unique educational and personalized tours throughout Asia and North America.{% endblock %}
+
+{% block extra_head %}
+{% endblock %}
+
+{% block content %}
+{# Hero区域 #}
+<div class="w-full h-[70vh]" style="background:url({{ url_for('static', filename='images/backgrounds/tibet_background.jpg') }}) center / cover no-repeat;">
+	<div class="h-full max-w-[40rem] mx-auto">
+		<div class="md:flex h-full gap-8 items-center text-center justify-between">
+			{# Asia按钮 #}
+			<a class="hero-asia-btn inline-block text-center py-4 w-[60%] mt-[200px] md:border-2 md:border-white md:m-0 md:p-0 md:w-[180px] md:h-[180px] bg-no-repeat bg-center md:bg-top bg-size-[100%] md:bg-size-[100px] rounded-full bg-amber-800/80 md:items-center md:justify-center text-zinc-100 text-4xl md:flex uppercase tracking-widest transition-colors hover:bg-amber-800/90 hover:text-white"
+				href="{{ url_for('main.asia_index') }}"
+				style="background-image:url({{ url_for('static', filename='images/icons/asia-tower.Dubk1hOS.png') }});">
+				Asia
+			</a>
+			
+			{# North America按钮 #}
+			<a class="hero-na-btn inline-block text-center py-4 w-[60%] mt-8 md:border-2 md:border-white md:m-0 md:w-[180px] md:h-[180px] bg-no-repeat md:bg-top bg-center bg-size-[100%] md:bg-size-[60px] rounded-full bg-indigo-800/80 md:items-center md:justify-center text-zinc-100 text-3xl md:flex uppercase md:tracking-widest md:leading-12 transition-colors hover:bg-indigo-800 hover:text-white"
+				href="{{ url_for('main.north_america_index') }}"
+				style="background-image:url({{ url_for('static', filename='images/icons/na-tower.2RQScOSr.png') }});">
+				North <br class="hidden md:block" /> America
+			</a>
+		</div>
+	</div>
+</div>
+
+<div class="w-full h-[16px] bg-indigo-800"></div>
+
+{# 主要内容区域 #}
+<div class="max-w-6xl mx-auto py-8 px-8 md:px-0">
+	{# Breadcrumb导航 #}
+	<nav>
+		<ol class="flex flex-wrap items-center space-x-2 text-lg font-medium text-amber-800">
+			<li class="flex items-center">
+				<span class="text-indigo-800 font-medium cursor-default">Home</span>
+			</li>
+		</ol>
+	</nav>
+	
+	{# 主标题 #}
+	<h1>Say <span class="text-amber-800">Yes</span> to Adventure</h1>
+	<div class="text-center">
+		<img class="inline-block w-[120px] opacity-70 mt-4 mb-6"
+			src="{{ url_for('static', filename='images/icons/cloud-grey.DH_8-r-7.png') }}" />
+	</div>
+	
+	{# 内容段落 #}
+	<p class="content overview">
+		Travel with Nexus Horizons is more than a trip—it's a journey of growth and self-discovery. We connect
+		young explorers with vibrant global experiences and the timeless depth of Asian heritage. Inspired by
+		Wukong, a beloved Asian symbol of courage, creativity, and resilience—we bridge cultures and languages
+		across continents, opening horizons that inspire confidence, joy, and meaningful connections.
+	</p>
+	<p class="content overview">
+		For our founder, life has been a journey of facing challenges with the spirit of Sun Wukong: daring to
+		innovate, standing strong through adversity, and moving forward with optimism. Sometimes, one must also
+		walk as a lone brave explorer—undaunted and determined. This same spirit is at the heart of NH Tours,
+		where every participant is encouraged to embrace courage, creativity, and resilience as they step into
+		the future.
+	</p>
+	
+	<hr /> <br />
+	
+	{# Our Mission部分 #}
+	<h1>Our Mission</h1>
+	<div class="text-center">
+		<img class="inline-block w-[120px] opacity-70 mt-4 mb-6"
+			src="{{ url_for('static', filename='images/icons/cloud-grey.DH_8-r-7.png') }}" />
+	</div>
+	<p class="content overview">
+		Like the spirit of Wukong — bold, responsible, and tireless in guiding his master to the far shore — we
+		see every journey as more than reaching a destination. It is about the stories, discoveries, and beauty
+		along the way. Nexus Horizons is committed to being a bridge between cultures, making communication
+		smoother and more meaningful. We design travel experiences that are energetic and inspiring, while
+		ensuring organizers have the peace of mind and freedom to enjoy the journey themselves.
+	</p>
+	
+	<br />
+	<hr />
+	<br />
+	
+	{# Spirit of Wukong部分 #}
+	<h1>Spirit of Wukong</h1>
+	<div class="text-center">
+		<img class="inline-block w-[120px] opacity-70 mt-4 mb-6"
+			src="{{ url_for('static', filename='images/icons/wkclod-grey.U_stlqLH.png') }}" />
+	</div>
+	<p class="content overview">
+		At <span class="font-medium">Nexus Horizons</span>, we draw inspiration from Wukong—adventurous,
+		resourceful, and endlessly creative. His journey reminds us that success is not only about reaching the
+		destination, but also about the courage, wisdom, and imagination shown along the way. These values shape
+		who we are and how we serve every group:
+	</p>
+	
+	{# 品牌价值列表 #}
+	<div class="max-w-4xl mx-auto px-4 py-12">
+		<ul class="space-y-6">
+			<li class="flex items-start">
+				<div class="flex-shrink-0 w-12 h-12 flex items-center justify-center">
+					<img alt="Responsible icon" class="w-12 h-12"
+						src="{{ url_for('static', filename='images/content/responsible.-EgpH0lm.png') }}" />
+				</div>
+				<div class="ml-4">
+					<p class="text-zinc-800">
+						<span class="font-semibold">Responsible</span> —
+						We walk beside educators and students with care, ensuring safety, well-being,
+						and thoughtful support at every stage of the journey.
+					</p>
+				</div>
+			</li>
+			<li class="flex items-start">
+				<div class="flex-shrink-0 w-12 h-12 flex items-center justify-center">
+					<img alt="Experienced icon" class="w-12 h-12"
+						src="{{ url_for('static', filename='images/content/experienced.BLJk8N7D.png') }}" />
+				</div>
+				<div class="ml-4">
+					<p class="text-zinc-800">
+						<span class="font-semibold">Experienced</span> —
+						Years of refining programs and building trusted networks allow us to deliver authentic,
+						reliable, and cost-effective experiences.
+					</p>
+				</div>
+			</li>
+			<li class="flex items-start">
+				<div class="flex-shrink-0 w-12 h-12 flex items-center justify-center">
+					<img alt="Professional icon" class="w-12 h-12"
+						src="{{ url_for('static', filename='images/content/professional.C3R1U_JB.png') }}" />
+				</div>
+				<div class="ml-4">
+					<p class="text-zinc-800">
+						<span class="font-semibold">Professional</span> —
+						With dedicated personnel for each group, we minimize communication burdens and make the
+						process smooth and stress-free.
+					</p>
+				</div>
+			</li>
+			<li class="flex items-start">
+				<div class="flex-shrink-0 w-12 h-12 flex items-center justify-center">
+					<img alt="Creative icon" class="w-12 h-12"
+						src="{{ url_for('static', filename='images/content/creative.BAvAoMPs.png') }}" />
+				</div>
+				<div class="ml-4">
+					<p class="text-zinc-800">
+						<span class="font-semibold">Creative</span> —
+						Like Wukong himself, we embrace fresh perspectives and craft programs that go beyond
+						routine itineraries, sparking curiosity and imagination.
+					</p>
+				</div>
+			</li>
+		</ul>
+	</div>
+	
+	{# Newsletter订阅表单 #}
+	<div class="md:grid grid-cols-2 gap-4 mt-20 mb-12 p-8 border border-amber-800 rounded-lg">
+		<div class="text-center mb-2 md:p-0">
+			<span class="font-medium text-xl md:text-3xl text-zinc-800">Join our Newsletter!</span>
+		</div>
+		<div class="text-center md:text-left">
+			<form id="newsletter-form" action="/" method="POST">
+				<input name="form" type="hidden" value="newsletter" />
+				<input class="px-2 py-2 w-[200px] border border-zinc-400 rounded-xs" id="email" name="email"
+					placeholder="me@example.com" type="email" required />
+				<span class="hidden text-sm mt-4 mb-4 transition-opacity duration-300" id="newsletter-form-status"></span>
+				<button class="py-2 px-4 mt-2 w-[200px] md:m-0 md:w-auto cursor-pointer bg-amber-800 text-white uppercase"
+					type="submit">Submit</button>
+			</form>
+		</div>
+	</div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module" src="{{ url_for('static', filename='js/forms.js') }}"></script>
+{% endblock %}
+

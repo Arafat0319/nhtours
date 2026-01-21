@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+
+{% block title %}Nexus Horizons | Asia | Yunnan's Living Cultures 茶馬古道{% endblock %}
+
+{% block description %}Nexus Horizons is a leading provider of unique educational and personalized tours throughout Asia and North America.{% endblock %}
+
+{% block og_title %}Nexus Horizons | Asia | Yunnan's Living Cultures 茶馬古道{% endblock %}
+
+{% block content %}
+{# Hero背景区域 #}
+<div class="w-full h-[70vh]" style="background:url({{ url_for('static', filename='images/backgrounds/yunnan-hero.Dz6tIrEG.png') }}) center / cover no-repeat;">
+	<div class="flex h-full w-full items-center pr-10">
+		<div class="hidden md:grid w-full grid-cols-1 justify-items-end">
+			<a class="border-2 border-white w-[80px] h-[80px] bg-no-repeat bg-center bg-top bg-size-[50px] rounded-full bg-amber-800/80 transition-colors hover:bg-amber-800/90"
+				href="{{ url_for('main.asia_index') }}" style="background-image:url({{ url_for('static', filename='images/icons/asia-tower.Dubk1hOS.png') }})"></a>
+			<a class="mt-20 border-2 border-white w-[80px] h-[80px] bg-no-repeat bg-center bg-top bg-size-[30px] rounded-full bg-indigo-800/40 transition-colors hover:bg-indigo-800/50"
+				href="{{ url_for('main.north_america_index') }}" style="background-image:url({{ url_for('static', filename='images/icons/na-tower.2RQScOSr.png') }})"></a>
+		</div>
+	</div>
+</div>
+
+<div class="w-full h-[16px] bg-indigo-800"></div>
+
+{# 主要内容区域 #}
+<div class="max-w-6xl mx-auto py-8 px-8 pb-8 md:px-0">
+	{# Breadcrumb导航 #}
+	<nav>
+		<ol class="flex flex-wrap items-center space-x-2 text-lg font-medium text-amber-800">
+			<li class="flex items-center">
+				<a class="hover:underline" href="{{ url_for('main.index') }}">Home</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<a class="hover:underline" href="{{ url_for('main.asia_index') }}">Asia</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<a class="hover:underline" href="{{ url_for('main.asia_educational') }}">Educational</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<span class="text-indigo-800 font-medium cursor-default">Yunnan's Living Cultures</span>
+			</li>
+		</ol>
+	</nav>
+	<br/><br/>
+
+	<h1>Yunnan's Living Cultures<br/><span class="text-4xl">茶馬古道</span></h1>
+	<h3>
+		7-DAY ADD-ON PROGRAM
+	</h3>
+	<div class="text-center">
+		<img class="inline-block w-[120px] mt-4 mb-6" src="{{ url_for('static', filename='images/icons/one-oran-cloud.Cc5rO4mf.svg') }}"/>
+	</div>
+	<div class="md:grid md:mt-20 grid-cols-[2fr_1fr_1fr] gap-8">
+		<div>
+			<h2>Program Overview</h2>
+			<p class="content overview nopad">
+				This 7-day Yunnan journey takes you through the highlights of Dali, Lijiang, and Shangri-La, specially designed for junior and senior high school groups and their teachers. Explore the vibrant cultures of China's ethnic minorities set against the stunning landscapes of Southwest China. Trace the history of the Ancient Tea Horse Road, venture into one of the world's most magnificent gorges, and connect with local communities to experience their daily lives.
+			</p>
+		</div>
+		<div class="md:border-l md:pl-4 border-black">
+			<h2>Suggested Time</h2>
+			<p class="content overview nopad">
+				March — June<br/>
+				Sep — Jan<br/>
+			</p>
+		</div>
+		<div class="md:border-l md:pl-4 border-black">
+			<div>
+				<h2>Group Size (6:1 Ratio)</h2>
+				<p class="content overview nopad">
+					12 Students<br/>
+					2 Chaperons
+				</p>
+			</div>
+			<div class="md:border-t md:pt-4 border-black">
+				<h2>Suggested Ages</h2>
+				<p class="content overview nopad">
+					12 — 22
+				</p>
+			</div>
+		</div>
+	</div>
+	<br/><br/>
+
+	<h2>Program Highlights</h2>
+	<div class="md:grid grid-cols-[3fr_1fr] gap-2">
+		<div class="bg-zinc-100 p-8 bg-position-[8em_50%] bg-no-repeat"
+			style="background-image:url({{ url_for('static', filename='images/icons/cloud-white.Dm1RdigD.svg') }})">
+			<span class="block font-medium uppercase tracking-wide text-xl">CULTURAL DIVERSITY</span>
+			<p class="content overview nopad nom">Experience the living traditions of the Bai, Naxi, and Tibetan peoples through village visits, family exchanges, and hands-on activities.</p>
+			<span class="block mt-4 font-medium uppercase tracking-wide text-xl">ICONIC LANDSCAPES</span>
+			<p class="content overview nopad nom">Cycle by Erhai Lake, hike Tiger Leaping Gorge, and take in the breathtaking views of Jade Dragon Snow Mountain and the Tibetan highlands.</p>
+			<span class="block mt-4 font-medium uppercase tracking-wide text-xl">HERITAGE & DISCOVERY</span>
+			<p class="content overview nopad nom">Walk the Ancient Tea Horse Road, explore old towns and monasteries, and uncover stories that connect history with today's way of life.</p>
+		</div>
+		<div class="h-[400px] md:h-auto bg-no-repeat bg-top bg-cover"
+			style="background-image:url({{ url_for('static', filename='images/content/yunnan-highlight.pZMel06M.png') }})"></div>
+		<div></div>
+		<div><span class="text-sm text-zinc-500 italic">Day 2, Dali old town</span></div>
+	</div>
+	<br/><br/>
+
+	<h2>Itinerary</h2>
+	<table class="content">
+		<thead>
+			<th class="text-center">Day</th>
+			<th>Highlights</th>
+		</thead>
+		<tbody>
+			<tr class="">
+				<td class="text-center"><span class="font-medium">1-3<br/>Dali, Lijiang</span></td>
+				<td>
+					<span class="font-medium">Bai Culture & Erhai Lake</span><br/>
+					Begin in Dali, a charming town framed by Cangshan Mountain and Erhai Lake. Explore Bai minority culture through hands-on activities such as traditional tie-dyeing and home-cooked meals in a Bai household. Cycle along the lakeshore past meadows, rice fields, and the iconic Three Pagodas. On the way to Lijiang, stop in Shaxi, once a vital hub on the Ancient Tea Horse Road, where courtyards, stages, and riverside villages tell centuries of history.
+				</td>
+			</tr>
+			<tr class="alt">
+				<td class="text-center"><span class="font-medium">4-5<br/>Lijiang, Shangri-La</span></td>
+				<td>
+					<span class="font-medium">Lijiang: Naxi Traditions & Snow Mountain</span><br/>
+					In Lijiang, discover the world of the Naxi people. Take in postcard views of Jade Dragon Snow Mountain at Black Dragon Pool and wander through Yuhu Village, where American explorer Joseph Rock once lived. Students will join a Naxi family to experience local life—trying on traditional dress, learning to make tofu and paper, sampling snacks, and practicing Dongba script. Then, hike through the dramatic Tiger Leaping Gorge before continuing to Shangri-La, with an evening of music and dance in the Old Town.
+				</td>
+			</tr>
+			<tr class="">
+				<td class="text-center"><span class="font-medium">6-7<br/>Shangri-La</span></td>
+				<td>
+					<span class="font-medium">Shangri-La:Tibetan Spirit & Highland Skies</span><br/>
+					Immerse yourself in Tibetan culture at Songzanlin Monastery, the largest in Yunnan, and witness a traditional blessing ceremony. At the Thangka Center, admire exquisite sacred art and try painting your own with guidance from a Tibetan artist. The journey ends with a farewell hotpot dinner and bonfire celebration before departure the next day.
+				</td>
+			</tr>
+		</tbody>
+	</table>
+	<br/><br/>
+
+	<img class="md:hidden mb-8 w-full" src="{{ url_for('static', filename='images/content/yunnan-map.BGRyistd.png') }}"/>
+	<div class="map-section md:grid grid-cols-2 items-center bg-no-repeat bg-size-[100%] md:bg-size-[80%] md:h-[800px]"
+		style="background-image:url({{ url_for('static', filename='images/content/yunnan-map.BGRyistd.png') }})">
+		<div></div>
+		<div>
+			<h2>Options</h2>
+			<ul class="content text-xl font-light">
+				<li><b>Teamwork (ages 16+)</b><br/>Build your own raft with pipes and tires by the river. Guided by professional coaches from our partner outdoor education team, students set goals and take part in activities where learning is built into fun, team-based games.</li>
+				<li><b>Lugu Lake, Tengchong</b><br/>Yunnan is remote and often a once-in-a-lifetime destination. If time allows, consider extending your journey to Tengchong and Lugu Lake, two of the province's most iconic destinations. Tengchong is famous for its hot springs, volcanic landscapes, and wartime history, while Lugu Lake is celebrated for its stunning highland scenery and the unique matrilineal culture of the Mosuo people.</li>
+			</ul>
+		</div>
+	</div>
+	<br/><br/>
+
+	<h1>Photo Gallery</h1>
+	<div class="text-center">
+		<img class="inline-block w-[120px] mt-4 mb-6" src="{{ url_for('static', filename='images/icons/one-oran-cloud.Cc5rO4mf.svg') }}"/>
+	</div>
+	<br/><br/>
+
+	<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-10">
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 1" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/0933fd2f-090c-409e-b452-8d9b28f0bd48.D7mGwoJW.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 2" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/0e3e32d0-f213-49dd-b9d1-23f6e2a73c43.f-xswa4b.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 3" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/2024f6b5-3ab6-45ec-adb5-03e62936d33f.fEnvgneP.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 4" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/23e27960-880a-477b-a035-3bb891f0daec.DMZ17Ojf.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 5" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/2476fae4-63f2-4fb7-a1dd-9bd027cd6860.BKmuoRAT.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 6" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/581cda58-a79b-4a06-98e3-a20eaf97e969.DYIucKFh.png') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 7" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/73db8122-ef87-4a58-a2ef-e132ed051326.nPEqzujX.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 8" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/ba5e0e72-51dc-4bd7-b6d8-dc78d7889fdf.CjgXdh0H.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 9" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/d0bd85cd-4279-452f-a6c6-06df693790de.BFv7lB4j.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 10" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/dff326c1-d0af-4ac2-9a3c-5fa17ab0967d.C8Oc0Q3L.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 11" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/e8f31db5-d7ca-418a-92b4-331c999563df.DiE3QYef.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 12" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/f1e9dd7e-5930-40a6-a8c1-ca451aecf1b7.B5LAzmiV.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 13" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/Jade_Dragon_Snow_Mountain_Yunnan_China (1).DP_jlFeX.jpg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 14" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/JADe.Boz7kCyq.jpg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 15" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/the_highland_regions_lijiang_jade_dragon_snow_mountain_02.nWoBMK9O.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+	</div>
+	<br/><br/>
+
+	<p class="content">
+		<span class="font-medium text-2xl">Other complimentary benefits (please <a href="{{ url_for('main.contact') }}">contact us</a> for more details)</span>
+	</p>
+	<ul class="content italic ml-4">
+		<li>Mandarin learning materials for all language-learning students</li>
+		<li>All participants will receive a goody bag with a gift and snacks</li>
+		<li>A memorable gift at the end of the trip</li>
+	</ul>
+	<br/><br/>
+</div>
+{% endblock %}
+
+

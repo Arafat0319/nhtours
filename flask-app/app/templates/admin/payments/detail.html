@@ -1,0 +1,278 @@
+{% extends "admin/base_wetravel.html" %}
+
+{% block title %}Payment #{{ payment.id }}{% endblock %}
+
+{% block sidebar %}
+{# Payments详情页面不需要侧边栏 #}
+<style>
+    .sidebar-container {
+        display: none !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header Section -->
+    <div class="flex justify-between items-center">
+        <div>
+            <h2 class="text-2xl font-normal text-gray-500">Payment #{{ payment.id }}</h2>
+            <p class="text-sm text-gray-400 mt-1">Payment details and information</p>
+        </div>
+        <div class="flex space-x-2">
+            <a href="{{ url_for('admin.payments', tab='records') }}"
+                class="bg-gray-200 text-gray-700 px-4 py-2 rounded text-sm font-bold flex items-center hover:bg-gray-300 transition-colors">
+                <svg class="mr-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                </svg>
+                Back to Payments
+            </a>
+        </div>
+    </div>
+
+    <!-- Payment Status Card -->
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <h3 class="text-lg font-medium text-gray-900">Payment Status</h3>
+                <p class="text-sm text-gray-500 mt-1">Current payment status and amount</p>
+            </div>
+            <div class="text-right">
+                <span class="px-4 py-2 text-sm font-semibold rounded-full
+                    {% if payment.status == 'succeeded' %}bg-green-100 text-green-800
+                    {% elif payment.status == 'pending' %}bg-yellow-100 text-yellow-800
+                    {% elif payment.status == 'failed' %}bg-red-100 text-red-800
+                    {% elif payment.status == 'refunded' %}bg-gray-100 text-gray-800
+                    {% elif payment.status == 'partially_refunded' %}bg-orange-100 text-orange-800
+                    {% else %}bg-gray-100 text-gray-800{% endif %}">
+                    {{ payment.status|upper or 'PENDING' }}
+                </span>
+            </div>
+        </div>
+        <div class="mt-6">
+            <div class="text-3xl font-bold text-gray-900">
+                ${{ "%.2f"|format(payment.amount or 0.0) }}
+                <span class="text-sm font-normal text-gray-500 ml-2">{{ payment.currency|upper or 'USD' }}</span>
+            </div>
+            {% if payment.refunded_amount and payment.refunded_amount > 0 %}
+            <div class="mt-2 text-sm text-gray-600">
+                Refunded: <span class="font-semibold text-red-600">${{ "%.2f"|format(payment.refunded_amount) }}</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Main Information Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Left Column -->
+        <div class="space-y-6">
+            <!-- Booking Information -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Booking Information</h3>
+                <div class="space-y-4">
+                    {% if payment.booking %}
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Booking ID</label>
+                        <p class="text-sm text-gray-900">
+                            <a href="{{ url_for('admin.manage_trip', id=payment.booking.trip_id) if payment.booking.trip_id else '#' }}" 
+                               class="text-wetravel-cyan hover:underline">
+                                #{{ payment.booking_id }}
+                            </a>
+                        </p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Booking Status</label>
+                        <p class="text-sm text-gray-900">{{ payment.booking.status|upper or 'N/A' }}</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Passenger Count</label>
+                        <p class="text-sm text-gray-900">{{ payment.booking.passenger_count or 'N/A' }}</p>
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-gray-500">No booking associated with this payment.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Client Information -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Client Information</h3>
+                <div class="space-y-4">
+                    {% if payment.booking and payment.booking.buyer_name %}
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Buyer Name</label>
+                        <p class="text-sm text-gray-900">{{ payment.booking.buyer_name }}</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Email</label>
+                        <p class="text-sm text-gray-900">{{ payment.booking.get_buyer_email() or 'N/A' }}</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Phone</label>
+                        <p class="text-sm text-gray-900">{{ payment.booking.get_buyer_phone() or 'N/A' }}</p>
+                    </div>
+                    {% elif payment.client %}
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Name</label>
+                        <p class="text-sm text-gray-900">{{ payment.client.full_name or payment.client.name or 'N/A' }}</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Email</label>
+                        <p class="text-sm text-gray-900">{{ payment.client.email or 'N/A' }}</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Phone</label>
+                        <p class="text-sm text-gray-900">{{ payment.client.phone or 'N/A' }}</p>
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-gray-500">No client information available.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Trip Information -->
+            {% if payment.trip %}
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Trip Information</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Trip Title</label>
+                        <p class="text-sm text-gray-900">
+                            <a href="{{ url_for('admin.manage_trip', id=payment.trip_id) }}" 
+                               class="text-wetravel-cyan hover:underline">
+                                {{ payment.trip.title }}
+                            </a>
+                        </p>
+                    </div>
+                    {% if payment.trip.start_date and payment.trip.end_date %}
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Dates</label>
+                        <p class="text-sm text-gray-900">
+                            {{ payment.trip.start_date.strftime('%B %d, %Y') }} - {{ payment.trip.end_date.strftime('%B %d, %Y') }}
+                        </p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Right Column -->
+        <div class="space-y-6">
+            <!-- Payment Details -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Payment Details</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Payment Method</label>
+                        <p class="text-sm text-gray-900">{{ payment.payment_method_type|upper or 'N/A' }}</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Created At</label>
+                        <p class="text-sm text-gray-900">
+                            {{ payment.created_at.strftime('%Y-%m-%d %H:%M:%S') if payment.created_at else 'N/A' }}
+                        </p>
+                    </div>
+                    {% if payment.paid_at %}
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Paid At</label>
+                        <p class="text-sm text-gray-900">{{ payment.paid_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+                    </div>
+                    {% endif %}
+                    {% if payment.refunded_at %}
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Refunded At</label>
+                        <p class="text-sm text-gray-900">{{ payment.refunded_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+                    </div>
+                    {% endif %}
+                    {% if payment.refund_reason %}
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Refund Reason</label>
+                        <p class="text-sm text-gray-900">{{ payment.refund_reason }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Stripe Information -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Stripe Information</h3>
+                <div class="space-y-4">
+                    {% if payment.stripe_payment_intent_id %}
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Payment Intent ID</label>
+                        <p class="text-sm text-gray-900 font-mono break-all">{{ payment.stripe_payment_intent_id }}</p>
+                    </div>
+                    {% endif %}
+                    {% if payment.stripe_checkout_session_id %}
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Checkout Session ID</label>
+                        <p class="text-sm text-gray-900 font-mono break-all">{{ payment.stripe_checkout_session_id }}</p>
+                    </div>
+                    {% endif %}
+                    {% if payment.stripe_charge_id %}
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Charge ID</label>
+                        <p class="text-sm text-gray-900 font-mono break-all">{{ payment.stripe_charge_id }}</p>
+                    </div>
+                    {% endif %}
+                    {% if payment.stripe_customer_id %}
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Customer ID</label>
+                        <p class="text-sm text-gray-900 font-mono break-all">{{ payment.stripe_customer_id }}</p>
+                    </div>
+                    {% endif %}
+                    {% if payment.payment_method_id %}
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Payment Method ID</label>
+                        <p class="text-sm text-gray-900 font-mono break-all">{{ payment.payment_method_id }}</p>
+                    </div>
+                    {% endif %}
+                    {% if not payment.stripe_payment_intent_id and not payment.stripe_checkout_session_id and not payment.stripe_charge_id %}
+                    <p class="text-sm text-gray-500">No Stripe information available.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Installment Payment Information -->
+            {% if payment.installment_payment %}
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Installment Payment</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Installment Number</label>
+                        <p class="text-sm text-gray-900">
+                            {% if payment.installment_payment.installment_number == 0 %}
+                                Deposit
+                            {% else %}
+                                #{{ payment.installment_payment.installment_number }}
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Due Date</label>
+                        <p class="text-sm text-gray-900">
+                            {{ payment.installment_payment.due_date.strftime('%Y-%m-%d') if payment.installment_payment.due_date else 'N/A' }}
+                        </p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Status</label>
+                        <p class="text-sm text-gray-900">{{ payment.installment_payment.status|upper or 'N/A' }}</p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Payment Metadata -->
+            {% if payment.payment_metadata %}
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Additional Information</h3>
+                <div class="bg-gray-50 rounded p-4">
+                    <pre class="text-xs text-gray-700 whitespace-pre-wrap">{{ payment.payment_metadata|tojson(indent=2) }}</pre>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

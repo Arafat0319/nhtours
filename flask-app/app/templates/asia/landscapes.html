@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+
+{% block title %}Nexus Horizons | Asia | Landscapes Beyond Imagination 山水如畫．甲天下{% endblock %}
+
+{% block description %}Nexus Horizons is a leading provider of unique educational and personalized tours throughout Asia and North America.{% endblock %}
+
+{% block og_title %}Nexus Horizons | Asia | Landscapes Beyond Imagination 山水如畫．甲天下{% endblock %}
+
+{% block content %}
+{# Hero背景区域 #}
+<div class="w-full h-[70vh]" style="background:url({{ url_for('static', filename='images/backgrounds/guilin-hero.DbMfx33a.jpg') }}) center / cover no-repeat;">
+	<div class="flex h-full w-full items-center pr-10">
+		<div class="hidden md:grid w-full grid-cols-1 justify-items-end">
+			<a class="border-2 border-white w-[80px] h-[80px] bg-no-repeat bg-center bg-top bg-size-[50px] rounded-full bg-amber-800/80 transition-colors hover:bg-amber-800/90"
+				href="{{ url_for('main.asia_index') }}" style="background-image:url({{ url_for('static', filename='images/icons/asia-tower.Dubk1hOS.png') }})"></a>
+			<a class="mt-20 border-2 border-white w-[80px] h-[80px] bg-no-repeat bg-center bg-top bg-size-[30px] rounded-full bg-indigo-800/40 transition-colors hover:bg-indigo-800/50"
+				href="{{ url_for('main.north_america_index') }}" style="background-image:url({{ url_for('static', filename='images/icons/na-tower.2RQScOSr.png') }})"></a>
+		</div>
+	</div>
+</div>
+
+<div class="w-full h-[16px] bg-indigo-800"></div>
+
+{# 主要内容区域 #}
+<div class="max-w-6xl mx-auto py-8 px-8 pb-8 md:px-0">
+	{# Breadcrumb导航 #}
+	<nav>
+		<ol class="flex flex-wrap items-center space-x-2 text-lg font-medium text-amber-800">
+			<li class="flex items-center">
+				<a class="hover:underline" href="{{ url_for('main.index') }}">Home</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<a class="hover:underline" href="{{ url_for('main.asia_index') }}">Asia</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<a class="hover:underline" href="{{ url_for('main.asia_educational') }}">Educational</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<span class="text-indigo-800 font-medium cursor-default">Landscapes Beyond Imagination</span>
+			</li>
+		</ol>
+	</nav>
+	<br/><br/>
+
+	<h1>Landscapes Beyond Imagination<br/><span class="text-4xl">山水如畫．甲天下</span></h1>
+	<h3>
+		GUILIN & YANGSHUO (5-DAY ADD-ON Program)
+	</h3>
+	<div class="text-center">
+		<img class="inline-block w-[120px] mt-4 mb-6" src="{{ url_for('static', filename='images/icons/one-oran-cloud.Cc5rO4mf.svg') }}"/>
+	</div>
+	<div class="md:grid md:mt-20 grid-cols-[2fr_1fr_1fr] gap-8">
+		<div>
+			<h2>Program Overview</h2>
+			<p class="content overview nopad">
+				This 5-day journey takes students into the stunning landscapes of Guilin and Yangshuo—famous for rivers, limestone peaks. Located in southwest China, Guilin is best experienced as part of a 10–12 day trip combined with Beijing, Shanghai, or Chengdu, all of which have direct flights. Beyond its breathtaking mountains and waterways, Guilin offers hands-on cultural experiences and a chance to see a side of China that blends nature, tradition, and adventure.
+			</p>
+		</div>
+		<div class="md:border-l md:pl-4 border-black">
+			<h2>Suggested Time</h2>
+			<p class="content overview nopad">
+				March — June<br/>
+				Sep — Jan<br/>
+			</p>
+		</div>
+		<div class="md:border-l md:pl-4 border-black">
+			<div>
+				<h2>Group Size (6:1 Ratio)</h2>
+				<p class="content overview nopad">
+					12 Students<br/>
+					2 Chaperons
+				</p>
+			</div>
+			<div class="md:border-t md:pt-4 border-black">
+				<h2>Suggested Ages</h2>
+				<p class="content overview nopad">
+					12 — 22
+				</p>
+			</div>
+		</div>
+	</div>
+	<br/><br/>
+
+	<h2>Program Highlights</h2>
+	<div class="md:grid grid-cols-[3fr_1fr] gap-2">
+		<div class="bg-zinc-100 p-8 bg-position-[8em_50%] bg-no-repeat"
+			style="background-image:url({{ url_for('static', filename='images/icons/cloud-white.Dm1RdigD.svg') }})">
+			<span class="block font-medium uppercase tracking-wide text-xl">WORLD-FAMOUS LANDSCAPES</span>
+			<p class="content overview nopad nom">Cruise the Li River and capture views that have inspired Chinese art for centuries.</p>
+			<span class="block mt-4 font-medium uppercase tracking-wide text-xl">OUTDOOR ADVENTURES</span>
+			<p class="content overview nopad nom">Cycle through the countryside, hike scenic trails, and explore limestone caves.</p>
+			<span class="block mt-4 font-medium uppercase tracking-wide text-xl">CULTURAL IMMERSION</span>
+			<p class="content overview nopad nom">Join calligraphy or painting workshops, outdoor teamwork activities, visit local markets, and try regional dishes.</p>
+		</div>
+		<div class="h-[400px] md:h-auto bg-no-repeat bg-top bg-cover"
+			style="background-image:url({{ url_for('static', filename='images/content/guilin-highlight.sP-9WSWT.jpg') }})"></div>
+		<div></div>
+		<div><span class="text-sm text-zinc-500 italic">Day 4, cultural activity</span></div>
+	</div>
+	<br/><br/>
+
+	<h2>Itinerary</h2>
+	<table class="content">
+		<thead>
+			<th class="text-center">Day</th>
+			<th>Highlights</th>
+		</thead>
+		<tbody>
+			<tr class="">
+				<td class="text-center"><span class="font-medium">1-2<br/>Guilin, Yangshuo</span></td>
+				<td>
+					<span class="font-medium">Arrival & Guilin's Scenic Treasures</span><br/>
+					We arrive in Guilin and begin with a visit to Elephant Trunk Hill, the city's most famous landmark, followed by Reed Flute Cave, where colorful lighting reveals stunning rock formations. Students explore local markets in the evening, tasting regional snacks. The next day features the highlight of the trip— a Li River cruise from Guilin to Yangshuo, gliding past towering karst peaks and riverside villages. Upon arrival in Yangshuo, we settle into Yangshuo and explore West Street, a lively hub of shops, cafés, and street performances.
+				</td>
+			</tr>
+			<tr class="alt">
+				<td class="text-center"><span class="font-medium">3-4<br/>Yangshuo</span></td>
+				<td>
+					<span class="font-medium">Yangshuo's Countryside & Cultural Activities</span><br/>
+					This day focuses on outdoor exploration and cultural connection. Students cycle through rice paddies and farming villages, where they can talk with local residents and gain first-hand insight into rural Chinese life—an excellent way to link geography and social studies to lived experience. In the afternoon, they join a Chinese calligraphy or landscape painting workshop, using the surrounding scenery as inspiration and connecting art to cultural tradition. A short hike up Moon Hill rewards them with panoramic views, and those seeking adventure can try an optional bamboo rafting experience on the Yulong River. In the evening, the group attends the spectacular Impression Liu Sanjie light and music show, performed against the dramatic karst mountains—an unforgettable blend of natural landscape, storytelling, and performance art that students will remember long after the trip.
+				</td>
+			</tr>
+			<tr class="">
+				<td class="text-center"><span class="font-medium">5<br/>Yangshuo, Guilin</span></td>
+				<td>
+					<span class="font-medium">Farewell to Guangxi</span><br/>
+					On our final morning, students visit a local market to practice language skills and purchase small souvenirs before transferring back to Guilin for the flight home—carrying vivid memories of natural beauty, cultural exchange, and outdoor adventure.
+				</td>
+			</tr>
+		</tbody>
+	</table>
+	<br/><br/>
+
+	<img class="md:hidden mb-8 w-full" src="{{ url_for('static', filename='images/content/guilin-map.BXxlsw8d.png') }}"/>
+	<div class="map-section md:grid grid-cols-2 items-center bg-no-repeat bg-size-[100%] md:bg-size-[80%] md:h-[800px]"
+		style="background-image:url({{ url_for('static', filename='images/content/guilin-map.BXxlsw8d.png') }})">
+		<div></div>
+		<div>
+			<h2>Options</h2>
+			<ul class="content text-xl font-light">
+				<li><b>Teamwork (ages 16+)</b><br/> Build your own raft with pipes and tires by the river, challenge yourself with rock climbing, hunt for local snacks, and discover hidden attractions. Guided by professional coaches from our partner outdoor education center, students set goals and take part in activities where learning is built into fun, team-based games.</li>
+				<li><b>Charity Program</b><br/> Take part in meaningful public service projects that support vulnerable communities through hands-on, impactful action.</li>
+			</ul>
+		</div>
+	</div>
+	<br/><br/>
+
+	<h1>Photo Gallery</h1>
+	<div class="text-center">
+		<img class="inline-block w-[120px] mt-4 mb-6" src="{{ url_for('static', filename='images/icons/one-oran-cloud.Cc5rO4mf.svg') }}"/>
+	</div>
+	<br/><br/>
+
+	<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-10">
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 1" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/00f8ee44-460c-4eb0-bb2f-e56b0d630872.DyHF1PrV.png') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 2" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/05a4e6d8-f545-4311-8f9f-6154ddfc940a.D-3tw8AN.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 3" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/05b302cb-18df-4cd0-9d1e-b741e866c8b3.BJUkNuCM.png') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 4" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/3f792daa-0ffe-423c-8d91-19f43a9820b0.B5C_SevG.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 5" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/460b2202-5231-4804-b2b5-7d895d41d33e.OvlEyEIL.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 6" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/569e41fb-62cf-4d63-9191-4d0af8ba1445.0hM29Bik.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 7" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/65386ae4-1670-47b2-aeca-32dcef302577.FcRiofjO.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 8" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/9dcb3210-dffb-4f48-8e9f-690a39c11276.s0Tm-a7P.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 9" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/acba71ee-219c-45c2-a673-b929604c8812.BPzc0thR.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 10" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/de9b107c-1776-4b75-8087-bae1ae8d6454.CqZNv3OE.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 11" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/f805151f-9e00-46b7-a686-e86f4498be7c.Dy3J6HqN.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 12" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/ff263a09-9243-4782-9ada-bb2986c02980.zitgd0mN.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+	</div>
+	<br/><br/>
+
+	<p class="content">
+		<span class="font-medium text-2xl">Other complimentary benefits (please <a href="{{ url_for('main.contact') }}">contact us</a> for more details)</span>
+	</p>
+	<ul class="content italic ml-4">
+		<li>Mandarin learning materials for all language-learning students</li>
+		<li>All participants will receive a goody bag with a gift and snacks</li>
+		<li>A memorable gift at the end of the trip</li>
+	</ul>
+	<br/><br/>
+</div>
+{% endblock %}
+
+

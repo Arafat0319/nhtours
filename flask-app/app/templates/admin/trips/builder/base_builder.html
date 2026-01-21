@@ -1,0 +1,451 @@
+{% extends "admin/base_wetravel.html" %}
+
+
+{% block head_extra %}
+<style>
+    /* Global: Hide spin buttons for number inputs */
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+
+    input[type=number] {
+        -moz-appearance: textfield;
+        appearance: textfield;
+    }
+
+    /* Custom Confirm Dialog Styles */
+    .custom-confirm-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: overlayFadeIn 0.2s ease-out;
+    }
+
+    .custom-confirm-dialog {
+        background: white;
+        border-radius: 0.5rem;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        max-width: 400px;
+        width: 90%;
+        padding: 0;
+        animation: dialogSlideIn 0.3s ease-out;
+        overflow: hidden;
+    }
+
+    .custom-confirm-header {
+        padding: 1.5rem;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .custom-confirm-icon {
+        width: 2.5rem;
+        height: 2.5rem;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .custom-confirm-icon.warning {
+        background: #fef3c7;
+    }
+
+    .custom-confirm-icon.danger {
+        background: #fee2e2;
+    }
+
+    .custom-confirm-icon.info {
+        background: #dbeafe;
+    }
+
+    .custom-confirm-title {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: #111827;
+        margin: 0;
+    }
+
+    .custom-confirm-body {
+        padding: 1.5rem;
+    }
+
+    .custom-confirm-message {
+        font-size: 0.875rem;
+        color: #6b7280;
+        line-height: 1.5;
+        margin: 0;
+    }
+
+    .custom-confirm-actions {
+        padding: 1rem 1.5rem;
+        border-top: 1px solid #e5e7eb;
+        display: flex;
+        gap: 0.75rem;
+        justify-content: flex-end;
+    }
+
+    .custom-confirm-btn {
+        padding: 0.5rem 1rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        border-radius: 0.375rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        border: none;
+        min-width: 80px;
+    }
+
+    .custom-confirm-btn-primary {
+        background: #00D1C1;
+        color: white;
+    }
+
+    .custom-confirm-btn-primary:hover {
+        background: #00b8a9;
+    }
+
+    .custom-confirm-btn-danger {
+        background: #ef4444;
+        color: white;
+    }
+
+    .custom-confirm-btn-danger:hover {
+        background: #dc2626;
+    }
+
+    .custom-confirm-btn-secondary {
+        background: #f3f4f6;
+        color: #374151;
+    }
+
+    .custom-confirm-btn-secondary:hover {
+        background: #e5e7eb;
+    }
+
+    @keyframes overlayFadeIn {
+        from {
+            opacity: 0;
+        }
+        to {
+            opacity: 1;
+        }
+    }
+
+    @keyframes dialogSlideIn {
+        from {
+            opacity: 0;
+            transform: translateY(-10px) scale(0.95);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+    }
+
+    /* Custom Alert Styles */
+    .custom-alert-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: overlayFadeIn 0.2s ease-out;
+    }
+
+    .custom-alert-dialog {
+        background: white;
+        border-radius: 0.5rem;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        max-width: 400px;
+        width: 90%;
+        padding: 0;
+        animation: dialogSlideIn 0.3s ease-out;
+        overflow: hidden;
+    }
+
+    .custom-alert-header {
+        padding: 1.5rem;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .custom-alert-body {
+        padding: 1.5rem;
+    }
+
+    .custom-alert-message {
+        font-size: 0.875rem;
+        color: #6b7280;
+        line-height: 1.5;
+        margin: 0;
+    }
+
+    .custom-alert-actions {
+        padding: 1rem 1.5rem;
+        border-top: 1px solid #e5e7eb;
+        display: flex;
+        justify-content: flex-end;
+    }
+</style>
+{% endblock %}
+
+{% block sidebar %}
+<div class="w-full md:w-64 flex-shrink-0">
+    <div class="space-y-1">
+        <!-- Builder Navigation -->
+        {% set steps = [
+        ('basics', 'Trip Basics'),
+        ('description', 'Trip Description'),
+        ('packages', 'Packages'),
+        ('addons', 'Add-ons'),
+        ('buyer_info', 'Buyer Info'),
+        ('participants', 'Participant Info'),
+        ('coupons', 'Coupons')
+        ] %}
+
+        {% for step_id, step_name in steps %}
+        {% set isActive = (current_step == step_id) %}
+        {% set step_url = url_for('admin.trip_builder', id=trip.id, step=step_id) %}
+
+        <a href="{{ step_url }}"
+            class="group flex items-center px-3 py-3 text-sm font-medium rounded-md {% if isActive %}bg-gray-100 text-wetravel-cyan font-bold{% else %}text-gray-600 hover:bg-gray-50 hover:text-gray-900{% endif %}">
+            <span
+                class="mr-3 flex-shrink-0 h-6 w-6 border rounded-full flex items-center justify-center text-xs {% if isActive %}border-wetravel-cyan text-wetravel-cyan{% else %}border-gray-400 text-gray-400{% endif %}">
+                {{ loop.index }}
+            </span>
+            {{ step_name }}
+        </a>
+        {% endfor %}
+
+        <!-- Sidebar Actions -->
+        <div class="mt-8 px-3 space-y-3">
+            {% if trip.slug %}
+            <a href="{{ url_for('main.trip_detail', slug=trip.slug) }}" target="_blank"
+                class="block w-full text-center px-4 py-2 border border-wetravel-cyan text-wetravel-cyan font-medium rounded-md shadow-sm hover:bg-cyan-50">
+                Preview
+            </a>
+            {% else %}
+            <button disabled
+                class="block w-full text-center px-4 py-2 border border-gray-300 text-gray-400 font-medium rounded-md shadow-sm cursor-not-allowed">
+                Preview
+            </button>
+            {% endif %}
+
+            <!-- Publish Button can be a form submission or link to status change -->
+        </div>
+
+        <div class="mt-4 px-3 text-xs text-gray-400 text-center">
+            Saved as {{ trip.status }}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block secondary_nav %}{% endblock %}
+
+{% block content %}
+<div class="bg-white shadow rounded-lg p-6">
+    <div class="border-b border-gray-200 pb-4 mb-6">
+        <h2 class="text-xl font-bold leading-6 text-gray-900">
+            {% block step_title %}{{ title }}{% endblock %}
+        </h2>
+    </div>
+    {% block builder_step_content %}{% endblock %}
+</div>
+
+<!-- Custom Confirm Dialog -->
+<div id="customConfirmDialog" class="hidden">
+    <div class="custom-confirm-overlay" id="confirmOverlay">
+        <div class="custom-confirm-dialog">
+            <div class="custom-confirm-header">
+                <div class="custom-confirm-icon" id="confirmIcon">
+                    <svg class="w-6 h-6" id="confirmIconSvg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                </div>
+                <h3 class="custom-confirm-title" id="confirmTitle">Confirm Action</h3>
+            </div>
+            <div class="custom-confirm-body">
+                <p class="custom-confirm-message" id="confirmMessage">Are you sure you want to proceed?</p>
+            </div>
+            <div class="custom-confirm-actions">
+                <button class="custom-confirm-btn custom-confirm-btn-secondary" id="confirmCancelBtn">Cancel</button>
+                <button class="custom-confirm-btn custom-confirm-btn-primary" id="confirmOkBtn">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Custom Alert Dialog -->
+<div id="customAlertDialog" class="hidden">
+    <div class="custom-alert-overlay" id="alertOverlay">
+        <div class="custom-alert-dialog">
+            <div class="custom-alert-header">
+                <div class="custom-confirm-icon info">
+                    <svg class="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <h3 class="custom-confirm-title" id="alertTitle">Notice</h3>
+            </div>
+            <div class="custom-alert-body">
+                <p class="custom-alert-message" id="alertMessage"></p>
+            </div>
+            <div class="custom-alert-actions">
+                <button class="custom-confirm-btn custom-confirm-btn-primary" id="alertOkBtn">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Custom Confirm Dialog Function
+function customConfirm(message, title = 'Confirm Action', type = 'warning') {
+    return new Promise((resolve) => {
+        const dialog = document.getElementById('customConfirmDialog');
+        const overlay = document.getElementById('confirmOverlay');
+        const titleEl = document.getElementById('confirmTitle');
+        const messageEl = document.getElementById('confirmMessage');
+        const iconEl = document.getElementById('confirmIcon');
+        const iconSvg = document.getElementById('confirmIconSvg');
+        const okBtn = document.getElementById('confirmOkBtn');
+        const cancelBtn = document.getElementById('confirmCancelBtn');
+
+        // Set content
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+
+        // Set icon based on type
+        iconEl.className = 'custom-confirm-icon ' + type;
+        if (type === 'danger') {
+            iconSvg.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />';
+            okBtn.className = 'custom-confirm-btn custom-confirm-btn-danger';
+            okBtn.textContent = 'Delete';
+        } else {
+            iconSvg.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />';
+            okBtn.className = 'custom-confirm-btn custom-confirm-btn-primary';
+            okBtn.textContent = 'OK';
+        }
+
+        // Show dialog
+        dialog.classList.remove('hidden');
+
+        // Handle OK button
+        const handleOk = () => {
+            cleanup();
+            resolve(true);
+        };
+
+        // Handle Cancel button
+        const handleCancel = () => {
+            cleanup();
+            resolve(false);
+        };
+
+        // Handle ESC key
+        const handleEsc = (e) => {
+            if (e.key === 'Escape') {
+                handleCancel();
+            }
+        };
+
+        // Cleanup function
+        const cleanup = () => {
+            dialog.classList.add('hidden');
+            okBtn.removeEventListener('click', handleOk);
+            cancelBtn.removeEventListener('click', handleCancel);
+            overlay.removeEventListener('click', handleOverlayClick);
+            document.removeEventListener('keydown', handleEsc);
+        };
+
+        // Handle overlay click
+        const handleOverlayClick = (e) => {
+            if (e.target === overlay) {
+                handleCancel();
+            }
+        };
+
+        // Bind events
+        okBtn.addEventListener('click', handleOk);
+        cancelBtn.addEventListener('click', handleCancel);
+        overlay.addEventListener('click', handleOverlayClick);
+        document.addEventListener('keydown', handleEsc);
+    });
+}
+
+// Custom Alert Function
+function customAlert(message, title = 'Notice') {
+    return new Promise((resolve) => {
+        const dialog = document.getElementById('customAlertDialog');
+        const overlay = document.getElementById('alertOverlay');
+        const titleEl = document.getElementById('alertTitle');
+        const messageEl = document.getElementById('alertMessage');
+        const okBtn = document.getElementById('alertOkBtn');
+
+        // Set content
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+
+        // Show dialog
+        dialog.classList.remove('hidden');
+
+        // Handle OK button
+        const handleOk = () => {
+            cleanup();
+            resolve();
+        };
+
+        // Handle ESC key
+        const handleEsc = (e) => {
+            if (e.key === 'Escape') {
+                handleOk();
+            }
+        };
+
+        // Cleanup function
+        const cleanup = () => {
+            dialog.classList.add('hidden');
+            okBtn.removeEventListener('click', handleOk);
+            overlay.removeEventListener('click', handleOverlayClick);
+            document.removeEventListener('keydown', handleEsc);
+        };
+
+        // Handle overlay click
+        const handleOverlayClick = (e) => {
+            if (e.target === overlay) {
+                handleOk();
+            }
+        };
+
+        // Bind events
+        okBtn.addEventListener('click', handleOk);
+        overlay.addEventListener('click', handleOverlayClick);
+        document.addEventListener('keydown', handleEsc);
+    });
+}
+
+// Make functions globally available
+window.customConfirm = customConfirm;
+window.customAlert = customAlert;
+</script>
+{% endblock %}

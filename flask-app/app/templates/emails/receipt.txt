@@ -1,0 +1,32 @@
+{{ receipt_title }}
+
+Receipt #: {{ receipt_number }}
+Issued: {{ issued_at }}
+Booking ID: {{ booking_id }}
+Payment Status: {{ payment_status }}
+{% if payment_intent_id %}Payment Intent: {{ payment_intent_id }}{% endif %}
+{% if payment_method_summary %}Payment Method: {{ payment_method_summary }}{% endif %}
+
+Trip: {{ trip_title }}
+Dates: {{ trip_dates }}
+
+Customer: {{ customer_name }}
+Email: {{ customer_email }}
+
+Line Items:
+{% for item in line_items -%}
+- {{ item.label }}: ${{ "%.2f"|format(item.amount) }}
+{% endfor %}
+
+{% if discount_amount is defined and discount_amount > 0 -%}
+Subtotal: ${{ "%.2f"|format(base_amount + discount_amount) }}
+Discount{% if discount_code %} ({{ discount_code }}){% endif %}: -${{ "%.2f"|format(discount_amount) }}
+Amount After Discount: ${{ "%.2f"|format(base_amount) }}
+{% else -%}
+Base Amount: ${{ "%.2f"|format(base_amount) }}
+{% endif -%}
+Card Fee: ${{ "%.2f"|format(fee_amount) }}
+Total: ${{ "%.2f"|format(total_amount) }}
+
+Thank you for your payment.
+Questions? Contact info@nhtours.com

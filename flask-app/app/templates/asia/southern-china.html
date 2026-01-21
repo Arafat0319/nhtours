@@ -1,0 +1,391 @@
+{% extends "base.html" %}
+
+{% block title %}Nexus Horizons | Asia | Treasures of Southern China 華南瑰寶{% endblock %}
+
+{% block description %}Nexus Horizons is a leading provider of unique educational and personalized tours throughout Asia and North America.{% endblock %}
+
+{% block og_title %}Nexus Horizons | Asia | Treasures of Southern China 華南瑰寶{% endblock %}
+
+{% block content %}
+{# Hero背景区域 #}
+<div class="w-full h-[70vh]" style="background:url({{ url_for('static', filename='images/backgrounds/fujian-hero.1em_NEyc.jpg') }}) center / cover no-repeat;">
+	<div class="flex h-full w-full items-center pr-10">
+		<div class="hidden md:grid w-full grid-cols-1 justify-items-end">
+			<a class="border-2 border-white w-[80px] h-[80px] bg-no-repeat bg-center bg-top bg-size-[50px] rounded-full bg-amber-800/80 transition-colors hover:bg-amber-800/90"
+				href="{{ url_for('main.asia_index') }}" style="background-image:url({{ url_for('static', filename='images/icons/asia-tower.Dubk1hOS.png') }})"></a>
+			<a class="mt-20 border-2 border-white w-[80px] h-[80px] bg-no-repeat bg-center bg-top bg-size-[30px] rounded-full bg-indigo-800/40 transition-colors hover:bg-indigo-800/50"
+				href="{{ url_for('main.north_america_index') }}" style="background-image:url({{ url_for('static', filename='images/icons/na-tower.2RQScOSr.png') }})"></a>
+		</div>
+	</div>
+</div>
+
+<div class="w-full h-[16px] bg-indigo-800"></div>
+
+{# 主要内容区域 #}
+<div class="max-w-6xl mx-auto py-8 px-8 pb-8 md:px-0">
+	{# Breadcrumb导航 #}
+	<nav>
+		<ol class="flex flex-wrap items-center space-x-2 text-lg font-medium text-amber-800">
+			<li class="flex items-center">
+				<a class="hover:underline" href="{{ url_for('main.index') }}">Home</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<a class="hover:underline" href="{{ url_for('main.asia_index') }}">Asia</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<a class="hover:underline" href="{{ url_for('main.asia_educational') }}">Educational</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<span class="text-indigo-800 font-medium cursor-default">Treasures of Southern China</span>
+			</li>
+		</ol>
+	</nav>
+	<br/><br/>
+
+	<h1>Treasures of Southern China<br/><span class="text-4xl">華南瑰寶</span></h1>
+	<h3>
+		PORCELAIN, TULOU, PAGODAS, SHAOLI
+	</h3>
+	<div class="text-center">
+		<img class="inline-block w-[120px] mt-4 mb-6" src="{{ url_for('static', filename='images/icons/one-oran-cloud.Cc5rO4mf.svg') }}"/>
+	</div>
+	<div class="md:grid md:mt-20 grid-cols-[2fr_1fr_1fr] gap-8">
+		<div>
+			<h2>Program Overview</h2>
+			<p class="content overview nopad">
+				This 10-day journey offers a fresh perspective on China, moving beyond the classic northern routes to highlight the charm of the south. Students explore several UNESCO World Heritage Sites and discover the origins of the Maritime Silk Road, where ancient temples, trading hubs, and religious relics are still carefully preserved amidst modern life.
+			</p>
+		</div>
+		<div class="md:border-l md:pl-4 border-black">
+			<h2>Suggested Time</h2>
+			<p class="content overview nopad">
+				Feb — June<br/>
+				Oct — Dec<br/>
+			</p>
+		</div>
+		<div class="md:border-l md:pl-4 border-black">
+			<div>
+				<h2>Group Size (6:1 Ratio)</h2>
+				<p class="content overview nopad">
+					12 Students<br/>
+					2 Chaperons
+				</p>
+			</div>
+			<div class="md:border-t md:pt-4 border-black">
+				<h2>Suggested Ages</h2>
+				<p class="content overview nopad">
+					12 — 22
+				</p>
+			</div>
+		</div>
+	</div>
+	<br/><br/>
+
+	<h2>Program Highlights</h2>
+	<div class="md:grid grid-cols-[3fr_1fr] gap-2">
+		<div class="bg-zinc-100 p-8 bg-position-[8em_50%] bg-no-repeat"
+			style="background-image:url({{ url_for('static', filename='images/icons/cloud-white.Dm1RdigD.svg') }})">
+			<span class="block font-medium uppercase tracking-wide text-xl">STEP INTO UNESCO WONDERS</span>
+			<p class="content overview nopad nom">Maritime Silk Road: From Jingdezhen's porcelain kilns to Quanzhou pagodas; from Tulou fortresses to Gulangyu Island's coastal charm</p>
+			<span class="block mt-4 font-medium uppercase tracking-wide text-xl">EXPERIENCE LEARNING IN ACTION</span>
+			<p class="content overview nopad nom">Scavenger hunts, workshops, and Kungfu experience, and cultural exchanges beyond the classroom.</p>
+			<span class="block mt-4 font-medium uppercase tracking-wide text-xl">TRAVEL WITH PURPOSE</span>
+			<p class="content overview nopad nom">The MindX Program turns every stop into interactive learning resources that deepen students' understanding of language and culture.<br/><br/>It helps them absorb insights from local guides while encouraging independent reflection and review. Each student takes home personalized materials—both a record of their learning and meaningful keepsakes that capture personal growth and the educational value of the journey.</p>
+		</div>
+		<div class="h-[400px] md:h-auto bg-no-repeat bg-top bg-cover"
+			style="background-image:url({{ url_for('static', filename='images/content/fujian-highlight.CfFnp9V_.png') }})"></div>
+		<div></div>
+		<div><span class="text-sm text-zinc-500 italic">Day 7, Nanjing tulou</span></div>
+	</div>
+	<br/><br/>
+
+	<h2>Itinerary</h2>
+	<table class="content">
+		<thead>
+			<th class="text-center">Day</th>
+			<th>Highlights</th>
+		</thead>
+		<tbody>
+			<tr class="">
+				<td class="text-center"><span class="font-medium">1-2<br/>Shanghai</span></td>
+				<td>
+					<span class="font-medium">Past and Future on the Bund</span><br/>
+					Your journey begins in Shanghai, a city where ancient alleyways and soaring skyscrapers exist side by side. Students explore the elegant architecture of Yu Garden and the winding streets of Old Town, then cross the river to marvel at the modern skyline of Pudong, home to China's tallest towers. Along the way, students visit world-class museums and enjoy hands-on language and culture workshops that prepare them for deeper engagement in the days ahead. A walk along The Bund and a cruise on the Huangpu River offer breathtaking views that frame Shanghai as both a symbol of China's past and a gateway to its future.
+				</td>
+			</tr>
+			<tr class="alt">
+				<td class="text-center"><span class="font-medium">3-4<br/>Jingdezhen</span></td>
+				<td>
+					<span class="font-medium">Porcelain Capital of the World</span><br/>
+					Next, students travel to Jingdezhen, China's historic center of porcelain craftsmanship. Here, they dive into the world of ceramics through hands-on workshops, learning to shape, decorate, and fire their own pieces alongside local artisans. Visits to the Ancient Kiln Site and the Ceramic Museum connect students with the centuries-old techniques that once supplied China's emperors and global trade routes. Through interactive sessions with local artists and visits to traditional porcelain markets, students come to see Jingdezhen not just as a city of history, but as a living center of artistic innovation.
+				</td>
+			</tr>
+			<tr class="">
+				<td class="text-center"><span class="font-medium">5-7<br/>Quanzhou</span></td>
+				<td>
+					<span class="font-medium">Martial Arts, Temples, and the Maritime Silk Road</span><br/>
+					In Quanzhou, students engage in a three-day Kung Fu immersion program at a local school, where they train with masters and build cross-cultural friendships with Chinese peers. Beyond the training grounds, the city opens up as a living museum of the Maritime Silk Road, filled with multicultural legacies. At Kaiyuan Temple, students follow the footsteps of pilgrims and scholars while participating in an interactive Black Wukong game, uncovering hidden histories through playful storytelling. A visit to the South Shaolin Temple (南少林寺) offers deeper insight into martial arts traditions and Buddhist practice. A day trip to the Fujian Tulou, the massive earth-built homes of Hakka communities, provides a window into ancient Chinese communal living and architectural ingenuity.
+				</td>
+			</tr>
+			<tr class="alt">
+				<td class="text-center"><span class="font-medium">8-10<br/>Xiamen</span></td>
+				<td>
+					<span class="font-medium">Coastal Charm and Cultural Reflection</span><br/>
+					The journey ends in Xiamen, a picturesque coastal city known for its relaxed rhythm and blend of tradition and modernity. Students explore Gulangyu Island, stroll through peaceful temples, and reflect on their experience while hiking up Wulao Mountain for sweeping views of the city. At the Overseas Chinese Museum, they learn how generations of migrants shaped both China and the world. A final night filled with local food and a sense of accomplishment brings closure to two weeks of immersive learning.
+				</td>
+			</tr>
+		</tbody>
+	</table>
+	<br/><br/>
+
+	<img class="md:hidden mb-8 w-full" src="{{ url_for('static', filename='images/content/fujian-map.Z4zaZQ_a.png') }}"/>
+	<div class="map-section md:grid grid-cols-2 items-center bg-no-repeat bg-size-[100%] md:bg-size-[80%] md:h-[800px]"
+		style="background-image:url({{ url_for('static', filename='images/content/fujian-map.Z4zaZQ_a.png') }})">
+		<div></div>
+		<div>
+			<h2>Options</h2>
+			<ul class="content text-xl font-light">
+				<li>Begin or end journey in <b>Beijing</b>, with 1–2 days to explore its historic and cultural treasures — from the Forbidden City and the Great Wall to enriching cultural exchange experiences.</li>
+				<li><b>Kung Fu Immersion</b><br/>Stay two extra nights at a Kung Fu school to train, live, and experience martial arts culture first-hand.</li>
+				<li><b>Sports & Innovation</b><br/>Add one more day in Xiamen to tour China's top sports brand headquarters and join fun, interactive brand experiences.</li>
+			</ul>
+		</div>
+	</div>
+	<br/><br/>
+
+	<h1>Photo Gallery</h1>
+	<div class="text-center">
+		<img class="inline-block w-[120px] mt-4 mb-6" src="{{ url_for('static', filename='images/icons/one-oran-cloud.Cc5rO4mf.svg') }}"/>
+	</div>
+	<br/><br/>
+
+	<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-10">
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 1" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/0dc5fbe1-cc46-4acd-9ddc-58b0458057fc.DO7wVs22.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 2" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/0ff28113-569c-41ca-ba15-862a7d2e9ba2.Bc43acdm.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 3" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/1af5b4c1-55b2-46bd-abc6-66fd57c70d31.BYtx7_vZ.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 4" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/2caa3833-c6bd-4919-878e-5d4a456230e5.GOd2g9KF.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 5" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/2f5f9d81-e6c4-4fe0-8cec-ffeb4bd5655a.uCWJS-pY.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 6" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/30ef2b10-4bdb-4a56-8053-16fcac153700.dBRplYZ5.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 7" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/360ff41f-37b2-4058-bd94-5986e869c299.BEOp5uhV.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 8" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/48bd0dd4-fa79-4d3e-a6d2-eacf96d3e2d0.CR5j5eCu.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 9" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/48dde865-378d-445c-b470-abb85d3f8816.CU3U_y8w.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 10" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/498944ac-c0f5-4c0b-99ec-bbdf9353323b.CVV3bA_u.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 11" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/63a9a9e5-66e7-4085-af67-698fe7349977.d30VpqS3.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 12" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/66698b40-9829-4ea2-ab6b-a2f213c6a2b1.DIQYdmHJ.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 13" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/6d6b396a-617f-4c14-9082-ebcbc086a4ad.Dc9sfRxp.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 14" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/8aa3905f-2bf8-41e3-98f5-5c698babf639.cuftjPxo.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 15" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/916b2089-7bda-4728-9efc-12ba87ed5d2e.4W_JJaRn.png') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 16" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/9560c5d3-07f5-4bb9-ba57-e36c12894ac9.BGIySwo3.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 17" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/a4963cb6-cce5-46d7-954a-a58d61141bd5.Bq6hYuRO.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 18" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/c6b9cf51-0bb8-4cdf-b9c4-9043c6c73a86.DA2YkEV6.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 19" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/ca70f0d5-d5ca-440e-ba92-c29430a38cf1.C3odOhtR.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 20" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/caeed374-d733-4495-94d2-e56a5f153471.fR0JRZDS.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 21" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/d7d7ca79-3072-4a31-8cc2-ba3f8f47d179.DCTRMqOi.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 22" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/f3a23657-dae9-41bb-8558-2a8ba794dba9.D9vgn0OJ.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 23" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/f9be0289-f7e6-40e1-9e92-9776e144bb04.B3V5b0Pv.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 24" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/fc1183f6-899b-4a41-8ff3-614f7d3477ce.EGzkFOs-.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+	</div>
+	<br/><br/>
+
+	<p class="content">
+		<span class="font-medium text-2xl">Other complimentary benefits (please <a href="{{ url_for('main.contact') }}">contact us</a> for more details)</span>
+	</p>
+	<ul class="content italic ml-4">
+		<li>Mandarin learning materials for all language-learning students</li>
+		<li>All participants will receive a goody bag with a gift and snacks</li>
+		<li>A memorable gift at the end of the trip</li>
+	</ul>
+	<br/><br/>
+</div>
+{% endblock %}
+
+

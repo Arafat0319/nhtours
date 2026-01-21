@@ -1,0 +1,13 @@
+{% extends "admin/trips/builder/base_builder.html" %}
+
+{% block builder_step_content %}
+<div class="py-10 text-center text-gray-500">
+    <h3 class="mt-2 text-sm font-medium text-gray-900">Step 8: Settings</h3>
+    <p class="mt-1 text-sm text-gray-500">Discount codes & Final settings.</p>
+    <div class="mt-6 flex justify-between">
+        <a href="{{ url_for('admin.trip_builder', id=trip.id, step='participants') }}"
+            class="text-wetravel-cyan font-medium hover:text-cyan-700">Back</a>
+        <a href="{{ url_for('admin.trips') }}" class="bg-wetravel-green text-white px-4 py-2 rounded">Finish</a>
+    </div>
+</div>
+{% endblock %}

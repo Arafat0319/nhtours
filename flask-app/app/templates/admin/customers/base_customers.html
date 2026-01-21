@@ -1,0 +1,16 @@
+{% extends "admin/base_wetravel.html" %}
+
+{% block sidebar %}
+<div class="w-full md:w-64 flex-shrink-0">
+    <div class="space-y-1">
+        <a href="{{ url_for('admin.customers') }}"
+            class="group flex items-center px-3 py-2 text-sm font-medium rounded-md {% if 'customers' in request.endpoint %}bg-gray-100 text-wetravel-cyan{% else %}text-gray-600 hover:text-wetravel-cyan hover:bg-gray-50{% endif %}">
+            Customers
+        </a>
+        <a href="{{ url_for('admin.leads') }}"
+            class="group flex items-center px-3 py-2 text-sm font-medium rounded-md {% if 'leads' in request.endpoint %}bg-gray-100 text-wetravel-cyan{% else %}text-gray-600 hover:text-wetravel-cyan hover:bg-gray-50{% endif %}">
+            Leads
+        </a>
+    </div>
+</div>
+{% endblock %}

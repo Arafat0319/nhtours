@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}Nexus Horizons | Terms & Conditions{% endblock %}
+
+{% block description %}Nexus Horizons Terms and Conditions - Important information about our travel programs, cancellation policies, and terms of service.{% endblock %}
+
+{% block og_title %}Nexus Horizons | Terms & Conditions{% endblock %}
+
+{% block og_description %}Nexus Horizons Terms and Conditions - Important information about our travel programs, cancellation policies, and terms of service.{% endblock %}
+
+{% block content %}
+{# Hero背景区域 #}
+<div class="w-full h-[70vh]" style="background:url({{ url_for('static', filename='images/backgrounds/terms_background.jpg') }}) center / cover no-repeat;"></div>
+
+<div class="w-full h-[16px] bg-indigo-800"></div>
+
+{# 主要内容区域 #}
+<div class="max-w-6xl mx-auto py-8 px-8 pb-8 md:px-0">
+	{# Breadcrumb导航 #}
+	<nav>
+		<ol class="flex flex-wrap items-center space-x-2 text-lg font-medium text-amber-800">
+			<li class="flex items-center">
+				<a class="hover:underline" href="{{ url_for('main.index') }}">Home</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<span class="text-indigo-800 font-medium cursor-default">Terms & Conditions</span>
+			</li>
+		</ol>
+	</nav>
+</div>
+
+<div class="max-w-6xl mx-auto py-8 px-8 pb-8 md:px-0">
+	<h1>Terms & Conditions</h1>
+	<h2>General Terms</h2>
+	<p class="content overview text-left">
+		By registering for this program, you agree to participate in a full-service <span class="font-medium">group educational travel</span> experience. Because of the nature of group travel, components of your program and itinerary may be selected and/or scheduled at the direction of your group's <span class="font-medium">Program Leader</span>, who acts as the group's representative.
+		<br/> <br/>
+		While <span class="font-medium">Nexus Horizons Tours</span> ("Nexus Horizons") and its affiliates arrange the travel elements for your trip, the total price quoted also includes <span class="font-medium">pre-trip services</span>, including (but not limited to): development of educational content and materials; printing/distribution of program documents; costs associated with group health-and-safety measures; and administrative/service costs related to program management.
+		<br/> <br/>
+		Because travel elements are purchased on a <span class="font-medium">group basis</span>, information related to Nexus Horizons' purchasing from external suppliers will <span class="font-medium">not</span> be made available to individuals.
+	</p>
+
+	<hr/>
+
+	<h2>Waiver & Release</h2>
+	<p class="content overview text-left">
+		On applicable tours, participants may be required to sign a <span class="font-medium">Participant Release</span> at registration. This form can be reviewed and agreed to during online registration, or printed, signed, and returned to <span class="font-medium">info@nhtours.com</span>.
+	</p>
+
+	<hr/>
+
+	<h2>Late Payments / Late Registration</h2>
+	<p class="content overview text-left">
+		Late registration fees apply in addition to <span class="font-medium">any extra costs</span> (e.g., higher airfares or hotel rates):
+	</p>
+	<ol class="content text-xl font-light pl-8 md:pl-20">
+		<li>After registration deadline and/or <span class="font-medium">120+ days</span> before departure: <span class="font-medium">$50</span></li>
+		<li><span class="font-medium">120–91 days</span> before departure: <span class="font-medium">$100 + extra trip costs</span></li>
+		<li><span class="font-medium">90–61 days</span> before departure: <span class="font-medium">$150 + extra trip costs</span></li>
+		<li><span class="font-medium">60 days</span> or fewer before departure: <span class="font-medium">$300 + extra trip costs</span></li>
+	</ol>
+	<p class="content overview">
+		<span class="font-medium">Waitlist.</span> Your place is <span class="font-medium">not guaranteed</span> until your account is paid in full and you receive written confirmation that all conditions for travel have been satisfied. If placed on a waitlist due to late registration or an outstanding balance after the final payment date, clearing the waitlist may involve <span class="font-medium">additional airline fees and other charges.</span>
+	</p>
+
+	<hr/>
+
+	<h2>What's Not Included</h2>
+	<p class="content overview text-left">
+		Unless specifically stated otherwise in your tour proposal, prices <span class="font-medium">do not</span> include: passport/visa fees; trip protection/insurance; baggage charges; porterage at airports/hotels; expenses during free time; optional excursions or extensions; local transport to unscheduled activities; transport from home to the program's origination point; pre- or post-tour lodging/meals; or any <span class="font-medium">weekend air supplement</span> if your international departure/return falls on a Fri/Sat/Sun (not applicable to tours within the U.S. and Canada).
+	</p>
+
+	<hr/>
+
+	<h2>Age Restrictions</h2>
+	<p class="content overview text-left">
+		We do not accept applications for travelers <span class="font-medium">under age 6</span> at departure. Registration for children <span class="font-medium">12 and under</span> is subject to individual review at the sole discretion of Nexus Horizons, unless pre-approved by the Program Leader.
+	</p>
+
+	<hr/>
+
+	<h2>Travel Documentation</h2>
+	<p class="content overview text-left">
+		Each participant is responsible for obtaining required documentation prior to departure (e.g., valid passport, visas/transit visas, notarized parental consent if applicable, required vaccinations, and any required insurance). <span class="font-medium">Secure Flight</span> data (legal name and birthdate) must exactly match the information provided to Nexus Horizons for ticketing and government compliance.
+		<br/><br/>
+		If you are unable to travel due to missing/invalid documents or vaccinations, the <span class="font-medium">Standard Cancellation Policy</span> applies. Passports (when required) must be valid <span class="font-medium">at least 6 months</span> beyond departure. <span class="font-medium">Reservations are not transferable.</span> Any costs associated with an early return are the participant's responsibility.
+	</p>
+
+	<hr/>
+
+	<h2>Rooming & Optional Accommodations</h2>
+	<ul class="content text-xl font-light pl-8 md:pl-20">
+		<li><span class="font-medium">Occupancy.</span> The Program Leader is responsible for filling rooms to maximum occupancy as quoted. If cancellations reduce occupancy, the Program Leader must reassign rooms to maximize occupancy.</li>
+		<li><span class="font-medium">Standards.</span> Paying participants are typically <span class="font-medium">double/triple</span> occupancy. Upgrades to <span class="font-medium">single</span> rooms may be available for an additional fee. Participants <span class="font-medium">22 and under</span> room by gender in triple/quad configurations with the larger group. <span class="font-medium">Minors (under 18)</span> may not room alone.</li>
+		<li><span class="font-medium">Adult Supplements.</span> Adults are placed in twin rooms unless a single upgrade is requested and available (additional fees apply).</li>
+	</ul>
+
+	<hr/>
+
+	<h2>Personal Property</h2>
+	<p class="content overview text-left">
+		Participants are responsible for costs arising from <span class="font-medium">damage, loss, or theft</span> of personal property. Room occupants are responsible for damages/unpaid charges in their rooms; coach groups are responsible for damage to their motor coach. <span class="font-medium">Common-area</span> damage (hallways, lobbies, etc.) may be charged to the group if responsibility cannot be assigned. Properties may charge for <span class="font-medium">excessive cleaning.</span>
+	</p>
+
+	<hr/>
+
+	<h2>Accessibility</h2>
+	<p class="content overview text-left">
+		Accessibility standards vary by country. Please notify Nexus Horizons <span class="font-medium">at least 6 months</span> before departure of mobility or other accessibility needs. While we will make reasonable efforts, we cannot guarantee accessibility for wheelchairs, walkers, dialysis equipment, service animals, or other aids at all venues/transport modes. Some travelers may be unable to participate in certain activities; <span class="font-medium">refunds are not available</span> where access is limited by local conditions beyond our control.
+	</p>
+
+	<hr/>
+
+	<h2>Dietary Requirements</h2>
+	<p class="content overview text-left">
+		Please advise Nexus Horizons of <span class="font-medium">dietary needs/allergies</span> at booking. We will make reasonable attempts to accommodate requirements, but we are not responsible for denials by carriers, hotels, restaurants, or other suppliers.
+	</p>
+
+	<hr/>
+
+	<h2>Behavior & Supervision</h2>
+	<p class="content overview text-left">
+		Nexus Horizons, the Program Leader, and chaperones establish <span class="font-medium">behavior rules</span> for student participants. Failure to comply may result in <span class="font-medium">immediate dismissal</span> at the participant's/parents' expense and <span class="font-medium">without refund</span>. Grounds for expulsion include, but are not limited to: possession/consumption of alcohol or non-prescribed drugs; behavior that infringes on others' enjoyment or safety; unlawful or inappropriate conduct; or violations of stated rules.
+		<br/><br/>
+		Nexus Horizons is committed to an environment <span class="font-medium">free from harassment</span> based on sex, race, ethnicity, national origin, age, religion, or any other legally protected characteristic.
+	</p>
+
+	<hr/>
+
+	<h2>Program Changes by Nexus Horizons</h2>
+	<p class="content overview text-left">
+		Nexus Horizons may make <span class="font-medium">changes or substitutions</span> in hotels, itineraries, venues, facilities, inclusions, or airports at its discretion due to travel dates, flight schedules, holidays, host-program requirements, or events beyond our control. Changes may include reversing or re-ordering the itinerary, varying lengths of stay, or adding/omitting cities. Some venues/attractions may close without notice (holidays, festivals, maintenance, special events) or require special equipment; <span class="font-medium">refunds cannot be provided</span> in such cases. Suitable alternatives will be provided when possible.
+		<br/><br/>
+		Nexus Horizons may change the departure date by <span class="font-medium">up to two days</span> from the original date; such changes are <span class="font-medium">not</span> grounds for penalty-free cancellation or refund. On occasion, dates may change by <span class="font-medium">more than two days</span> due to <span class="font-medium">Exceptional Circumstances</span> (e.g., travel restrictions, event cancellations, facility closures, government actions, or other reasons beyond our control). In such cases, we will work with the Program Leader to reschedule.
+	</p>
+
+	<hr/>
+
+	<h2>Program Information</h2>
+	<p class="content overview text-left">
+		Your <span class="font-medium">Tour Proposal</span> details all inclusions (transportation, accommodations, meals, activities), travel dates, and pricing based on the requested group size.
+		<br/><br/>
+		Prior to departure, you will receive flight and hotel details, departure/return times, packing tips, drop-off/pick-up locations, etc. <span class="font-medium">Flight times, airlines, itineraries, Tour Directors, and hotel information are subject to change,</span> especially when the program depends on a host organization's schedules, venues, and transportation.
+	</p>
+
+	<hr/>
+
+	<h2>Standard Cancellation Policy</h2>
+	<p class="content overview text-left">
+		<span class="font-medium">How to Cancel.</span> Cancellations must be made <span class="font-medium">in writing</span> by the person listed on the registration (or by the custodial parent/legal guardian) and must be postmarked prior to departure, including the registrant's name and address. Email: <a href="mailto:info@nhtours.com">info@nhtours.com</a>. The Program Leader/school/organization may also cancel on behalf of the group or an individual.
+		<br/><br/>
+		Within <span class="font-medium">24 hours</span> of your registration confirmation or first invoice (whichever comes first), you may cancel for a <span class="font-medium">full refund</span>. After 24 hours, the <span class="font-medium">Standard Cancellation Policy</span> applies unless you enrolled in a travel protection plan that provides otherwise.
+	</p>
+
+	<span class="inline-block mb-4 text-2xl font-light uppercase text-zinc-800">North American Flight Tours</span>
+	<br/><br/>
+	<table class="content auto">
+		<thead>
+			<th>Days Prior to Departure</th>
+			<th>Fees Retained</th>
+		</thead>
+		<tbody>
+			<tr><td>110+ days</td><td>$249 non-refundable fee</td></tr>
+			<tr><td>109–76 days</td><td>50% of all fees + $99 non-refundable fee</td></tr>
+			<tr><td>75–46 days</td><td>75% of all fees + $99 non-refundable fee</td></tr>
+			<tr><td>45 days or less</td><td>100% of all fees</td></tr>
+		</tbody>
+	</table>
+
+	<br/><br/>
+
+	<span class="inline-block text-2xl font-light uppercase text-zinc-800">International Tours</span>
+	<br/><br/>
+	<table class="content auto">
+		<thead>
+			<th>Days Prior to Departure</th>
+			<th>Fees Retained</th>
+		</thead>
+		<tbody>
+			<tr><td>150+ days</td><td>$399 non-refundable fee</td></tr>
+			<tr><td>150–110 days</td><td>$599 non-refundable fee</td></tr>
+			<tr><td>109–76 days</td><td>50% of all fees + $99 non-refundable fee</td></tr>
+			<tr><td>75–31 days</td><td>75% of all fees + $99 non-refundable fee</td></tr>
+			<tr><td>30 days or less</td><td>100% of all fees</td></tr>
+		</tbody>
+	</table>
+
+	<p class="content overview text-left">
+		In addition, any purchased <span class="font-medium">insurance</span> is <span class="font-medium">non-refundable</span>. These fees are a reasonable estimate of unrecoverable internal/external costs incurred in planning and operating a full-service group program.
+	</p>
+
+	<span class="inline-block mb-4 text-xl font-light uppercase text-zinc-800">International Airfare Refund Policy</span>
+	<p class="content overview text-left">
+		This policy is <span class="font-medium">separate from ground cost cancellation policies.</span><br/>
+	</p>
+	<ul class="content text-xl font-light pl-8 md:pl-20">
+		<li>Refunds for international airfare are only possible if the ticket purchased is explicitly <span class="font-medium">refundable</span> through the airline or booking agency.</li>
+		<li>Details will be provided after clients confirm their airfare preferences.</li>
+		<li>Unless purchased as refundable, all <span class="font-medium">issued trans-Pacific tickets (U.S.–Asia)</span> are <span class="font-medium">non-refundable</span> once issued.</li>
+	</ul>
+
+	<br/><br/>
+
+	<hr/>
+
+	<h2>Cancellations Due to U.S. State Department Advisory</h2>
+	<p class="content overview text-left">
+		If any destination is under a <span class="font-medium">Level 4 "Do Not Travel"</span> advisory, the group may cancel and receive a <span class="font-medium">full refund</span>, less a <span class="font-medium">$50 processing fee</span> and any <span class="font-medium">supplier-incurred losses*</span>.
+		<br/><br/>
+		*Supplier-incurred losses are non-recoverable amounts charged by third-party providers (e.g., airlines, hotels, venues).
+	</p>
+</div>
+{% endblock %}
+

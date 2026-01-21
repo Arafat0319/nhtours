@@ -1,0 +1,222 @@
+{% extends "admin/customers/base_customers.html" %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex justify-between items-center">
+        <h2 class="text-2xl font-normal text-gray-500">Customers</h2>
+        <div class="flex space-x-2">
+            <!-- Filter Dropdown -->
+            <div class="relative inline-block text-left">
+                <button type="button"
+                    class="inline-flex justify-center w-full rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none">
+                    Filters
+                    <svg class="-mr-1 ml-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"
+                        fill="currentColor" aria-hidden="true">
+                        <path fill-rule="evenodd"
+                            d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                            clip-rule="evenodd" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Customers Table -->
+    <div class="bg-white shadow overflow-hidden sm:rounded-lg max-h-[calc(100vh-250px)] overflow-y-auto overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200" style="min-width: 800px;">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th scope="col"
+                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                        Name / Email
+                    </th>
+                    <th scope="col"
+                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                        Trip
+                    </th>
+                    <th scope="col"
+                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                        Collected Amount
+                    </th>
+                    <th scope="col"
+                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                        Status
+                    </th>
+                    <th scope="col"
+                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                        Date Created
+                    </th>
+                    <th scope="col"
+                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                        Actions
+                    </th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for client in clients %}
+                <tr>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm font-medium text-gray-900">{{ client.name }}</div>
+                        <div class="text-sm text-gray-500">{{ client.email }}</div>
+                    </td>
+                    <td class="px-6 py-4">
+                        {% set stats = client_stats.get(client.id, {}) %}
+                        {% set trips = stats.get('trips', []) %}
+                        {% if trips %}
+                            <div class="text-sm text-gray-900 max-w-xs">
+                                {% for trip_name in trips %}
+                                    <span class="inline-block">{{ trip_name }}{% if not loop.last %}, {% endif %}</span>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div class="text-sm text-gray-500">-</div>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        {% set stats = client_stats.get(client.id, {}) %}
+                        {% set collected = stats.get('collected_amount', 0.0) %}
+                        <div class="text-sm text-wetravel-cyan font-bold">${{ "%.2f"|format(collected) }}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span
+                            class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                            Booked
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 min-w-[120px]">
+                        {{ client.created_at.strftime('%Y/%m/%d') }}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <button type="button" 
+                            class="text-red-600 hover:text-red-900 delete-customer-btn" 
+                            data-client-id="{{ client.id }}"
+                            data-client-name="{{ client.name }}">
+                            Delete
+                        </button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="px-6 py-4 text-center text-sm text-gray-500">
+                        No results found
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="deleteModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3 text-center">
+            <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                <svg class="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+            </div>
+            <h3 class="text-lg leading-6 font-medium text-gray-900 mt-5">Delete Customer</h3>
+            <div class="mt-2 px-7 py-3">
+                <p class="text-sm text-gray-500">
+                    Are you sure you want to delete <span id="deleteCustomerName" class="font-semibold"></span>? 
+                    This action cannot be undone and will also delete all associated bookings.
+                </p>
+            </div>
+            <div class="items-center px-4 py-3">
+                <button id="confirmDeleteBtn"
+                    class="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500">
+                    Delete
+                </button>
+                <button id="cancelDeleteBtn"
+                    class="mt-2 px-4 py-2 bg-gray-300 text-gray-800 text-base font-medium rounded-md w-full shadow-sm hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const deleteModal = document.getElementById('deleteModal');
+    const deleteCustomerName = document.getElementById('deleteCustomerName');
+    const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+    const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
+    const deleteButtons = document.querySelectorAll('.delete-customer-btn');
+    
+    let currentClientId = null;
+    
+    // Open Delete Modal
+    deleteButtons.forEach(btn => {
+        btn.addEventListener('click', function() {
+            currentClientId = this.getAttribute('data-client-id');
+            const clientName = this.getAttribute('data-client-name');
+            deleteCustomerName.textContent = clientName;
+            deleteModal.classList.remove('hidden');
+        });
+    });
+    
+    // Close Delete Modal
+    function closeDeleteModal() {
+        deleteModal.classList.add('hidden');
+        currentClientId = null;
+    }
+    
+    if (cancelDeleteBtn) {
+        cancelDeleteBtn.addEventListener('click', closeDeleteModal);
+    }
+    
+    // Close modal when clicking outside
+    deleteModal.addEventListener('click', function(e) {
+        if (e.target === deleteModal) {
+            closeDeleteModal();
+        }
+    });
+    
+    // Confirm Delete
+    if (confirmDeleteBtn) {
+        confirmDeleteBtn.addEventListener('click', async function() {
+            if (!currentClientId) return;
+            
+            confirmDeleteBtn.disabled = true;
+            confirmDeleteBtn.innerText = 'Deleting...';
+            
+            try {
+                const response = await fetch(`/admin/customers/${currentClientId}/delete`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    // Show success message using toast
+                    if (typeof showToast === 'function') {
+                        showToast('Customer deleted successfully!', 'success');
+                    }
+                    closeDeleteModal();
+                    // Reload after a short delay to show the toast
+                    setTimeout(() => {
+                        location.reload();
+                    }, 500);
+                } else {
+                    if (typeof showToast === 'function') {
+                        showToast('Error: ' + (data.message || 'Failed to delete customer'), 'error');
+                    }
+                    confirmDeleteBtn.disabled = false;
+                    confirmDeleteBtn.innerText = 'Delete';
+                }
+            } catch (err) {
+                if (typeof showToast === 'function') {
+                    showToast('Error: Failed to delete customer. Please try again.', 'error');
+                }
+                confirmDeleteBtn.disabled = false;
+                confirmDeleteBtn.innerText = 'Delete';
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

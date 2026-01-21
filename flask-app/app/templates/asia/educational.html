@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+
+{% block title %}Nexus Horizons | Asia Educational Tours{% endblock %}
+
+{% block description %}Nexus Horizons Asia Educational Tours - Tailored programs for students with customizable experiences.{% endblock %}
+
+{% block og_title %}Nexus Horizons | Asia Educational Tours{% endblock %}
+
+{% block content %}
+{# Hero背景区域 #}
+<div class="w-full h-[70vh]" style="background:url({{ url_for('static', filename='images/backgrounds/asia_background.jpg') }}) center / cover no-repeat;">
+	<div class="flex h-full w-full items-center pr-10">
+		<div class="hidden md:grid w-full grid-cols-1 justify-items-end">
+			<a class="border-2 border-white w-[80px] h-[80px] bg-no-repeat bg-center bg-top bg-size-[50px] rounded-full bg-amber-800/80 transition-colors hover:bg-amber-800/90"
+				href="{{ url_for('main.asia_index') }}" style="background-image:url({{ url_for('static', filename='images/icons/asia-tower.Dubk1hOS.png') }})"></a>
+			<a class="mt-20 border-2 border-white w-[80px] h-[80px] bg-no-repeat bg-center bg-top bg-size-[30px] rounded-full bg-indigo-800/40 transition-colors hover:bg-indigo-800/50"
+				href="{{ url_for('main.north_america_index') }}" style="background-image:url({{ url_for('static', filename='images/icons/na-tower.2RQScOSr.png') }})"></a>
+		</div>
+	</div>
+</div>
+
+<div class="w-full h-[16px] bg-indigo-800"></div>
+
+{# 主要内容区域 #}
+<div class="max-w-6xl mx-auto py-8 px-8 pb-8 md:px-0">
+	{# Breadcrumb导航 #}
+	<nav>
+		<ol class="flex flex-wrap items-center space-x-2 text-lg font-medium text-amber-800">
+			<li class="flex items-center">
+				<a class="hover:underline" href="{{ url_for('main.index') }}">Home</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<a class="hover:underline" href="{{ url_for('main.asia_index') }}">Asia</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<span class="text-indigo-800 font-medium cursor-default">Educational</span>
+			</li>
+		</ol>
+	</nav>
+
+	<br/><br/>
+
+	<h1>Educational Tours</h1>
+	<div class="text-center">
+		<img class="inline-block w-[120px] mt-4 mb-6" src="{{ url_for('static', filename='images/icons/one-oran-cloud.Cc5rO4mf.svg') }}"/>
+	</div>
+	<p class="content overview">
+		Through years of research, Nexus Horizons Tours has developed an Asia Program tailored to students' familiarity with Asia, their cultural understanding, and their areas of interest. Each program also offers optional components, allowing faculty to customize the experience to their group's needs.
+		<br/><br/>
+		Beyond well-known landmarks, we partner with local schools and organizations to design enriching, hands-on projects. Many of these programs are unique to us, continually updated to remain reliable, diverse, and affordable. Every journey with Nexus Horizons Tours is designed to be safe, meaningful, and inspiring — with health and well-being carefully prioritized throughout.
+	</p>
+
+	<br/><br/>
+
+	<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-10">
+		<div class="overflow-hidden rounded-lg shadow flex flex-col">
+			<div class="aspect-[4/3] relative hover:saturate-150">
+				<a href="{{ url_for('main.asia_hubei') }}">
+					<img alt="Photo" class="absolute inset-0 w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/max-zhang-hYhMDqUF3UE-unsplash.PsR26k0o.jpg') }}"/>
+					<div class="absolute inset-0 flex items-center justify-center text-center">
+						<span class="text-white text-3xl font-medium uppercase tracking-widest">Yangtze Dreams</span>
+					</div>
+				</a>
+			</div>
+			<div class="p-4 flex-1">
+				<a class="md:block md:min-h-[5em]" href="{{ url_for('main.asia_hubei') }}">
+					<span class="text-xl font-medium">In partnership with university in Hubei, offering study tours across the province</span>
+					<span class="inline-block py-1 px-2 uppercase font-medium text-xs rounded-full text-white bg-amber-800">Popular</span>
+				</a>
+				<div class="mt-3 flex justify-center gap-2">
+					<a class="px-4 py-2 text-white uppercase font-medium bg-amber-800" href="{{ url_for('main.asia_hubei') }}">Read More</a>
+				</div>
+			</div>
+		</div>
+
+		<div class="overflow-hidden rounded-lg shadow flex flex-col">
+			<div class="aspect-[4/3] relative hover:saturate-150">
+				<a href="{{ url_for('main.asia_beijing') }}">
+					<img alt="Photo" class="absolute inset-0 w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/beijing-tour.C0XU6x78.png') }}"/>
+					<div class="absolute inset-0 flex items-center justify-center text-center">
+						<span class="text-white text-3xl font-medium uppercase tracking-widest">Classics China Journey</span>
+					</div>
+				</a>
+			</div>
+			<div class="p-4 flex-1">
+				<a class="md:block md:min-h-[5em]" href="{{ url_for('main.asia_beijing') }}">
+					<span class="text-xl font-medium">An educational tour 2 weeks mandarin immersion</span>
+					<span class="inline-block py-1 px-2 uppercase font-medium text-xs rounded-full text-white bg-amber-800">Popular</span>
+				</a>
+				<div class="mt-3 flex justify-center gap-2">
+					<a class="px-4 py-2 text-white uppercase font-medium bg-amber-800" href="{{ url_for('main.asia_beijing') }}">Read More</a>
+				</div>
+			</div>
+		</div>
+
+		<div class="overflow-hidden rounded-lg shadow flex flex-col">
+			<div class="aspect-[4/3] relative hover:saturate-150">
+				<a href="{{ url_for('main.asia_southern_china') }}">
+					<img alt="Photo" class="absolute inset-0 w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/treasures-tour.CwVoy3ym.jpeg') }}"/>
+					<div class="absolute inset-0 flex items-center justify-center text-center">
+						<span class="text-white text-3xl font-medium uppercase tracking-widest">Treasures of Southern China</span>
+					</div>
+				</a>
+			</div>
+			<div class="p-4 flex-1">
+				<a class="md:block md:min-h-[5em]" href="{{ url_for('main.asia_southern_china') }}">
+					<span class="text-xl font-medium">10 days journey discover Xiamen, Quanzhou and Jingdezhen</span>
+					<span class="inline-block py-1 px-2 uppercase font-medium text-xs rounded-full text-white bg-amber-800">New</span>
+				</a>
+				<div class="mt-3 flex justify-center gap-2">
+					<a class="px-4 py-2 text-white uppercase font-medium bg-amber-800" href="{{ url_for('main.asia_southern_china') }}">Read More</a>
+				</div>
+			</div>
+		</div>
+
+		<div class="overflow-hidden rounded-lg shadow flex flex-col">
+			<div class="aspect-[4/3] relative hover:saturate-150">
+				<a href="{{ url_for('main.asia_panda') }}">
+					<img alt="Photo" class="absolute inset-0 w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/panda-tour.Bvrzm79u.png') }}"/>
+					<div class="absolute inset-0 flex items-center justify-center text-center">
+						<span class="text-white text-3xl font-medium uppercase tracking-widest">Panda on Golden Route</span>
+					</div>
+				</a>
+			</div>
+			<div class="p-4 flex-1">
+				<a class="md:block md:min-h-[5em]" href="{{ url_for('main.asia_panda') }}">
+					<span class="text-xl font-medium">10 days Beijing, Xi'an and Chengdu educational trip</span>
+					<span class="inline-block py-1 px-2 uppercase font-medium text-xs rounded-full text-white bg-amber-800">Popular</span>
+				</a>
+				<div class="mt-3 flex justify-center gap-2">
+					<a class="px-4 py-2 text-white uppercase font-medium bg-amber-800" href="{{ url_for('main.asia_panda') }}">Read More</a>
+				</div>
+			</div>
+		</div>
+
+		<div class="overflow-hidden rounded-lg shadow flex flex-col">
+			<div class="aspect-[4/3] relative hover:saturate-150">
+				<a href="{{ url_for('main.asia_jiangnan') }}">
+					<img alt="Photo" class="absolute inset-0 w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/jiangnan-tour.Cjsbm-Dl.jpeg') }}"/>
+					<div class="absolute inset-0 flex items-center justify-center text-center">
+						<span class="text-white text-3xl font-medium uppercase tracking-widest">ELEGANCE OF JIANGNAN</span>
+					</div>
+				</a>
+			</div>
+			<div class="p-4 flex-1">
+				<a class="md:block md:min-h-[5em]" href="{{ url_for('main.asia_jiangnan') }}">
+					<span class="text-xl font-medium">5 days add-on program in Suzhou &amp; Hangzhou</span>
+				</a>
+				<div class="mt-3 flex justify-center gap-2">
+					<a class="px-4 py-2 text-white uppercase font-medium bg-amber-800" href="{{ url_for('main.asia_jiangnan') }}">Read More</a>
+				</div>
+			</div>
+		</div>
+
+		<div class="overflow-hidden rounded-lg shadow flex flex-col">
+			<div class="aspect-[4/3] relative hover:saturate-150">
+				<a href="{{ url_for('main.asia_landscapes') }}">
+					<img alt="Photo" class="absolute inset-0 w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/landscapes-tour.DULyeom6.jpg') }}"/>
+					<div class="absolute inset-0 flex items-center justify-center text-center">
+						<span class="text-white text-3xl font-medium uppercase tracking-widest">Landscapes Beyond Imagination</span>
+					</div>
+				</a>
+			</div>
+			<div class="p-4 flex-1">
+				<a class="md:block md:min-h-[5em]" href="{{ url_for('main.asia_landscapes') }}">
+					<span class="text-xl font-medium">5 days add-on program in Guilin and Yangshuo</span>
+				</a>
+				<div class="mt-3 flex justify-center gap-2">
+					<a class="px-4 py-2 text-white uppercase font-medium bg-amber-800" href="{{ url_for('main.asia_landscapes') }}">Read More</a>
+				</div>
+			</div>
+		</div>
+
+		<div class="overflow-hidden rounded-lg shadow flex flex-col">
+			<div class="aspect-[4/3] relative hover:saturate-150">
+				<a href="{{ url_for('main.asia_yunnan') }}">
+					<img alt="Photo" class="absolute inset-0 w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/yunnan-tour.XHQuNbuD.png') }}"/>
+					<div class="absolute inset-0 flex items-center justify-center text-center">
+						<span class="text-white text-3xl font-medium uppercase tracking-widest">Yunnan's Living Cultures</span>
+					</div>
+				</a>
+			</div>
+			<div class="p-4 flex-1">
+				<a class="md:block md:min-h-[5em]" href="{{ url_for('main.asia_yunnan') }}">
+					<span class="text-xl font-medium">7 days add-on program in Dali, Lijiang, Shangri-La</span>
+				</a>
+				<div class="mt-3 flex justify-center gap-2">
+					<a class="px-4 py-2 text-white uppercase font-medium bg-amber-800" href="{{ url_for('main.asia_yunnan') }}">Read More</a>
+				</div>
+			</div>
+		</div>
+
+		<div class="overflow-hidden rounded-lg shadow flex flex-col">
+			<div class="aspect-[4/3] relative hover:saturate-150">
+				<a href="{{ url_for('main.asia_japan') }}">
+					<img alt="Photo" class="absolute inset-0 w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/pexels-caleb-jack-396082067-14802833.ihyUj8QS.jpg') }}"/>
+					<div class="absolute inset-0 flex items-center justify-center text-center">
+						<span class="text-white text-3xl font-medium uppercase tracking-widest">Classics Japan Journey </span>
+					</div>
+				</a>
+			</div>
+			<div class="p-4 flex-1">
+				<a class="md:block md:min-h-[5em]" href="{{ url_for('main.asia_japan') }}">
+					<span class="text-xl font-medium">10 days journey discover Tokyo, Kyoto, Osaka</span>
+				</a>
+				<div class="mt-3 flex justify-center gap-2">
+					<a class="px-4 py-2 text-white uppercase font-medium bg-amber-800" href="{{ url_for('main.asia_japan') }}">Read More</a>
+				</div>
+			</div>
+		</div>
+	</div>
+	<br/><br/>
+</div>
+{% endblock %}
+

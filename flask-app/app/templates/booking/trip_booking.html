@@ -1,0 +1,743 @@
+{% extends "base.html" %}
+
+{% block title %}Nexus Horizons | {{ trip.title }}{% endblock %}
+
+{% block content %}
+{# Hero背景区域 #}
+<div class="w-full h-[70vh]" style="background-image: url('{{ url_for('static', filename='images/backgrounds/tibet_background.jpg') }}'); background-position: center; background-size: cover; background-repeat: no-repeat;">
+</div>
+
+<div class="w-full h-[16px] bg-indigo-800"></div>
+
+{# Draft Mode Banner for Admins #}
+{% if trip.status != 'published' %}
+<div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 text-center">
+    <div class="flex justify-center">
+        <div class="flex-shrink-0">
+            <svg class="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+            </svg>
+        </div>
+        <div class="ml-3">
+            <p class="text-sm text-yellow-700">
+                <span class="font-bold">Admin Only:</span> This trip is not published (Draft Mode). Regular users will see a 404 error.
+            </p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# 主要内容区域 #}
+<div class="max-w-6xl mx-auto py-8 px-8 md:px-0">
+    {# Breadcrumb导航 #}
+    <nav class="mb-8">
+        <ol class="flex flex-wrap items-center space-x-2 text-lg font-medium text-amber-800">
+            <li class="flex items-center">
+                <a class="hover:underline" href="{{ url_for('main.index') }}">Home</a>
+            </li>
+            <li class="flex items-center">
+                <span class="mx-2 text-gray-400">
+                    <svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+                        stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+                        xmlns="http://www.w3.org/2000/svg">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                    </svg>
+                </span>
+                <span class="text-indigo-800 font-medium cursor-default">{{ trip.title }}</span>
+            </li>
+        </ol>
+    </nav>
+
+    <div class="text-center mb-12">
+        <h1>{{ trip.title }}</h1>
+        {% if trip.start_date and trip.end_date %}
+        <div class="content overview text-center mt-4">
+            {{ trip.start_date.strftime('%B %d, %Y') }} - {{ trip.end_date.strftime('%B %d, %Y') }}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{# 多步骤报名表单 - 简约现代设计 #}
+<div class="max-w-xl mx-auto px-8 md:px-0 pb-16">
+    <form method="POST" action="" id="bookingForm" class="bg-white">
+        {{ form.csrf_token }}
+        
+        {# 简约步骤指示器 - 优化版 #}
+        <div class="border-b border-zinc-200 pb-8 mb-10">
+            <div class="flex items-center w-full">
+                {% for step_num in range(1, 6) %}
+                <div class="flex items-center {% if step_num < 5 %}flex-1{% else %}flex-shrink-0{% endif %}">
+                    <div class="step-indicator flex flex-col items-center {% if step_num == 1 %}active{% endif %}" data-step="{{ step_num }}">
+                        <div class="w-12 h-12 rounded-full flex items-center justify-center font-semibold text-base step-circle transition-all duration-300 relative"
+                             style="background: {% if step_num == 1 %}#d59961{% else %}#f3f4f6{% endif %}; color: {% if step_num == 1 %}white{% else %}#6b7280{% endif %};">
+                            <span class="step-number">{{ step_num }}</span>
+                            <svg class="w-6 h-6 step-check hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                        </div>
+                        <span class="text-xs font-semibold mt-3 step-label whitespace-nowrap" style="color: {% if step_num == 1 %}#1f2937{% else %}#9ca3af{% endif %};">
+                            {% if step_num == 1 %}Buyer Info
+                            {% elif step_num == 2 %}Packages
+                            {% elif step_num == 3 %}Add-ons
+                            {% elif step_num == 4 %}Participants
+                            {% elif step_num == 5 %}Payment
+                            {% endif %}
+                        </span>
+                    </div>
+                    {% if step_num < 5 %}
+                    <div class="flex-1 h-0.5 mx-3 step-connector relative" data-step="{{ step_num }}" style="background: #e5e7eb;">
+                        <div class="h-full step-progress transition-all duration-500 ease-out absolute top-0 left-0" style="width: 0%; background: #d59961;"></div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        {# 步骤内容区域 #}
+        <div class="space-y-6">
+            {# Step 1: 购买者信息 #}
+            <div class="booking-step" data-step="1">
+                <h2 class="text-2xl font-medium text-zinc-800 mb-2 uppercase tracking-wide">Buyer Information</h2>
+                <p class="content mb-6">Please provide your contact and billing information to proceed.</p>
+                
+                {% if buyer_info_fields|length > 0 %}
+                    {% for field in buyer_info_fields|sort(attribute='display_order') %}
+                        {% if field.field_type == 'address' %}
+                        <div class="border-t border-zinc-200 pt-6 mt-6 {% if loop.first %}border-t-0 pt-0 mt-0{% endif %}">
+                            <h3 class="text-base font-medium text-zinc-800 mb-3">{{ field.field_name }}</h3>
+                            <div class="flex flex-col mb-3">
+                                <label class="text-sm font-medium mb-2">
+                                    Address
+                                    {% if field.is_required %}<span class="text-red-500 ml-1">*</span>{% endif %}
+                                </label>
+                                {{ form.buyer_address(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", required=field.is_required) }}
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="flex flex-col">
+                                    <label class="text-sm font-medium mb-2">
+                                        City
+                                        {% if field.is_required %}<span class="text-red-500 ml-1">*</span>{% endif %}
+                                    </label>
+                                    {{ form.buyer_city(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", required=field.is_required) }}
+                                </div>
+                                <div class="flex flex-col">
+                                    <label class="text-sm font-medium mb-2">
+                                        State/Province
+                                        {% if field.is_required %}<span class="text-red-500 ml-1">*</span>{% endif %}
+                                    </label>
+                                    {{ form.buyer_state(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", required=field.is_required) }}
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4 mt-4">
+                                <div class="flex flex-col">
+                                    <label class="text-sm font-medium mb-2">
+                                        ZIP/Postal Code
+                                        {% if field.is_required %}<span class="text-red-500 ml-1">*</span>{% endif %}
+                                    </label>
+                                    {{ form.buyer_zip_code(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", required=field.is_required) }}
+                                </div>
+                                <div class="flex flex-col">
+                                    <label class="text-sm font-medium mb-2">
+                                        Country
+                                        {% if field.is_required %}<span class="text-red-500 ml-1">*</span>{% endif %}
+                                    </label>
+                                    {{ form.buyer_country(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", required=field.is_required) }}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {% elif field.field_type == 'emergency_contact' %}
+                        <div class="border-t border-zinc-200 pt-6 mt-6 {% if loop.first %}border-t-0 pt-0 mt-0{% endif %}">
+                            <h3 class="text-base font-medium text-zinc-800 mb-3">{{ field.field_name }}</h3>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="flex flex-col">
+                                    <label class="text-sm font-medium mb-2">
+                                        Contact Name
+                                        {% if field.is_required %}<span class="text-red-500 ml-1">*</span>{% endif %}
+                                    </label>
+                                    {{ form.buyer_emergency_contact_name(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", required=field.is_required) }}
+                                </div>
+                                <div class="flex flex-col">
+                                    <label class="text-sm font-medium mb-2">
+                                        Phone
+                                        {% if field.is_required %}<span class="text-red-500 ml-1">*</span>{% endif %}
+                                    </label>
+                                    {{ form.buyer_emergency_contact_phone(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", required=field.is_required) }}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {% else %}
+                        {% set field_name_lower = field.field_name|lower %}
+                        {% set is_standard_name = field_name_lower in ['first name', 'firstname', 'last name', 'lastname', 'email', 'phone'] %}
+                        <div class="flex flex-col mb-4 {% if not is_standard_name %}custom-field{% endif %}"
+                             {% if not is_standard_name %}data-field-id="{{ field.id }}"{% endif %}>
+                            <label class="text-sm font-medium mb-2">
+                                {{ field.field_name }}
+                                {% if field.is_required %}<span class="text-red-500 ml-1">*</span>{% endif %}
+                            </label>
+                            
+                            {% if field.field_name|lower == 'first name' or field.field_name|lower == 'firstname' %}
+                                {{ form.buyer_first_name(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", required=field.is_required) }}
+                            {% elif field.field_name|lower == 'last name' or field.field_name|lower == 'lastname' %}
+                                {{ form.buyer_last_name(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", required=field.is_required) }}
+                            {% elif field.field_name|lower == 'email' %}
+                                {{ form.buyer_email(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", type="email", required=field.is_required) }}
+                            {% elif field.field_name|lower == 'phone' %}
+                                {{ form.buyer_phone(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", required=field.is_required) }}
+                            {% elif field.field_type == 'textarea' %}
+                                <textarea name="custom_field_{{ field.id }}" 
+                                    class="px-2 py-2 w-full border border-zinc-400 rounded-xs" rows="4"
+                                    {% if field.is_required %}required{% endif %}></textarea>
+                            {% elif field.field_type == 'select' %}
+                                <select name="custom_field_{{ field.id }}" 
+                                    class="px-2 py-2 w-full border border-zinc-400 rounded-xs"
+                                    {% if field.is_required %}required{% endif %}>
+                                    <option value="">Select an option</option>
+                                    {% if field.options %}
+                                    {% for option in field.options %}
+                                    <option value="{{ option }}">{{ option }}</option>
+                                    {% endfor %}
+                                    {% endif %}
+                                </select>
+                            {% elif field.field_type == 'date' %}
+                                <input type="date" name="custom_field_{{ field.id }}" 
+                                    class="px-2 py-2 w-full border border-zinc-400 rounded-xs"
+                                    {% if field.is_required %}required{% endif %}>
+                            {% else %}
+                                <input type="{{ 'email' if field.field_type == 'email' else 'tel' if field.field_type == 'phone' else 'text' }}"
+                                    name="custom_field_{{ field.id }}" 
+                                    class="px-2 py-2 w-full border border-zinc-400 rounded-xs"
+                                    {% if field.is_required %}required{% endif %}>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center py-8 text-zinc-500">
+                        <p>No buyer information fields configured for this trip.</p>
+                    </div>
+                {% endif %}
+                
+                {{ form.buyer_custom_info(id="buyer_custom_info", type="hidden") }}
+            </div>
+
+            {# Step 2: 选择套餐 #}
+            <div class="booking-step hidden" data-step="2">
+                <h2 class="text-2xl font-medium text-zinc-800 mb-2 uppercase tracking-wide">Select Package</h2>
+                <p class="content mb-6">Choose the package that best fits your travel needs.</p>
+                
+                {% if packages %}
+                <div class="space-y-4">
+                    {% for package in packages %}
+                    <div class="package-card border border-zinc-300 p-6 hover:border-amber-800 transition-all duration-200" data-package-id="{{ package.id }}">
+                        <div class="flex items-start justify-between mb-4">
+                            <div class="flex-1">
+                                <h3 class="text-lg font-medium text-zinc-800 mb-2">{{ package.name }}</h3>
+                                {% if package.description %}
+                                <p class="text-sm text-zinc-600">{{ package.description }}</p>
+                                {% endif %}
+                            </div>
+                            <div class="ml-4 text-right">
+                                <div class="text-2xl font-medium text-amber-800">${{ "%.2f"|format(package.price) }}</div>
+                                <div class="text-xs text-zinc-500 mt-1">per person</div>
+                            </div>
+                        </div>
+                        {% if package.capacity %}
+                        {% set spots_available = package_spots_available.get(package.id, package.capacity) %}
+                        <div class="flex items-center justify-between pt-4 border-t border-zinc-200">
+                            <span class="text-xs text-zinc-600 {% if spots_available < 5 %}text-red-600{% endif %}">
+                                {{ spots_available }} spots left
+                            </span>
+                            <label class="text-sm font-medium text-zinc-700">
+                                Quantity:
+                                <input type="number" name="package_quantity_{{ package.id }}" 
+                                    value="0" min="0" max="{{ package.capacity }}"
+                                    class="w-20 px-2 py-1 ml-2 border border-zinc-400 rounded-xs text-center package-quantity"
+                                    data-package-id="{{ package.id }}"
+                                    data-package-price="{{ package.price }}">
+                            </label>
+                        </div>
+                        {% else %}
+                        <div class="flex items-center justify-end pt-4 border-t border-zinc-200">
+                            <label class="text-sm font-medium text-zinc-700">
+                                Quantity:
+                                <input type="number" name="package_quantity_{{ package.id }}" 
+                                    value="0" min="0"
+                                    class="w-20 px-2 py-1 ml-2 border border-zinc-400 rounded-xs text-center package-quantity"
+                                    data-package-id="{{ package.id }}"
+                                    data-package-price="{{ package.price }}">
+                            </label>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center py-12">
+                    <p class="text-zinc-500">No packages available for this trip.</p>
+                </div>
+                {% endif %}
+            </div>
+
+            {# Step 3: 选择附加项 #}
+            <div class="booking-step hidden" data-step="3">
+                <h2 class="text-2xl font-medium text-zinc-800 mb-2 uppercase tracking-wide">Select Add-ons</h2>
+                <p class="content mb-6">Enhance your trip with optional add-ons. All add-ons are optional.</p>
+                
+                {% if addons %}
+                <div class="space-y-4">
+                    {% for addon in addons %}
+                    <div class="addon-card border border-zinc-300 p-6 transition-all duration-200" data-addon-id="{{ addon.id }}">
+                        <div class="flex-1">
+                            <div class="flex justify-between items-start mb-2">
+                                <h4 class="text-lg font-medium text-zinc-800">{{ addon.name }}</h4>
+                                <div class="text-xl font-medium text-amber-800 ml-4">${{ "%.2f"|format(addon.price) }}</div>
+                            </div>
+                            {% if addon.description %}
+                            <p class="text-sm text-zinc-600 mb-4">{{ addon.description }}</p>
+                            {% endif %}
+                            <div class="flex items-center pt-4 border-t border-zinc-200">
+                                <label class="text-sm font-medium text-zinc-700">
+                                    Quantity:
+                                    <input type="number" name="addon_quantity_{{ addon.id }}" 
+                                        value="0" min="0" 
+                                        class="w-20 px-2 py-1 ml-2 border border-zinc-400 rounded-xs text-center addon-quantity"
+                                        data-addon-id="{{ addon.id }}"
+                                        data-addon-price="{{ addon.price }}">
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center py-12">
+                    <p class="text-zinc-500">No add-ons available for this trip.</p>
+                    <p class="text-sm text-zinc-400 mt-2">You can proceed to the next step.</p>
+                </div>
+                {% endif %}
+            </div>
+
+            {# Step 4: 参与者信息 #}
+            <div class="booking-step hidden" data-step="4">
+                <h2 class="text-2xl font-medium text-zinc-800 mb-2 uppercase tracking-wide">Participant Information</h2>
+                <p class="content mb-6">Enter information for each participant based on your selected packages.</p>
+                
+                <div id="participants-container" class="space-y-6">
+                    {# 动态添加参与者表单 #}
+                </div>
+            </div>
+
+            {# Step 5: 折扣码和支付总结 #}
+            <div class="booking-step hidden" data-step="5">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="lg:col-span-2 space-y-6">
+                        <div>
+                            <h2 class="text-2xl font-medium text-zinc-800 mb-2 uppercase tracking-wide">Review & Payment</h2>
+                            <p class="content mb-2">Card fees apply to credit cards: Visa/Mastercard 2.9%, AmEx 3.5%. Debit or prepaid cards have no fee.</p>
+                            <p class="text-sm text-zinc-500">Complete your payment below to finish the booking.</p>
+                        </div>
+
+                        <div class="bg-white border border-zinc-300 rounded-xs p-6 space-y-4">
+                            <h3 class="text-lg font-medium text-zinc-800">Card Details</h3>
+                            <div id="payment-element" class="rounded-xs p-3"></div>
+                            <div id="payment-message" class="text-sm text-red-600 hidden"></div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white border border-zinc-300 rounded-xs p-6 space-y-4 h-fit">
+                        <h3 class="text-lg font-medium text-zinc-800">Order Summary</h3>
+                        <div id="order-summary" class="space-y-2">
+                            <p class="text-zinc-500">Loading...</p>
+                        </div>
+                        
+                        {# Subtotal #}
+                        <div class="border-t border-zinc-200 pt-3">
+                            <div class="flex justify-between items-center text-zinc-600">
+                                <span>Subtotal</span>
+                                <span id="subtotal-amount">$0.00</span>
+                            </div>
+                        </div>
+                        
+                        {# 折扣码输入 - 类似 Stripe 样式 #}
+                        <div class="border-t border-zinc-200 pt-3">
+                            {# 未应用折扣时显示输入框 #}
+                            <div id="discount-input-section">
+                                <div class="flex gap-2">
+                                    <input type="text" id="discount-code-input" 
+                                        class="flex-1 px-3 py-2 border border-zinc-300 rounded-xs text-sm focus:outline-none focus:ring-1 focus:ring-amber-800 uppercase"
+                                        placeholder="Add promotion code">
+                                    <button type="button" id="apply-discount-btn"
+                                        class="px-4 py-2 bg-zinc-800 text-white text-sm rounded-xs hover:bg-zinc-700 transition-colors">
+                                        Apply
+                                    </button>
+                                </div>
+                                <div id="discount-message" class="text-sm mt-2 hidden"></div>
+                            </div>
+                            
+                            {# 已应用折扣时显示 #}
+                            <div id="discount-applied" class="hidden">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-zinc-600">Discount</span>
+                                        <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded" id="discount-code-display">CODE</span>
+                                        <button type="button" id="remove-discount-btn" class="text-zinc-400 hover:text-red-500 transition-colors">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <span class="text-green-600 font-medium" id="discount-amount-display">-$0.00</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {# Card Fee #}
+                        <div class="border-t border-zinc-200 pt-3">
+                            <div class="flex justify-between items-center text-zinc-500">
+                                <span>Card Fee</span>
+                                <span id="fee-amount">$0.00</span>
+                            </div>
+                        </div>
+                        
+                        {# Total #}
+                        <div class="border-t border-zinc-300 pt-4">
+                            <div class="flex justify-between items-center">
+                                <span class="text-lg font-medium text-zinc-800">Total due today</span>
+                                <span id="total-amount" class="text-xl font-semibold text-zinc-900">$0.00</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# 导航按钮 - 简约设计 #}
+        <div class="border-t border-zinc-200 pt-6 mt-8">
+            <div class="flex items-center gap-4">
+                <button type="button" id="prevBtn" 
+                    class="w-48 px-4 py-2 bg-amber-800 text-white uppercase tracking-tight font-medium rounded-xs hover:bg-amber-800/90 transition-colors flex items-center justify-center hidden">
+                    Previous
+                </button>
+                <div class="flex-1"></div>
+                <button type="button" id="nextBtn" 
+                    class="w-48 px-4 py-2 bg-amber-800 text-white uppercase tracking-tight font-medium rounded-xs hover:bg-amber-800/90 transition-colors flex items-center justify-center">
+                    Next
+                </button>
+                <button type="submit" id="submitBtn" 
+                    class="w-48 px-4 py-2 bg-amber-800 text-white uppercase tracking-tight font-medium rounded-xs hover:bg-amber-800/90 transition-colors flex items-center justify-center hidden">
+                    Place Order
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+{# 行程详情（折叠显示） #}
+<div class="max-w-6xl mx-auto px-8 md:px-0 pb-16">
+    <details class="mt-8">
+        <summary class="text-lg font-medium text-indigo-800 cursor-pointer hover:text-amber-800">
+            Trip Details
+        </summary>
+        <div class="mt-4 space-y-6">
+            {% if trip.description %}
+            <div class="prose max-w-none text-zinc-700">
+                {{ trip.description|safe }}
+            </div>
+            {% endif %}
+            
+            {% if itinerary_items %}
+            <div class="space-y-4">
+                {% for item in itinerary_items %}
+                <div class="border-l-4 border-amber-800 pl-4 py-1">
+                    <h4 class="text-lg font-medium text-zinc-800">Day {{ item.day_number }}: {{ item.title }}</h4>
+                    <p class="text-zinc-600 mt-1">{{ item.description }}</p>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </details>
+</div>
+
+{# 简约现代样式 - 优化版 #}
+<style>
+    #payment-element,
+    #payment-element .StripeElement,
+    #payment-element .StripeElement--focus {
+        border: none !important;
+        box-shadow: none !important;
+        outline: none !important;
+    }
+    /* 步骤指示器样式 - 优化 */
+    .step-indicator.active .step-circle {
+        background: #d59961 !important;
+        color: white !important;
+        box-shadow: 0 2px 8px rgba(213, 153, 97, 0.25);
+    }
+    
+    .step-indicator.completed .step-circle {
+        background: #d59961 !important;
+        color: white !important;
+    }
+    
+    .step-indicator.completed .step-number {
+        display: none !important;
+    }
+    
+    .step-indicator.completed .step-check {
+        display: block !important;
+    }
+    
+    .step-indicator.completed .step-label {
+        color: #1f2937 !important;
+    }
+    
+    /* 步骤圆圈悬停效果 */
+    .step-indicator:not(.active):not(.completed) .step-circle {
+        transition: all 0.2s ease;
+    }
+    
+    .step-indicator:not(.active):not(.completed):hover .step-circle {
+        background: #e5e7eb !important;
+        transform: scale(1.05);
+    }
+    
+    /* 连接线优化 */
+    .step-connector {
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .step-progress {
+        transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    /* Package选中状态 - 根据quantity > 0 */
+    .package-card.selected {
+        border-color: #d59961;
+        border-width: 2px;
+        background-color: #fffbeb;
+    }
+    
+    /* Add-on选中状态 - 根据quantity > 0 */
+    .addon-card.selected {
+        border-color: #d59961;
+        border-width: 2px;
+        background-color: #fffbeb;
+    }
+    
+    /* 表单输入框聚焦 */
+    input:focus, textarea:focus, select:focus {
+        outline: none;
+        border-color: #d59961;
+        box-shadow: 0 0 0 3px rgba(213, 153, 97, 0.1);
+    }
+    
+    /* 表单验证错误样式 */
+    input.border-red-500,
+    textarea.border-red-500,
+    select.border-red-500 {
+        border-color: #ef4444 !important;
+        border-width: 2px !important;
+        box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+    }
+    
+    input.border-red-500:focus,
+    textarea.border-red-500:focus,
+    select.border-red-500:focus {
+        border-color: #ef4444 !important;
+        box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+    }
+    
+    /* 错误提示信息 */
+    .error-message {
+        display: block;
+        color: #ef4444;
+        font-size: 0.75rem;
+        margin-top: 0.25rem;
+        animation: fadeIn 0.2s ease-out;
+    }
+    
+    /* 动画 */
+    .booking-step {
+        animation: fadeIn 0.3s ease-out;
+    }
+    
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    /* 响应式优化 */
+    @media (max-width: 640px) {
+        .step-indicator .step-circle {
+            width: 2.5rem;
+            height: 2.5rem;
+            font-size: 0.875rem;
+        }
+        
+        .step-label {
+            font-size: 0.625rem;
+            margin-top: 0.5rem;
+        }
+        
+        .step-connector {
+            margin-left: 0.5rem;
+            margin-right: 0.5rem;
+        }
+    }
+    
+    /* 自定义提示框 */
+    .custom-alert {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        border: 2px solid #d59961;
+        border-radius: 0.125rem;
+        padding: 1.5rem;
+        min-width: 300px;
+        max-width: 500px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        z-index: 1000;
+        animation: alertFadeIn 0.3s ease-out;
+    }
+    
+    .custom-alert-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 999;
+        animation: overlayFadeIn 0.2s ease-out;
+    }
+    
+    .custom-alert-title {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: #1f2937;
+        margin-bottom: 0.75rem;
+    }
+    
+    .custom-alert-message {
+        font-size: 0.875rem;
+        color: #4b5563;
+        margin-bottom: 1.25rem;
+        line-height: 1.5;
+    }
+    
+    .custom-alert-button {
+        width: 100%;
+        padding: 0.5rem 1rem;
+        background: #d59961;
+        color: white;
+        border: none;
+        font-weight: 500;
+        font-size: 0.875rem;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    
+    .custom-alert-button:hover {
+        background: #b45309;
+    }
+    
+    @keyframes alertFadeIn {
+        from {
+            opacity: 0;
+            transform: translate(-50%, -60%);
+        }
+        to {
+            opacity: 1;
+            transform: translate(-50%, -50%);
+        }
+    }
+    
+    @keyframes overlayFadeIn {
+        from {
+            opacity: 0;
+        }
+        to {
+            opacity: 1;
+        }
+    }
+</style>
+
+{# 加载 booking.js #}
+<script src="{{ url_for('static', filename='js/booking.js') }}"></script>
+
+{# 强制确保Next按钮显示 #}
+<script>
+    (function() {
+        function ensureNextButtonVisible() {
+            const nextBtn = document.getElementById('nextBtn');
+            if (nextBtn) {
+                nextBtn.style.display = 'flex';
+            }
+        }
+        ensureNextButtonVisible();
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', ensureNextButtonVisible);
+        }
+        setTimeout(ensureNextButtonVisible, 200);
+    })();
+</script>
+
+{# 传递数据到 JavaScript #}
+<script>
+    window.tripData = {
+        id: {{ trip.id }},
+        title: {{ trip.title|tojson }},
+        packages: [
+            {% for package in packages %}
+            {
+                id: {{ package.id }},
+                name: {{ package.name|tojson }},
+                price: {{ package.price|default(0) }},
+                description: {{ package.description|tojson if package.description else 'null' }},
+                capacity: {{ package.capacity|tojson if package.capacity is not none else 'null' }},
+                payment_plan_config: {{ package.payment_plan_config|tojson if package.payment_plan_config else 'null' }}
+            }{% if not loop.last %},{% endif %}
+            {% endfor %}
+        ],
+        addons: [
+            {% for addon in addons %}
+            {
+                id: {{ addon.id }},
+                name: {{ addon.name|tojson }},
+                price: {{ addon.price|default(0) }},
+                description: {{ addon.description|tojson if addon.description else 'null' }}
+            }{% if not loop.last %},{% endif %}
+            {% endfor %}
+        ],
+        custom_questions: [
+            {% for question in custom_questions %}
+            {
+                id: {{ question.id }},
+                label: {{ question.label|tojson }},
+                type: {{ question.type|tojson }},
+                options: {{ question.options|tojson if question.options else 'null' }},
+                required: {{ question.required|lower if question.required else 'false' }}
+            }{% if not loop.last %},{% endif %}
+            {% endfor %}
+        ]
+    };
+            window.paymentConfig = {
+                publishableKey: {{ publishable_key|tojson }}
+            };
+</script>
+        <script src="https://js.stripe.com/v3/"></script>
+{% endblock %}

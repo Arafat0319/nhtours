@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - NHTours Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100">
+    <div class="min-h-screen flex flex-col">
+        <!-- Admin Header -->
+        <header class="bg-white shadow">
+            <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+                <div class="flex items-center">
+                    <h1 class="text-3xl font-bold text-gray-900 mr-10">
+                        NHTours Admin
+                    </h1>
+                    {% if current_user.is_authenticated %}
+                    <nav class="space-x-4">
+                        <a href="{{ url_for('admin.dashboard') }}"
+                            class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">主页</a>
+                        <a href="{{ url_for('admin.trips') }}"
+                            class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">行程</a>
+                        <a href="{{ url_for('admin.cities') }}"
+                            class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">城市</a>
+                        <a href="{{ url_for('admin.clients') }}"
+                            class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">客户</a>
+                        <a href="{{ url_for('admin.payments') }}"
+                            class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">支付</a>
+                    </nav>
+                    {% endif %}
+                </div>
+                {% if current_user.is_authenticated %}
+                <a href="{{ url_for('admin.logout') }}" class="text-sm text-red-600 hover:text-red-900">退出登录</a>
+                {% endif %}
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-grow">
+            <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                <div class="mb-4">
+                    {% for message in messages %}
+                    <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4" role="alert">
+                        <p>{{ message }}</p>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% endwith %}
+
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+
+        <!-- Admin Footer -->
+        <footer class="bg-gray-800 text-white p-4 text-center">
+            <p>&copy; 2025 NHTours Admin System</p>
+        </footer>
+    </div>
+</body>
+
+</html>

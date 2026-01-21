@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}
+    {% if payment_status == 'succeeded' %}Booking Confirmed | Nexus Horizons{% else %}Payment Status | Nexus Horizons{% endif %}
+{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+        --spacing: 0.25rem;
+    }
+</style>
+<div class="w-full h-[70vh]"
+    style="background-image: url('{{ url_for('static', filename='images/backgrounds/tibet_background.jpg') }}'); background-position: center; background-size: cover; background-repeat: no-repeat;">
+</div>
+<div class="w-full h-[16px] bg-indigo-800"></div>
+<div id="payment-status-root" data-booking-id="{{ booking_id or '' }}" class="max-w-4xl mx-auto py-28 px-8 md:px-0 text-center">
+    {% if payment_status == 'succeeded' %}
+        <h1 class="text-4xl font-bold text-gray-900" style="margin-top: calc(var(--spacing) * 38); margin-bottom: calc(var(--spacing) * 8);">Booking Confirmed!</h1>
+        <p class="text-xl text-gray-600" style="margin-bottom: calc(var(--spacing) * 38);">
+            Thank you for booking with Nexus Horizons. We have received your information and payment.<br>
+            A confirmation email has been sent to your inbox.
+        </p>
+    {% elif payment_status == 'failed' %}
+        <div class="mb-8 flex justify-center">
+            <div class="rounded-full bg-red-100 p-6">
+                <svg class="h-16 w-16 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </div>
+        </div>
+        <h1 class="text-4xl font-bold text-gray-900" style="margin-top: calc(var(--spacing) * 38); margin-bottom: calc(var(--spacing) * 8);">Payment Failed</h1>
+        <p class="text-xl text-gray-600" style="margin-bottom: calc(var(--spacing) * 38);">
+            Your payment could not be completed. Please try again.
+        </p>
+    {% else %}
+        <div class="mb-8 flex justify-center">
+            <div class="rounded-full bg-amber-50 p-6">
+                <div class="h-16 w-16 border-2 border-amber-200 border-t-amber-700 rounded-full animate-spin"></div>
+            </div>
+        </div>
+        <h1 class="text-4xl font-bold text-gray-900" style="margin-top: calc(var(--spacing) * 38); margin-bottom: calc(var(--spacing) * 8);">Payment Pending</h1>
+        <p class="text-xl text-gray-600" style="margin-bottom: calc(var(--spacing) * 38);">
+            We are confirming your payment. This page will update automatically.
+        </p>
+    {% endif %}
+    {% if payment_status == 'failed' and booking_id %}
+    <div class="flex justify-center">
+        <a href="{{ url_for('main.booking_payment', booking_id=booking_id) }}"
+            class="inline-flex items-center justify-center px-6 py-3 border border-gray-300 text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors duration-200">
+            Try Again
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+{% if payment_status != 'succeeded' %}
+<script>
+    const rootEl = document.getElementById("payment-status-root");
+    const bookingId = (rootEl && rootEl.dataset && rootEl.dataset.bookingId) ? rootEl.dataset.bookingId : "";
+    if (!bookingId) {
+        console.warn("Missing booking id for payment status polling.");
+    } else {
+        const statusUrl = "/api/payment/status?booking_id=" + bookingId;
+
+        const pollStatus = async () => {
+            try {
+                const res = await fetch(statusUrl);
+                const data = await res.json();
+                if (data.status === 'succeeded') {
+                    window.location.reload();
+                    return;
+                }
+                if (data.status === 'failed') {
+                    window.location.reload();
+                    return;
+                }
+            } catch (err) {}
+            setTimeout(pollStatus, 2000);
+        };
+
+        pollStatus();
+    }
+</script>
+{% endif %}
+{% endblock %}

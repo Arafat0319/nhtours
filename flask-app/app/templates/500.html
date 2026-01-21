@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}500 - Server Error | Nexus Horizons{% endblock %}
+
+{% block content %}
+<div class="w-full h-[70vh]"
+	style="background:url({{ url_for('static', filename='images/backgrounds/tibet_background.jpg') }}) center / cover no-repeat;">
+</div>
+<div class="w-full h-[16px] bg-indigo-800"></div>
+<div class="max-w-6xl mx-auto py-16 px-8 md:px-0 text-center">
+	<h1>500</h1>
+	<p class="content overview">Something went wrong on our end. Please try again later.</p>
+	<a href="{{ url_for('main.index') }}" class="inline-block mt-4 bg-amber-800 text-white px-6 py-2 uppercase">Return
+		Home</a>
+</div>
+{% endblock %}

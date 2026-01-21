@@ -1,0 +1,418 @@
+{% extends "admin/base_wetravel.html" %}
+
+{% block sidebar %}
+<style>
+    .sidebar-container {
+        display: none !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex justify-between items-center">
+        <div>
+            <h2 class="text-2xl font-normal text-gray-500">Reports</h2>
+            <p class="text-sm text-gray-400 mt-1">Financial overview across all trips</p>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div class="mb-6">
+            <form method="GET" action="{{ url_for('admin.reports') }}" class="flex flex-col md:flex-row md:items-center md:justify-between space-y-3 md:space-y-0 md:space-x-4">
+                <div class="flex-1">
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                        </div>
+                        <input type="text" name="search" placeholder="Search trips..." value="{{ search or '' }}"
+                            class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-wetravel-cyan focus:border-wetravel-cyan sm:text-sm">
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                    {% if search %}
+                    <a href="{{ url_for('admin.reports') }}"
+                        class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+                        Clear
+                    </a>
+                    {% endif %}
+                    <button type="submit"
+                        class="px-4 py-2 bg-wetravel-cyan text-white text-sm font-medium rounded-md hover:bg-wetravel-cyan-dark transition-colors">
+                        Search
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+            <div class="bg-white rounded-lg shadow-sm p-3 border border-gray-100">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 bg-blue-100 rounded-lg p-2">
+                        <svg class="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                        </svg>
+                    </div>
+                    <div class="ml-3 min-w-0">
+                        <p class="text-xs font-medium text-gray-500">Total Trips</p>
+                        <p class="text-xl font-semibold text-gray-900">{{ grand_total.total_trips }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm p-3 border border-gray-100">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 bg-green-100 rounded-lg p-2">
+                        <svg class="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                    </div>
+                    <div class="ml-3 min-w-0">
+                        <p class="text-xs font-medium text-gray-500">Bookings</p>
+                        <p class="text-xl font-semibold text-gray-900">{{ grand_total.total_bookings }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm p-3 border border-gray-100">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 bg-purple-100 rounded-lg p-2">
+                        <svg class="h-5 w-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                    </div>
+                    <div class="ml-3 min-w-0">
+                        <p class="text-xs font-medium text-gray-500">Participants</p>
+                        <p class="text-xl font-semibold text-gray-900">{{ grand_total.total_participants }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm p-3 border border-gray-100">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 bg-yellow-100 rounded-lg p-2">
+                        <svg class="h-5 w-5 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        </svg>
+                    </div>
+                    <div class="ml-3 min-w-0">
+                        <p class="text-xs font-medium text-gray-500">Expected</p>
+                        <p class="text-xl font-semibold text-gray-900 truncate">${{ "%.2f"|format(grand_total.total_expected) }}</p>
+                    </div>
+                </div>
+            </div>
+            {% if grand_total.total_discount > 0 %}
+            <div class="bg-white rounded-lg shadow-sm p-3 border border-gray-100">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 bg-green-100 rounded-lg p-2">
+                        <svg class="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                        </svg>
+                    </div>
+                    <div class="ml-3 min-w-0">
+                        <p class="text-xs font-medium text-gray-500">Discounts</p>
+                        <p class="text-xl font-semibold text-green-600 truncate">-${{ "%.2f"|format(grand_total.total_discount) }}</p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            <div class="bg-white rounded-lg shadow-sm p-3 border border-gray-100">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 bg-wetravel-cyan bg-opacity-20 rounded-lg p-2">
+                        <svg class="h-5 w-5 text-wetravel-cyan" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </div>
+                    <div class="ml-3 min-w-0">
+                        <p class="text-xs font-medium text-gray-500">Total Paid</p>
+                        <p class="text-xl font-semibold text-wetravel-cyan truncate">${{ "%.2f"|format(grand_total.total_paid) }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <div class="border-b border-gray-200 bg-gray-50">
+                <nav class="flex -mb-px">
+                    <button onclick="showCategory('upcoming')" id="tab-upcoming"
+                        class="tab-button px-6 py-4 text-sm font-medium border-b-2 border-wetravel-cyan text-wetravel-cyan bg-white transition-colors">
+                        Upcoming ({{ upcoming_total.total_trips }})
+                    </button>
+                    <button onclick="showCategory('past')" id="tab-past"
+                        class="tab-button px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors">
+                        Past ({{ past_total.total_trips }})
+                    </button>
+                    <button onclick="showCategory('deactivated')" id="tab-deactivated"
+                        class="tab-button px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors">
+                        Deactivated ({{ deactivated_total.total_trips }})
+                    </button>
+                </nav>
+            </div>
+
+            <div class="p-6">
+                <div id="category-upcoming" class="category-content">
+                    {% if upcoming_summaries %}
+                    <div class="mb-6 p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg border border-gray-200">
+                        <div class="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
+                            <div>
+                                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Bookings</div>
+                                <div class="text-xl font-bold text-gray-900">{{ upcoming_total.total_bookings }}</div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Participants</div>
+                                <div class="text-xl font-bold text-gray-900">{{ upcoming_total.total_participants }}</div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Expected</div>
+                                <div class="text-xl font-bold text-gray-900">${{ "%.2f"|format(upcoming_total.total_expected) }}</div>
+                            </div>
+                            {% if upcoming_total.total_discount > 0 %}
+                            <div>
+                                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Discounts</div>
+                                <div class="text-xl font-bold text-green-600">-${{ "%.2f"|format(upcoming_total.total_discount) }}</div>
+                            </div>
+                            {% endif %}
+                            <div>
+                                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Paid</div>
+                                <div class="text-xl font-bold text-wetravel-cyan">${{ "%.2f"|format(upcoming_total.total_paid) }}</div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Pending</div>
+                                <div class="text-xl font-bold text-orange-600">${{ "%.2f"|format(upcoming_total.total_pending) }}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Trip</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dates</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bookings</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Participants</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expected</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pending</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for summary in upcoming_summaries %}
+                                <tr class="hover:bg-gray-50 transition-colors">
+                                    <td class="px-4 py-3">
+                                        <div class="text-sm font-medium text-gray-900">
+                                            <a href="{{ url_for('admin.manage_trip', id=summary.trip.id) }}" class="text-wetravel-cyan hover:text-wetravel-cyan-dark hover:underline">
+                                                {{ summary.trip.title }}
+                                            </a>
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-xs text-gray-500">
+                                        {% if summary.trip.start_date and summary.trip.end_date %}
+                                            {{ summary.trip.start_date.strftime('%b %d') }} - {{ summary.trip.end_date.strftime('%b %d, %Y') }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-xs text-gray-900">{{ summary.booking_count }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-xs text-gray-900">{{ summary.participants_count }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-xs text-gray-900">${{ "%.2f"|format(summary.amount_expected) }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-xs font-semibold text-wetravel-cyan">${{ "%.2f"|format(summary.amount_paid) }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-xs font-semibold text-orange-600">${{ "%.2f"|format(summary.amount_pending) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-12">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <h3 class="mt-2 text-sm font-medium text-gray-900">No upcoming trips</h3>
+                        <p class="mt-1 text-sm text-gray-500">No upcoming trips found.</p>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div id="category-past" class="category-content hidden">
+                    {% if past_summaries %}
+                    <div class="mb-6 p-4 bg-gray-50 rounded-lg">
+                        <div class="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
+                            <div>
+                                <div class="text-gray-500">Bookings</div>
+                                <div class="font-semibold text-gray-900">{{ past_total.total_bookings }}</div>
+                            </div>
+                            <div>
+                                <div class="text-gray-500">Participants</div>
+                                <div class="font-semibold text-gray-900">{{ past_total.total_participants }}</div>
+                            </div>
+                            <div>
+                                <div class="text-gray-500">Expected</div>
+                                <div class="font-semibold text-gray-900">${{ "%.2f"|format(past_total.total_expected) }}</div>
+                            </div>
+                            {% if past_total.total_discount > 0 %}
+                            <div>
+                                <div class="text-gray-500">Discounts</div>
+                                <div class="font-semibold text-green-600">-${{ "%.2f"|format(past_total.total_discount) }}</div>
+                            </div>
+                            {% endif %}
+                            <div>
+                                <div class="text-gray-500">Paid</div>
+                                <div class="font-semibold text-wetravel-cyan">${{ "%.2f"|format(past_total.total_paid) }}</div>
+                            </div>
+                            <div>
+                                <div class="text-gray-500">Pending</div>
+                                <div class="font-semibold text-orange-600">${{ "%.2f"|format(past_total.total_pending) }}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Trip</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dates</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bookings</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Participants</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expected</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pending</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for summary in past_summaries %}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="text-sm font-medium text-gray-900">
+                                            <a href="{{ url_for('admin.manage_trip', id=summary.trip.id) }}" class="text-wetravel-cyan hover:underline">
+                                                {{ summary.trip.title }}
+                                            </a>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        {% if summary.trip.start_date and summary.trip.end_date %}
+                                            {{ summary.trip.start_date.strftime('%b %d') }} - {{ summary.trip.end_date.strftime('%b %d, %Y') }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ summary.booking_count }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ summary.participants_count }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${{ "%.2f"|format(summary.amount_expected) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-wetravel-cyan">${{ "%.2f"|format(summary.amount_paid) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-orange-600">${{ "%.2f"|format(summary.amount_pending) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-12 text-gray-500">
+                        No past trips found.
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div id="category-deactivated" class="category-content hidden">
+                    {% if deactivated_summaries %}
+                    <div class="mb-6 p-4 bg-gray-50 rounded-lg">
+                        <div class="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
+                            <div>
+                                <div class="text-gray-500">Bookings</div>
+                                <div class="font-semibold text-gray-900">{{ deactivated_total.total_bookings }}</div>
+                            </div>
+                            <div>
+                                <div class="text-gray-500">Participants</div>
+                                <div class="font-semibold text-gray-900">{{ deactivated_total.total_participants }}</div>
+                            </div>
+                            <div>
+                                <div class="text-gray-500">Expected</div>
+                                <div class="font-semibold text-gray-900">${{ "%.2f"|format(deactivated_total.total_expected) }}</div>
+                            </div>
+                            {% if deactivated_total.total_discount > 0 %}
+                            <div>
+                                <div class="text-gray-500">Discounts</div>
+                                <div class="font-semibold text-green-600">-${{ "%.2f"|format(deactivated_total.total_discount) }}</div>
+                            </div>
+                            {% endif %}
+                            <div>
+                                <div class="text-gray-500">Paid</div>
+                                <div class="font-semibold text-wetravel-cyan">${{ "%.2f"|format(deactivated_total.total_paid) }}</div>
+                            </div>
+                            <div>
+                                <div class="text-gray-500">Pending</div>
+                                <div class="font-semibold text-orange-600">${{ "%.2f"|format(deactivated_total.total_pending) }}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Trip</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dates</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bookings</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Participants</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expected</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pending</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for summary in deactivated_summaries %}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="text-sm font-medium text-gray-900">
+                                            <a href="{{ url_for('admin.manage_trip', id=summary.trip.id) }}" class="text-wetravel-cyan hover:underline">
+                                                {{ summary.trip.title }}
+                                            </a>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        {% if summary.trip.start_date and summary.trip.end_date %}
+                                            {{ summary.trip.start_date.strftime('%b %d') }} - {{ summary.trip.end_date.strftime('%b %d, %Y') }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ summary.booking_count }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ summary.participants_count }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${{ "%.2f"|format(summary.amount_expected) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-wetravel-cyan">${{ "%.2f"|format(summary.amount_paid) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-orange-600">${{ "%.2f"|format(summary.amount_pending) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-12 text-gray-500">
+                        No deactivated trips found.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function showCategory(category) {
+        document.querySelectorAll('.category-content').forEach(content => {
+            content.classList.add('hidden');
+        });
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.classList.remove('border-wetravel-cyan', 'text-wetravel-cyan');
+            button.classList.add('border-transparent', 'text-gray-500');
+        });
+        document.getElementById(`category-${category}`).classList.remove('hidden');
+        const activeTab = document.getElementById(`tab-${category}`);
+        activeTab.classList.remove('border-transparent', 'text-gray-500');
+        activeTab.classList.add('border-wetravel-cyan', 'text-wetravel-cyan');
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        showCategory('upcoming');
+    });
+</script>
+{% endblock %}

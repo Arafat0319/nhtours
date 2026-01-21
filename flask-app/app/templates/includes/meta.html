@@ -1,0 +1,40 @@
+{# Meta标签组件 - 包含head中的meta信息 #}
+<meta charset="utf-8" />
+<meta content="width=device-width" name="viewport" />
+<link href="{{ url_for('static', filename='favicon/favicon-dark.png') }}" media="(prefers-color-scheme: dark)" rel="icon" type="image/png" />
+<link href="{{ url_for('static', filename='favicon/favicon-light.png') }}" media="(prefers-color-scheme: light)" rel="icon" type="image/png" />
+
+{# 页面标题和描述 - 可通过block覆盖 #}
+<title>{% block title %}Nexus Horizons | Say YES to Adventure{% endblock %}</title>
+<meta content="{% block description %}Nexus Horizons is a leading provider of unique educational and personalized tours throughout Asia and North America.{% endblock %}" name="description" />
+<meta content="Nexus Horizons" name="author" />
+<meta content="index, follow" name="robots" />
+
+{# Open Graph标签 - 使用单独的block，子模板可以覆盖 #}
+<meta content="{% block og_title %}{% endblock %}" property="og:title" />
+<meta content="{% block og_description %}{% endblock %}" property="og:description" />
+<meta content="website" property="og:type" />
+<meta content="https://www.nhtours.com/" property="og:url" />
+<meta content="https://www.nhtours.com/og-image.jpg" property="og:image" />
+
+{# CSS样式表 #}
+<link href="{{ url_for('static', filename='css/beijing.css') }}" rel="stylesheet" />
+
+{# 响应式样式 - 在移动端隐藏地图区域的背景图片 #}
+<style>
+    @media (max-width: 767px) {
+        .map-section {
+            background-image: none !important;
+        }
+        /* 在移动端隐藏主页圆形按钮的背景图片 */
+        .hero-asia-btn {
+            background-image: none !important;
+        }
+        .hero-na-btn {
+            background-image: none !important;
+        }
+    }
+</style>
+
+{# 页面特定样式 - 可通过block覆盖 #}
+{% block extra_head %}{% endblock %}

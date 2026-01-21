@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Checkout | Payment{% endblock %}
+
+{% block content %}
+{# Hero背景区域 #}
+<div class="w-full h-[70vh]" style="background-image: url('{{ url_for('static', filename='images/backgrounds/tibet_background.jpg') }}'); background-position: center; background-size: cover; background-repeat: no-repeat;">
+</div>
+
+<div class="w-full h-[16px] bg-indigo-800"></div>
+
+{# 主要内容区域 #}
+<div class="max-w-6xl mx-auto py-8 px-8 md:px-0">
+    {# Breadcrumb导航 #}
+    <nav class="mb-8">
+        <ol class="flex flex-wrap items-center space-x-2 text-lg font-medium text-amber-800">
+            <li class="flex items-center">
+                <a class="hover:underline" href="{{ url_for('main.index') }}">Home</a>
+            </li>
+            <li class="flex items-center">
+                <span class="mx-2 text-gray-400">
+                    <svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+                        stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+                        xmlns="http://www.w3.org/2000/svg">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                    </svg>
+                </span>
+                <span class="text-indigo-800 font-medium cursor-default">
+                    {% if payment_mode in ['installment', 'installment_payoff'] and installment %}
+                        Installment Payment
+                    {% else %}
+                        Payment
+                    {% endif %}
+                </span>
+            </li>
+        </ol>
+    </nav>
+</div>
+
+{# 支付表单区域 - 与 trip_booking.html Step 5 保持一致 #}
+<div class="max-w-xl mx-auto px-8 md:px-0 pb-16">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div class="lg:col-span-2 space-y-6">
+            <div>
+                <h2 class="text-2xl font-medium text-zinc-800 mb-2 uppercase tracking-wide">
+                    {% if payment_mode in ['installment', 'installment_payoff'] %}
+                        Installment Payment
+                    {% else %}
+                        Review & Payment
+                    {% endif %}
+                </h2>
+                <p class="content mb-2">Card fees apply to credit cards: Visa/Mastercard 2.9%, AmEx 3.5%. Debit or prepaid cards have no fee.</p>
+                <p class="text-sm text-zinc-500">Complete your payment below to finish the booking.</p>
+            </div>
+
+            <div class="bg-white border border-zinc-300 rounded-xs p-6 space-y-4">
+                <h3 class="text-lg font-medium text-zinc-800">Card Details</h3>
+                <div id="payment-element" class="rounded-xs p-3"></div>
+                <div id="payment-message" class="text-sm text-red-600 hidden"></div>
+            </div>
+
+            <button id="place-order-btn"
+                class="w-full px-4 py-2 bg-amber-800 text-white uppercase tracking-tight font-medium rounded-xs hover:bg-amber-800/90 transition-colors">
+                Place Order
+            </button>
+        </div>
+
+        <div class="bg-white border border-zinc-300 rounded-xs p-6 space-y-4 h-fit">
+            <h3 class="text-lg font-medium text-zinc-800">Order Summary</h3>
+            {% if payment_mode in ['installment', 'installment_payoff'] and installment %}
+            <div class="space-y-2 pb-4 border-b border-zinc-200">
+                <div class="text-sm text-zinc-600">Installment #{{ installment.installment_number if installment.installment_number > 0 else 'Deposit' }}</div>
+                <div class="text-sm text-zinc-600">Due date: {{ installment.due_date.strftime("%Y-%m-%d") if installment.due_date else "N/A" }}</div>
+                <div class="text-sm text-zinc-600">Status: <span class="font-medium">{{ installment.status|capitalize }}</span></div>
+            </div>
+            {% else %}
+            <div class="text-sm text-zinc-600 pb-4 border-b border-zinc-200">Booking #{{ booking.id }}</div>
+            {% endif %}
+
+            <div class="space-y-2">
+                {% if summary_items %}
+                    {% for item in summary_items %}
+                    <div class="flex justify-between text-sm text-zinc-600">
+                        <span>{{ item.label }}</span>
+                        <span>${{ "%.2f"|format(item.amount_cents / 100) }}</span>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+                <div class="flex justify-between text-sm text-zinc-600">
+                    <span>Base Amount</span>
+                    <span id="summary-base">${{ "%.2f"|format(base_amount_cents / 100) }}</span>
+                </div>
+                <div class="flex justify-between text-sm text-zinc-600">
+                    <span>Fee</span>
+                    <span id="summary-fee">$0.00</span>
+                </div>
+                <div class="flex justify-between text-base font-semibold border-t border-zinc-200 pt-2 text-zinc-800">
+                    <span>Total</span>
+                    <span id="summary-total">${{ "%.2f"|format(base_amount_cents / 100) }}</span>
+                </div>
+            </div>
+            <div class="text-sm text-zinc-500 pt-2 border-t border-zinc-200">
+                Detected funding: <span id="summary-funding" class="font-medium">-</span>
+            </div>
+            {% if payment_mode == 'installment' and remaining_amount_cents and remaining_amount_cents > 0 and payoff_url %}
+            <div class="pt-4 border-t border-zinc-200">
+                <a href="{{ payoff_url }}"
+                   class="inline-flex items-center justify-center w-full border border-zinc-300 text-zinc-700 px-4 py-2 rounded-md hover:bg-zinc-50 transition-colors">
+                    Pay remaining balance (${{ "%.2f"|format(remaining_amount_cents / 100) }})
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{# 与 trip_booking.html 相同的支付元素样式 #}
+<style>
+    #payment-element,
+    #payment-element .StripeElement,
+    #payment-element .StripeElement--focus {
+        border: none !important;
+        box-shadow: none !important;
+        outline: none !important;
+    }
+</style>
+
+<script src="https://js.stripe.com/v3/"></script>
+<script>
+    window.checkoutConfig = {
+        bookingId: "{{ booking.id if booking else '' }}",
+        installmentId: "{{ installment.id if installment else '' }}",
+        clientSecret: {{ ('"' + client_secret + '"') if client_secret else 'null' }},
+        publishableKey: {{ ('"' + publishable_key + '"') if publishable_key else 'null' }},
+        successUrl: "{{ success_url }}",
+        paymentIntentId: "{{ payment_intent_id or '' }}",
+        baseAmountCents: {{ base_amount_cents }},
+        paymentPlan: "{{ payment_plan }}",
+        mode: "{{ payment_mode }}",
+        paymentStep: "{{ payment_step }}"
+    };
+</script>
+<script src="{{ url_for('static', filename='js/payment.js') }}"></script>
+{% endblock %}

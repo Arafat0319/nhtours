@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}Nexus Horizons | Contact Us{% endblock %}
+
+{% block description %}Contact Nexus Horizons for personalized educational and travel tours throughout Asia and North America.{% endblock %}
+
+{% block og_title %}Nexus Horizons | Contact Us{% endblock %}
+
+{% block og_description %}Contact Nexus Horizons for personalized educational and travel tours throughout Asia and North America.{% endblock %}
+
+{% block content %}
+{# Hero背景区域 #}
+<div class="w-full h-[70vh]" style="background:url({{ url_for('static', filename='images/backgrounds/tibet_background.jpg') }}) center / cover no-repeat;"></div>
+
+<div class="w-full h-[16px] bg-indigo-800"></div>
+
+{# 主要内容区域 #}
+<div class="max-w-6xl mx-auto py-8 px-8 md:px-0">
+	{# Breadcrumb导航 #}
+	<nav>
+		<ol class="flex flex-wrap items-center space-x-2 text-lg font-medium text-amber-800">
+			<li class="flex items-center">
+				<a class="hover:underline" href="{{ url_for('main.index') }}">Home</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<span class="text-indigo-800 font-medium cursor-default">Contact Us</span>
+			</li>
+		</ol>
+	</nav>
+</div>
+
+<div class="max-w-xl mx-auto px-8 md:px-0">
+	<h1>Contact Us</h1>
+	<p class="content overview text-center">
+		Dedicated to excellence in safety, quality, integrity, and value.
+	</p>
+	<br />
+	<p class="content">
+		Our Customer Service Hours are <span class="font-medium">Sunday - Friday 9am - 9pm PST</span>
+	</p>
+	<p class="content">
+		<span class="font-medium">Email:</span> <a href="mailto:info@nhtours.com">info@nhtours.com</a><br />
+		<span class="font-medium">Tel:</span> 1.360.550.8965 (USA)<br />
+		<span class="font-medium">Tel:</span> 1.778.882.8565 (CAN)<br />
+		<br />
+	</p>
+	<br />
+	<h2>General Questions</h2>
+	<p class="content">Provide your details here and our staff will be in touch with you shortly.</p>
+</div>
+
+{# 联系表单 #}
+<div class="pb-8 px-8 md:px-0">
+	<form class="space-y-4 max-w-xl mx-auto" id="contact-form" action="/contact" method="POST">
+		<input name="form" type="hidden" value="contact" />
+		
+		{# First & Last Name #}
+		<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+			<div class="flex flex-col">
+				<label class="text-sm font-medium" for="firstName">*First Name</label>
+				<input class="px-2 py-2 w-full border border-zinc-400 rounded-xs" id="firstName" name="firstName"
+					required="" type="text" />
+			</div>
+			<div class="flex flex-col">
+				<label class="text-sm font-medium" for="lastName">*Last Name</label>
+				<input class="px-2 py-2 w-full border border-zinc-400 rounded-xs" id="lastName" name="lastName"
+					required="" type="text" />
+			</div>
+		</div>
+		
+		{# Email #}
+		<div class="flex flex-col">
+			<label class="text-sm font-medium" for="email">*Email</label>
+			<input class="px-2 py-2 w-full border border-zinc-400 rounded-xs" id="email" name="email"
+				placeholder="me@example.com" required="" type="email" />
+		</div>
+		
+		{# Phone #}
+		<div class="flex flex-col">
+			<label class="text-sm font-medium" for="phone">Phone number</label>
+			<input class="px-2 py-2 w-full border border-zinc-400 rounded-xs" id="phone" name="phone" type="tel" />
+		</div>
+		
+		{# Organization #}
+		<div class="flex flex-col">
+			<label class="text-sm font-medium" for="organization">School / Organization Name</label>
+			<input class="px-2 py-2 w-full border border-zinc-400 rounded-xs" id="organization" name="organization"
+				type="text" />
+		</div>
+		
+		{# Message #}
+		<div class="flex flex-col">
+			<label class="text-sm font-medium" for="message">*How can we help you?</label>
+			<textarea class="px-2 py-2 w-full border border-zinc-400 rounded-xs" id="message" name="message"
+				required="" rows="4"></textarea>
+		</div>
+		
+		{# Interests #}
+		<div class="flex flex-col">
+			<span class="text-sm font-medium">I am interested in:</span>
+			<div class="mt-2 space-y-1">
+				<label class="flex items-center gap-2">
+					<input class="accent-amber-800" name="interest" type="checkbox" value="asia" />
+					Asia Educational Tour
+				</label>
+				<label class="flex items-center gap-2">
+					<input class="accent-amber-800" name="interest" type="checkbox" value="na" />
+					North America Educational Tour
+				</label>
+				<label class="flex items-center gap-2">
+					<input class="accent-amber-800" name="interest" type="checkbox" value="family" />
+					Family Tour
+				</label>
+				<label class="flex items-center gap-2">
+					<input class="accent-amber-800" name="interest" type="checkbox" value="custom" />
+					Customized Tour
+				</label>
+			</div>
+		</div>
+		
+		{# Status消息 #}
+		<div class="hidden text-sm mt-4 mb-4 transition-opacity duration-300" id="form-status"></div>
+		
+		{# Submit按钮 #}
+		<div>
+			<button class="py-2 px-4 mt-2 w-full md:w-auto cursor-pointer bg-amber-800 text-white uppercase tracking-tight"
+				type="submit">
+				Submit
+			</button>
+		</div>
+		
+		{# 加载动画 #}
+		<div class="hidden flex items-center justify-center mt-4" id="form-spinner">
+			<svg class="animate-spin h-5 w-5 text-zinc-700" fill="none" viewbox="0 0 24 24"
+				xmlns="http://www.w3.org/2000/svg">
+				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+				<path class="opacity-75" d="M4 12a8 8 0 018-8v8H4z" fill="currentColor"></path>
+			</svg>
+		</div>
+	</form>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module" src="{{ url_for('static', filename='js/forms.js') }}"></script>
+{% endblock %}
+

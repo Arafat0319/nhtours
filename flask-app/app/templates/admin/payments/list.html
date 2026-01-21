@@ -1,0 +1,715 @@
+{% extends "admin/base_wetravel.html" %}
+
+{% block sidebar %}
+{# Payments页面不需要侧边栏 #}
+<style>
+    .sidebar-container {
+        display: none !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header Section -->
+    <div class="flex justify-between items-center">
+        <div>
+            <h2 class="text-2xl font-normal text-gray-500">Payments</h2>
+            <p class="text-sm text-gray-400 mt-1">Payment records and installment management</p>
+        </div>
+        <div class="flex space-x-2">
+            <a href="{{ url_for('admin.export_payments') }}"
+                class="bg-wetravel-green text-white px-4 py-2 rounded text-sm font-bold flex items-center hover:bg-green-500 transition-colors">
+                <span>Export</span>
+                <svg class="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                </svg>
+            </a>
+        </div>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+        <div class="border-b border-gray-200">
+            <nav class="flex -mb-px">
+                <a href="{{ url_for('admin.payments', tab='records') }}"
+                    class="tab-link px-6 py-4 text-sm font-medium border-b-2 {% if tab == 'records' %}border-wetravel-cyan text-wetravel-cyan bg-white{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{% endif %} transition-colors">
+                    Full Payments
+                </a>
+                <a href="{{ url_for('admin.payments', tab='installments') }}"
+                    class="tab-link px-6 py-4 text-sm font-medium border-b-2 {% if tab == 'installments' %}border-wetravel-cyan text-wetravel-cyan bg-white{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{% endif %} transition-colors">
+                    Installment Payments
+                </a>
+            </nav>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="p-6">
+            {# Tab 1: Payment Records #}
+            {% if tab == 'records' %}
+            <div>
+                <!-- Search and Filters -->
+                <div class="mb-6">
+                    <form method="GET" action="{{ url_for('admin.payments') }}" class="flex flex-col md:flex-row md:items-center md:justify-between space-y-3 md:space-y-0 md:space-x-4">
+                        <input type="hidden" name="tab" value="records">
+                        <div class="flex-1">
+                            <input type="text" name="search" placeholder="Search by Booking ID, Client, Trip..." value="{{ search or '' }}"
+                                class="block w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-wetravel-cyan focus:border-wetravel-cyan">
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <select name="status" class="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-wetravel-cyan">
+                                <option value="">All Status</option>
+                                <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending</option>
+                                <option value="succeeded" {% if status_filter == 'succeeded' %}selected{% endif %}>Succeeded</option>
+                                <option value="failed" {% if status_filter == 'failed' %}selected{% endif %}>Failed</option>
+                                <option value="refunded" {% if status_filter == 'refunded' %}selected{% endif %}>Refunded</option>
+                            </select>
+                            <button type="submit" class="px-4 py-2 bg-wetravel-cyan text-white rounded hover:bg-wetravel-cyan-dark transition-colors">
+                                Filter
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Payment Records Table -->
+                {% if payments_list %}
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                    <button type="button" class="flex items-center space-x-1 hover:text-wetravel-cyan transition-colors sortable-header" data-sort="payment_id">
+                                        <span>Payment ID</span>
+                                        <svg class="w-4 h-4 sort-icon" style="display: none;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>
+                                        </svg>
+                                    </button>
+                                </th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Booking ID</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Buyer</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Trip</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                    <button type="button" class="flex items-center space-x-1 hover:text-wetravel-cyan transition-colors sortable-header" data-sort="created_at">
+                                        <span>Date</span>
+                                        <svg class="w-4 h-4 sort-icon" style="display: none;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>
+                                        </svg>
+                                    </button>
+                                </th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Detail</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {% for payment in payments_list %}
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-4 py-3 text-sm text-gray-900">#{{ payment.id }}</td>
+                                <td class="px-4 py-3 text-sm">
+                                    {% if payment.booking_id %}
+                                    <a href="{{ url_for('admin.manage_trip', id=payment.trip_id) if payment.trip_id else '#' }}" class="text-wetravel-cyan hover:underline">
+                                        #{{ payment.booking_id }}
+                                    </a>
+                                    {% else %}
+                                    <span class="text-gray-400">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-3 text-sm">
+                                    {% if payment.booking %}
+                                        {{ payment.booking.buyer_name or payment.client.name if payment.client else 'N/A' }}
+                                    {% elif payment.client %}
+                                        {{ payment.client.name }}
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-3 text-sm">
+                                    {% if payment.trip %}
+                                        {{ payment.trip.title }}
+                                    {% else %}
+                                        <span class="text-gray-400">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-3 text-sm font-semibold">${{ "%.2f"|format(payment.amount or 0.0) }}</td>
+                                <td class="px-4 py-3 text-sm">
+                                    <span class="px-2 py-1 text-xs rounded-full
+                                        {% if payment.status == 'succeeded' %}bg-green-100 text-green-800
+                                        {% elif payment.status == 'pending' %}bg-yellow-100 text-yellow-800
+                                        {% elif payment.status == 'failed' %}bg-red-100 text-red-800
+                                        {% elif payment.status == 'refunded' %}bg-gray-100 text-gray-800
+                                        {% else %}bg-gray-100 text-gray-800{% endif %}">
+                                        {{ payment.status or 'pending' }}
+                                    </span>
+                                </td>
+                                <td class="px-4 py-3 text-sm text-gray-500">
+                                    {{ payment.created_at.strftime('%Y-%m-%d %H:%M') if payment.created_at else '-' }}
+                                </td>
+                                <td class="px-4 py-3 text-sm">
+                                    <a href="{{ url_for('admin.payment_detail', payment_id=payment.id) }}" 
+                                        class="text-wetravel-cyan hover:underline">View</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-12 text-gray-500">
+                    No payment records found.
+                </div>
+                {% endif %}
+            </div>
+
+            {# Tab 2: Installment Payments #}
+            {% elif tab == 'installments' %}
+            <div>
+                <!-- Search and Filters -->
+                <div class="mb-6">
+                    <form method="GET" action="{{ url_for('admin.payments') }}" class="flex flex-col md:flex-row md:items-center md:justify-between space-y-3 md:space-y-0 md:space-x-4">
+                        <input type="hidden" name="tab" value="installments">
+                        <div class="flex-1">
+                            <input type="text" name="search" placeholder="Search by Booking ID..." value="{{ search or '' }}"
+                                class="block w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-wetravel-cyan">
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <select name="status" class="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-wetravel-cyan">
+                                <option value="">All Status</option>
+                                <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending</option>
+                                <option value="paid" {% if status_filter == 'paid' %}selected{% endif %}>Paid</option>
+                                <option value="overdue" {% if status_filter == 'overdue' %}selected{% endif %}>Overdue</option>
+                            </select>
+                            <button type="submit" class="px-4 py-2 bg-wetravel-cyan text-white rounded hover:bg-wetravel-cyan-dark transition-colors">
+                                Filter
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Installment Payments Table -->
+                {% if installments_grouped %}
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Payment ID</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Booking ID</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Buyer</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Trip</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Installment #</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Due Date</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Detail</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {% for group in installments_grouped %}
+                            {% set deposit = group.deposit %}
+                            {% set payment = group.deposit_payment %}
+                            {% set is_future = deposit.due_date and deposit.due_date > today %}
+                            {% set is_due = deposit.due_date and deposit.due_date <= today and deposit.status != 'paid' %}
+                            <!-- Deposit Row (Main Row) -->
+                            <tr class="hover:bg-gray-50 {% if group.others or group.payoff_payment %}cursor-pointer{% endif %}" 
+                                {% if group.others or group.payoff_payment %}onclick="toggleInstallments({{ group.booking_id }})"{% endif %}>
+                                <td class="px-4 py-3 text-sm text-gray-900">
+                                    <div class="flex items-center">
+                                        {% if group.others or group.payoff_payment %}
+                                            <svg class="w-4 h-4 mr-2 text-gray-400 transform transition-transform duration-200" id="icon-{{ group.booking_id }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                            </svg>
+                                        {% endif %}
+                                        <span>{% if payment %}#{{ payment.id }}{% else %}<span class="text-gray-400">-</span>{% endif %}</span>
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3 text-sm">
+                                    {% if deposit.booking_id %}
+                                    <a href="{{ url_for('admin.manage_trip', id=deposit.booking.trip_id) if deposit.booking and deposit.booking.trip_id else '#' }}" 
+                                        class="text-wetravel-cyan hover:underline" onclick="event.stopPropagation();">
+                                        #{{ deposit.booking_id }}
+                                    </a>
+                                    {% else %}
+                                    <span class="text-gray-400">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-3 text-sm">
+                                    {% if deposit.booking %}
+                                        {{ deposit.booking.buyer_name or 'N/A' }}
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-3 text-sm">
+                                    {% if deposit.booking and deposit.booking.trip %}
+                                        {{ deposit.booking.trip.title }}
+                                    {% else %}
+                                        <span class="text-gray-400">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-3 text-sm">
+                                    <span class="font-medium">Deposit</span>
+                                </td>
+                                <td class="px-4 py-3 text-sm font-semibold">${{ "%.2f"|format(deposit.amount or 0.0) }}</td>
+                                <td class="px-4 py-3 text-sm">
+                                    {% if deposit.due_date %}
+                                        {{ deposit.due_date.strftime('%Y-%m-%d') }}
+                                        {% if is_future %}
+                                            <span class="text-blue-600 text-xs ml-1">(Future)</span>
+                                        {% elif is_due %}
+                                            <span class="text-yellow-600 text-xs ml-1">(Due)</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-gray-400">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-3 text-sm">
+                                    <span class="px-2 py-1 text-xs rounded-full
+                                        {% if deposit.status == 'paid' %}bg-green-100 text-green-800
+                                        {% elif deposit.status == 'overdue' %}bg-red-100 text-red-800
+                                        {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                                        {{ deposit.status or 'pending' }}
+                                    </span>
+                                </td>
+                                <td class="px-4 py-3 text-sm">
+                                    {% if payment %}
+                                    <a href="{{ url_for('admin.payment_detail', payment_id=payment.id) }}" 
+                                        class="text-wetravel-cyan hover:underline" onclick="event.stopPropagation();">View</a>
+                                    {% elif deposit.booking_id %}
+                                    <a href="{{ url_for('admin.manage_trip', id=deposit.booking.trip_id) if deposit.booking and deposit.booking.trip_id else '#' }}" 
+                                        class="text-wetravel-cyan hover:underline" onclick="event.stopPropagation();">View</a>
+                                    {% else %}
+                                    <span class="text-gray-400">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-3 text-sm" onclick="event.stopPropagation();">
+                                    <div class="relative inline-block text-left">
+                                        <button type="button" 
+                                            class="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-wetravel-cyan"
+                                            onclick="toggleDropdown('dropdown-{{ deposit.id }}')">
+                                            Actions
+                                            <svg class="-mr-1 ml-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                                            </svg>
+                                        </button>
+                                        <div id="dropdown-{{ deposit.id }}" 
+                                            class="hidden origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+                                            <div class="py-1" role="menu">
+                                                {% if deposit.status != 'paid' %}
+                                                <button onclick="sendReminder({{ deposit.id }})" 
+                                                    class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100" role="menuitem">
+                                                    Send Reminder
+                                                </button>
+                                                <button onclick="markPaid({{ deposit.id }})" 
+                                                    class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100" role="menuitem">
+                                                    Mark Paid
+                                                </button>
+                                                {% else %}
+                                                <span class="block px-4 py-2 text-xs text-gray-400">No actions available</span>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            <!-- Sub Items (Payoff and Installments) - Sorted by payment time -->
+                            {% if group.sub_items %}
+                            {% for item in group.sub_items %}
+                            {% if item.type == 'payoff' %}
+                            {# Payoff Row #}
+                            <tr class="installment-row-{{ group.booking_id }} hidden border-l-4 border-purple-500 bg-gray-100">
+                                <td class="pl-8 pr-4 py-2.5 text-sm">
+                                    <span class="font-medium text-purple-700">#{{ item.payment.id }}</span>
+                                </td>
+                                <td class="px-4 py-2.5 text-sm text-gray-400">-</td>
+                                <td class="px-4 py-2.5 text-sm text-gray-400">-</td>
+                                <td class="px-4 py-2.5 text-sm text-gray-400">-</td>
+                                <td class="px-4 py-2.5 text-sm">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                        Payoff
+                                    </span>
+                                </td>
+                                <td class="px-4 py-2.5 text-sm font-semibold text-purple-700">${{ "%.2f"|format(item.payment.amount or 0.0) }}</td>
+                                <td class="px-4 py-2.5 text-sm text-gray-600">
+                                    {% if item.payment.paid_at %}
+                                        {{ item.payment.paid_at.strftime('%Y-%m-%d %H:%M') }}
+                                    {% elif item.payment.created_at %}
+                                        {{ item.payment.created_at.strftime('%Y-%m-%d %H:%M') }}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-2.5 text-sm">
+                                    <span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">paid</span>
+                                </td>
+                                <td class="px-4 py-2.5 text-sm">
+                                    <a href="{{ url_for('admin.payment_detail', payment_id=item.payment.id) }}" 
+                                        class="text-wetravel-cyan hover:underline" onclick="event.stopPropagation();">View</a>
+                                </td>
+                                <td class="px-4 py-2.5 text-sm text-gray-400" onclick="event.stopPropagation();">-</td>
+                            </tr>
+                            {% else %}
+                            {# Installment Row #}
+                            {% set installment = item.installment %}
+                            {% set inst_payment = item.payment %}
+                            {% set inst_is_future = installment.due_date and installment.due_date > today %}
+                            {% set inst_is_due = installment.due_date and installment.due_date <= today and installment.status != 'paid' %}
+                            <tr class="installment-row-{{ group.booking_id }} hidden border-l-4 border-indigo-400 bg-gray-100">
+                                <td class="pl-8 pr-4 py-2.5 text-sm">
+                                    {% if inst_payment %}
+                                        <span class="font-medium text-gray-700">#{{ inst_payment.id }}</span>
+                                    {% else %}
+                                        <span class="text-gray-400">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-2.5 text-sm text-gray-400">-</td>
+                                <td class="px-4 py-2.5 text-sm text-gray-400">-</td>
+                                <td class="px-4 py-2.5 text-sm text-gray-400">-</td>
+                                <td class="px-4 py-2.5 text-sm">
+                                    <span class="text-indigo-700 font-medium">#{{ installment.installment_number }}</span>
+                                </td>
+                                <td class="px-4 py-2.5 text-sm font-semibold text-gray-700">${{ "%.2f"|format(installment.amount or 0.0) }}</td>
+                                <td class="px-4 py-2.5 text-sm text-gray-600">
+                                    {% if installment.status == 'paid' and inst_payment and inst_payment.paid_at %}
+                                        {{ inst_payment.paid_at.strftime('%Y-%m-%d %H:%M') }}
+                                    {% elif installment.status == 'paid' and installment.paid_at %}
+                                        {{ installment.paid_at.strftime('%Y-%m-%d %H:%M') }}
+                                    {% elif installment.due_date %}
+                                        {{ installment.due_date.strftime('%Y-%m-%d') }}
+                                        {% if inst_is_future %}
+                                            <span class="text-blue-600 text-xs ml-1">(Future)</span>
+                                        {% elif inst_is_due %}
+                                            <span class="text-amber-600 text-xs ml-1">(Due)</span>
+                                        {% endif %}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-2.5 text-sm">
+                                    <span class="px-2 py-1 text-xs rounded-full
+                                        {% if installment.status == 'paid' %}bg-green-100 text-green-800
+                                        {% elif installment.status == 'overdue' %}bg-red-100 text-red-800
+                                        {% elif installment.status == 'cancelled' %}bg-gray-100 text-gray-600
+                                        {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                                        {{ installment.status or 'pending' }}
+                                    </span>
+                                </td>
+                                <td class="px-4 py-2.5 text-sm">
+                                    {% if inst_payment %}
+                                    <a href="{{ url_for('admin.payment_detail', payment_id=inst_payment.id) }}" 
+                                        class="text-wetravel-cyan hover:underline" onclick="event.stopPropagation();">View</a>
+                                    {% elif installment.booking_id %}
+                                    <a href="{{ url_for('admin.manage_trip', id=installment.booking.trip_id) if installment.booking and installment.booking.trip_id else '#' }}" 
+                                        class="text-wetravel-cyan hover:underline" onclick="event.stopPropagation();">View</a>
+                                    {% else %}
+                                    <span class="text-gray-400">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-2.5 text-sm" onclick="event.stopPropagation();">
+                                    <div class="relative inline-block text-left">
+                                        <button type="button" 
+                                            class="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-wetravel-cyan"
+                                            onclick="toggleDropdown('dropdown-inst-{{ installment.id }}')">
+                                            Actions
+                                            <svg class="-mr-1 ml-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                                            </svg>
+                                        </button>
+                                        <div id="dropdown-inst-{{ installment.id }}" 
+                                            class="hidden origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+                                            <div class="py-1" role="menu">
+                                                {% if installment.status != 'paid' %}
+                                                <button onclick="sendReminder({{ installment.id }})" 
+                                                    class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100" role="menuitem">
+                                                    Send Reminder
+                                                </button>
+                                                <button onclick="markPaid({{ installment.id }})" 
+                                                    class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100" role="menuitem">
+                                                    Mark Paid
+                                                </button>
+                                                {% else %}
+                                                <span class="block px-4 py-2 text-xs text-gray-400">No actions available</span>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% endfor %}
+                            {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-12 text-gray-500">
+                    No installment payments found.
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Custom Confirmation Modal -->
+<div id="confirmModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3 text-center">
+            <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-blue-100">
+                <svg class="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <h3 class="text-lg leading-6 font-medium text-gray-900 mt-5" id="confirmModalTitle">Confirm Action</h3>
+            <div class="mt-2 px-7 py-3">
+                <p class="text-sm text-gray-500" id="confirmModalMessage">
+                    Are you sure you want to proceed?
+                </p>
+            </div>
+            <div class="items-center px-4 py-3">
+                <button id="confirmModalOk"
+                    class="px-4 py-2 bg-wetravel-cyan text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-wetravel-cyan-dark focus:outline-none focus:ring-2 focus:ring-wetravel-cyan">
+                    OK
+                </button>
+                <button id="confirmModalCancel"
+                    class="mt-2 px-4 py-2 bg-gray-300 text-gray-800 text-base font-medium rounded-md w-full shadow-sm hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 排序功能
+    document.addEventListener('DOMContentLoaded', function() {
+        const sortableHeaders = document.querySelectorAll('.sortable-header');
+        
+        sortableHeaders.forEach(header => {
+            header.addEventListener('click', function() {
+                const sortField = this.getAttribute('data-sort');
+                const urlParams = new URLSearchParams(window.location.search);
+                const currentSort = urlParams.get('sort');
+                const currentOrder = urlParams.get('order');
+                
+                let newOrder = 'desc'; // 默认从大到小
+                
+                // 如果当前已经是按这个字段排序，则切换顺序
+                if (currentSort === sortField) {
+                    newOrder = currentOrder === 'desc' ? 'asc' : 'desc';
+                }
+                
+                // 更新 URL 参数
+                urlParams.set('sort', sortField);
+                urlParams.set('order', newOrder);
+                
+                // 保持 tab 参数（如果 URL 中没有，从当前激活的 tab 获取）
+                if (!urlParams.has('tab')) {
+                    // 检查当前激活的 tab（通过检查 tab-link 的样式）
+                    const activeTab = document.querySelector('.tab-link.border-wetravel-cyan');
+                    if (activeTab) {
+                        const tabHref = activeTab.getAttribute('href');
+                        if (tabHref && tabHref.includes('tab=installments')) {
+                            urlParams.set('tab', 'installments');
+                        } else {
+                            urlParams.set('tab', 'records');
+                        }
+                    } else {
+                        // 默认使用 records
+                        urlParams.set('tab', 'records');
+                    }
+                }
+                
+                // 跳转到新 URL
+                window.location.href = window.location.pathname + '?' + urlParams.toString();
+            });
+        });
+        
+        // 显示当前排序状态
+        const urlParams = new URLSearchParams(window.location.search);
+        const currentSort = urlParams.get('sort');
+        const currentOrder = urlParams.get('order');
+        
+        if (currentSort) {
+            const activeHeader = document.querySelector(`.sortable-header[data-sort="${currentSort}"]`);
+            if (activeHeader) {
+                const sortIcon = activeHeader.querySelector('.sort-icon');
+                if (sortIcon) {
+                    sortIcon.style.display = 'block';
+                    // 根据排序方向旋转图标
+                    if (currentOrder === 'asc') {
+                        sortIcon.style.transform = 'rotate(180deg)';
+                    } else {
+                        sortIcon.style.transform = 'rotate(0deg)';
+                    }
+                }
+            }
+        }
+    });
+
+    // 切换分期付款显示/隐藏
+    function toggleInstallments(bookingId) {
+        const rows = document.querySelectorAll(`tr.installment-row-${bookingId}`);
+        const icon = document.getElementById(`icon-${bookingId}`);
+        
+        if (rows.length > 0) {
+            const isHidden = rows[0].classList.contains('hidden');
+            rows.forEach(row => {
+                if (isHidden) {
+                    row.classList.remove('hidden');
+                } else {
+                    row.classList.add('hidden');
+                }
+            });
+            
+            if (icon) {
+                if (isHidden) {
+                    icon.classList.add('rotate-180');
+                } else {
+                    icon.classList.remove('rotate-180');
+                }
+            }
+        }
+    }
+
+    // 切换下拉菜单显示/隐藏
+    function toggleDropdown(dropdownId) {
+        const dropdown = document.getElementById(dropdownId);
+        if (dropdown) {
+            // 关闭所有其他下拉菜单
+            document.querySelectorAll('[id^="dropdown-"]').forEach(menu => {
+                if (menu.id !== dropdownId) {
+                    menu.classList.add('hidden');
+                }
+            });
+            // 切换当前下拉菜单
+            dropdown.classList.toggle('hidden');
+        }
+    }
+
+    // 点击页面其他地方时关闭所有下拉菜单
+    document.addEventListener('click', function(event) {
+        if (!event.target.closest('[id^="dropdown-"]') && !event.target.closest('button[onclick*="toggleDropdown"]')) {
+            document.querySelectorAll('[id^="dropdown-"]').forEach(menu => {
+                menu.classList.add('hidden');
+            });
+        }
+    });
+
+    // 自定义确认对话框
+    function showConfirm(title, message) {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('confirmModal');
+            const titleEl = document.getElementById('confirmModalTitle');
+            const messageEl = document.getElementById('confirmModalMessage');
+            const okBtn = document.getElementById('confirmModalOk');
+            const cancelBtn = document.getElementById('confirmModalCancel');
+            
+            titleEl.textContent = title;
+            messageEl.textContent = message;
+            modal.classList.remove('hidden');
+            
+            const cleanup = () => {
+                modal.classList.add('hidden');
+                okBtn.onclick = null;
+                cancelBtn.onclick = null;
+                modal.onclick = null;
+            };
+            
+            okBtn.onclick = () => {
+                cleanup();
+                resolve(true);
+            };
+            
+            cancelBtn.onclick = () => {
+                cleanup();
+                resolve(false);
+            };
+            
+            modal.onclick = (e) => {
+                if (e.target === modal) {
+                    cleanup();
+                    resolve(false);
+                }
+            };
+        });
+    }
+
+    // 发送提醒邮件
+    async function sendReminder(installmentId) {
+        const confirmed = await showConfirm(
+            'Send Reminder',
+            'Send reminder email to customer?'
+        );
+        if (!confirmed) return;
+        
+        try {
+            const response = await fetch(`/admin/payments/installments/${installmentId}/send-reminder`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                if (typeof showToast === 'function') {
+                    showToast('Reminder email sent successfully!', 'success');
+                }
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                if (typeof showToast === 'function') {
+                    showToast('Failed to send reminder: ' + (result.error || 'Unknown error'), 'error');
+                }
+            }
+        } catch (error) {
+            console.error('Error sending reminder:', error);
+            if (typeof showToast === 'function') {
+                showToast('An error occurred while sending the reminder.', 'error');
+            }
+        }
+    }
+
+    // 标记为已支付
+    async function markPaid(installmentId) {
+        const confirmed = await showConfirm(
+            'Mark as Paid',
+            'Mark this installment as paid? This action cannot be undone.'
+        );
+        if (!confirmed) return;
+        
+        try {
+            const response = await fetch(`/admin/payments/installments/${installmentId}/mark-paid`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                if (typeof showToast === 'function') {
+                    showToast('Installment marked as paid!', 'success');
+                }
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                if (typeof showToast === 'function') {
+                    showToast('Failed to mark as paid: ' + (result.error || 'Unknown error'), 'error');
+                }
+            }
+        } catch (error) {
+            console.error('Error marking as paid:', error);
+            if (typeof showToast === 'function') {
+                showToast('An error occurred while marking as paid.', 'error');
+            }
+        }
+    }
+
+</script>
+{% endblock %}

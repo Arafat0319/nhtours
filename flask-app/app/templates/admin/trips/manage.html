@@ -1,0 +1,3183 @@
+{% extends "admin/base_wetravel.html" %}
+
+{% block title %}Manage Trip: {{ trip.title }}{% endblock %}
+
+{% block head_extra %}
+<style>
+    /* Hide spin buttons on number inputs */
+    input[type=number].no-spin::-webkit-inner-spin-button,
+    input[type=number].no-spin::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+    input[type=number].no-spin {
+        -moz-appearance: textfield;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header Section -->
+    <div class="bg-white rounded-lg shadow-sm p-6">
+        <div class="flex justify-between items-start">
+            <div class="flex space-x-6">
+                <!-- Trip Image -->
+                <div class="w-48 h-32 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
+                    {% if trip.highlight_image or trip.hero_image %}
+                    <img src="{{ url_for('static', filename=trip.highlight_image or trip.hero_image) }}"
+                        alt="{{ trip.title }}" class="w-full h-full object-cover">
+                    {% else %}
+                    <img src="{{ url_for('static', filename='images/backgrounds/asia_background.jpg') }}"
+                        alt="{{ trip.title }}" class="w-full h-full object-cover">
+                    {% endif %}
+                </div>
+
+                <!-- Trip Details -->
+                <div>
+                    <h1 class="text-2xl font-normal text-gray-700 mb-2">{{ trip.title }}</h1>
+                    <div class="text-sm text-gray-500 mb-4">
+                        {{ trip.start_date.strftime('%b %d') }} - {{ trip.end_date.strftime('%d, %Y') if trip.end_date
+                        else 'TBD' }}
+                    </div>
+
+                    <div class="flex items-center text-sm text-gray-500">
+                        <span class="mr-6">{{ trip.bookings.count() if trip.bookings else 0 }}/{{ trip.capacity or '25'
+                            }} Going</span>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="mt-4 flex space-x-4 text-sm">
+                        <a href="{{ url_for('main.trip_detail', slug=trip.slug) }}" target="_blank"
+                            class="text-wetravel-cyan hover:underline flex items-center">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z">
+                                </path>
+                            </svg>
+                            View
+                        </a>
+                        <a href="{{ url_for('admin.edit_trip', id=trip.id) }}"
+                            class="text-wetravel-cyan hover:underline flex items-center">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z">
+                                </path>
+                            </svg>
+                            Edit
+                        </a>
+                        <a href="#" class="text-wetravel-cyan hover:underline">Go to Payments</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Financials -->
+            <div class="text-right text-sm space-y-1">
+                <div class="flex justify-between w-64">
+                    <span class="text-gray-500">Gross amount</span>
+                    <span id="financialGross" class="font-medium text-gray-700 font-mono">${{ "%.2f"|format(total_gross) }}</span>
+                </div>
+                <div id="discountRow" class="flex justify-between w-64 {% if total_discount <= 0 %}hidden{% endif %}">
+                    <span class="text-gray-500">Total discount</span>
+                    <span id="financialDiscount" class="font-medium text-green-600 font-mono">-${{ "%.2f"|format(total_discount) }}</span>
+                </div>
+                <div class="flex justify-between w-64 pt-1 border-t border-gray-200">
+                    <span class="text-gray-500">Expected amount</span>
+                    <span id="financialExpected" class="font-medium text-gray-700 font-mono">${{ "%.2f"|format(total_expected) }}</span>
+                </div>
+                <div class="flex justify-between w-64">
+                    <span class="text-gray-500">Amount paid</span>
+                    <span id="financialPaid" class="font-medium text-gray-700 font-mono">${{ "%.2f"|format(total_paid) }}</span>
+                </div>
+                <div class="flex justify-between w-64">
+                    <span class="text-gray-500">Amount pending</span>
+                    <span id="financialPending" class="font-medium {% if total_pending > 0 %}text-amber-600{% else %}text-green-600{% endif %} font-mono">${{ "%.2f"|format(total_pending) }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="mt-8 border-b border-gray-200">
+            <div class="flex justify-between items-end">
+                <nav class="-mb-px flex space-x-8">
+                    <a href="#" data-tab="bookings" onclick="switchTab('bookings'); return false;"
+                        class="tab-link border-wetravel-cyan text-wetravel-cyan whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                        Bookings <span class="bg-wetravel-cyan text-white rounded-full px-2 py-0.5 text-xs ml-1">{{
+                            trip.bookings.count() if trip.bookings else 0 }}</span>
+                    </a>
+                    <a href="#" data-tab="participants" onclick="switchTab('participants'); return false;"
+                        class="tab-link border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                        Participants <span class="bg-gray-100 text-gray-600 rounded-full px-2 py-0.5 text-xs ml-1">{{
+                            total_participants_count }}</span>
+                    </a>
+                    <a href="#" data-tab="messages" onclick="switchTab('messages'); return false;"
+                        class="tab-link border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Messages</a>
+                </nav>
+                <div class="flex items-center pb-4" id="messagesActions" style="display: none;">
+                    <button onclick="openNewMessageModal()" 
+                        class="bg-wetravel-cyan text-white px-4 py-2 rounded text-sm hover:bg-cyan-600 flex items-center">
+                        New Message
+                        <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div class="flex items-center pb-4" id="bookingsActions">
+                    <a href="{{ url_for('admin.export_bookings', id=trip.id) }}"
+                        class="text-wetravel-cyan border border-wetravel-cyan px-4 py-2 rounded text-sm hover:bg-gray-50 flex items-center">
+                        Download Excel <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                        </svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab Content Area -->
+    <div class="bg-white rounded-lg shadow-sm p-6 min-h-[400px]">
+        <!-- Bookings Tab Content -->
+        <div id="tab-content-bookings" class="tab-content">
+            <div class="mb-6">
+                <h2 class="text-xl text-gray-500 font-normal">Bookings</h2>
+            </div>
+
+            <!-- Controls -->
+            <div class="flex justify-between items-center mb-6">
+                <div class="relative flex space-x-4">
+                    <div class="relative">
+                        <input type="text" id="searchInput" placeholder="Search by name or email"
+                            class="pl-8 pr-4 py-2 border border-gray-300 rounded text-sm w-64 focus:outline-none focus:border-wetravel-cyan text-gray-700 placeholder-gray-400">
+                        <svg class="w-4 h-4 text-gray-400 absolute left-2.5 top-3" fill="none" stroke="currentColor"
+                            viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                    </div>
+
+                    <select id="statusFilter"
+                        class="border border-gray-300 rounded text-sm px-3 py-2 focus:outline-none focus:border-wetravel-cyan text-gray-600">
+                        <option value="all">All Statuses</option>
+                        <option value="pending">Pending</option>
+                        <option value="deposit_paid">Deposit Paid</option>
+                        <option value="fully_paid">Fully Paid</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                </div>
+
+                <div class="flex space-x-4">
+                    <button type="button" onclick="openAddParticipantModal()"
+                        class="bg-wetravel-cyan text-white px-4 py-2 rounded text-sm hover:bg-cyan-400 flex items-center">
+                        Manual Booking <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Bookings Table -->
+            <div class="overflow-x-auto">
+                <table class="min-w-full">
+                    <thead>
+                        <tr
+                            class="border-b border-gray-100 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">
+                            <th class="px-6 py-3 whitespace-nowrap">Booking ID</th>
+                            <th class="px-6 py-3 whitespace-nowrap">Buyer</th>
+                            <th class="px-6 py-3 whitespace-nowrap">Phone</th>
+                            <th class="px-6 py-3 whitespace-nowrap">Participants</th>
+                            <th class="px-6 py-3 whitespace-nowrap">Add-ons</th>
+                            <th class="px-6 py-3 whitespace-nowrap">Payment Type</th>
+                            <th class="px-6 py-3 whitespace-nowrap">Payment Status</th>
+                            <th class="px-6 py-3 whitespace-nowrap">Booking Date</th>
+                            <th class="px-6 py-3"></th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-100" id="bookingsTableBody">
+                        {% if bookings %}
+                        {% for booking in bookings %}
+                        <tr class="booking-row" data-name="{{ booking.client.name|lower }}"
+                            data-email="{{ booking.client.email|lower }}" data-status="{{ booking.status }}" data-booking-id="{{ booking.id }}">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                #{{ booking.id }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-medium text-gray-900">{{ booking.client.name }}</div>
+                                <div class="text-sm text-gray-500">{{ booking.client.email }}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {{ booking.client.phone or '-' }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {{ booking.passenger_count }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" id="addons-cell-{{ booking.id }}">
+                                {% set addons_map = booking_addons_summary.get(booking.id, {}) %}
+                                {% if addons_map %}
+                                    {% for addon_name, total_qty in addons_map.items() %}
+                                        <span class="inline-block text-xs bg-gray-100 px-2 py-0.5 rounded mr-1 mb-1">{{ addon_name }}{% if total_qty > 1 %} x{{ total_qty }}{% endif %}</span>
+                                    {% endfor %}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                {% set has_installment = namespace(value=false) %}
+                                {% for bp in booking.booking_packages %}
+                                    {% if bp.payment_plan_type == 'deposit_installment' %}
+                                        {% set has_installment.value = true %}
+                                    {% endif %}
+                                {% endfor %}
+                                {% if has_installment.value %}
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">Installment</span>
+                                {% else %}
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">Full</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                    {% if booking.status == 'fully_paid' %}bg-green-100 text-green-800
+                                    {% elif booking.status == 'deposit_paid' %}bg-blue-100 text-blue-800
+                                    {% elif booking.status == 'cancelled' %}bg-red-100 text-red-800
+                                    {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                                    {{ booking.status|replace('_', ' ')|title }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {{ booking.created_at.strftime('%Y-%m-%d') }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <button type="button" onclick="openManageBookingModal({{ booking.id }})" class="text-wetravel-cyan hover:text-cyan-900">Manage</button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% else %}
+                        <tr>
+                            <td colspan="9" class="px-6 py-10 text-center text-sm text-wetravel-cyan font-light">
+                                No bookings yet
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Participants Tab Content -->
+        <div id="tab-content-participants" class="tab-content hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl text-gray-500 font-normal">Participants</h2>
+            </div>
+
+            <!-- Controls -->
+            <div class="flex justify-between items-center mb-6">
+                <div class="relative flex space-x-4">
+                    <div class="relative">
+                        <input type="text" id="participantSearchInput" placeholder="Search by name or email"
+                            class="pl-8 pr-4 py-2 border border-gray-300 rounded text-sm w-64 focus:outline-none focus:border-wetravel-cyan text-gray-700 placeholder-gray-400">
+                        <svg class="w-4 h-4 text-gray-400 absolute left-2.5 top-3" fill="none" stroke="currentColor"
+                            viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                    </div>
+
+                    <select id="participantStatusFilter"
+                        class="border border-gray-300 rounded text-sm px-3 py-2 focus:outline-none focus:border-wetravel-cyan text-gray-600">
+                        <option value="all">All Statuses</option>
+                        <option value="pending">Pending</option>
+                        <option value="deposit_paid">Deposit Paid</option>
+                        <option value="fully_paid">Fully Paid</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Participants Table -->
+            <div class="overflow-x-auto">
+                <table class="min-w-full">
+                    <thead>
+                        <tr
+                            class="border-b border-gray-100 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">
+                            {# Default mandatory fields (always shown) #}
+                            <th class="px-6 py-3 whitespace-nowrap">First Name</th>
+                            <th class="px-6 py-3 whitespace-nowrap">Last Name</th>
+                            <th class="px-6 py-3 whitespace-nowrap">Email</th>
+                            {# All custom questions from trip builder (in order) #}
+                            {% for question in custom_questions %}
+                            <th class="px-6 py-3 whitespace-nowrap">{{ question.label }}{% if question.required %} <span class="text-red-500">*</span>{% endif %}</th>
+                            {% endfor %}
+                            {# Other system fields #}
+                            <th class="px-6 py-3 whitespace-nowrap">Buyer</th>
+                            <th class="px-6 py-3 whitespace-nowrap">Package</th>
+                            <th class="px-6 py-3 whitespace-nowrap">Add-Ons</th>
+                            <th class="px-6 py-3 whitespace-nowrap">Payment Status</th>
+                            <th class="px-6 py-3 whitespace-nowrap">Booking Date</th>
+                            <th class="px-6 py-3"></th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-100" id="participantsTableBody">
+                        {% if all_participants %}
+                        {% for participant in all_participants %}
+                        <tr class="participant-row" data-name="{{ participant.name|lower }}"
+                            data-first-name="{{ participant.first_name|lower if participant.first_name else '' }}"
+                            data-last-name="{{ participant.last_name|lower if participant.last_name else '' }}"
+                            data-email="{{ participant.email|lower if participant.email else '' }}" 
+                            data-status="{{ participant.payment_status }}" 
+                            data-participant-id="{{ participant.id }}">
+                            {# Default mandatory fields #}
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-semibold text-gray-800">{{ participant.first_name or '-' }}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm text-gray-500">{{ participant.last_name or '-' }}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm text-gray-500">{{ participant.email or '-' }}</div>
+                            </td>
+                            {# All custom questions from trip builder (answers not stored yet, show '-') #}
+                            {% for question in custom_questions %}
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                -
+                            </td>
+                            {% endfor %}
+                            {# Other fields #}
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-medium text-gray-900">{{ participant.buyer_name }}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {% if participant.packages %}
+                                    {% for pkg_name in participant.packages %}
+                                        <span class="inline-block text-xs bg-gray-100 px-2 py-0.5 rounded mr-1 mb-1">{{ pkg_name }}</span>
+                                    {% endfor %}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {% if participant.addons %}
+                                    {% for addon in participant.addons %}
+                                        <span class="inline-block text-xs bg-gray-100 px-2 py-0.5 rounded mr-1 mb-1">{{ addon.name }}{% if addon.quantity > 1 %} x{{ addon.quantity }}{% endif %}</span>
+                                    {% endfor %}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                    {% if participant.payment_status == 'fully_paid' %}bg-green-100 text-green-800
+                                    {% elif participant.payment_status == 'deposit_paid' %}bg-blue-100 text-blue-800
+                                    {% elif participant.payment_status == 'cancelled' %}bg-red-100 text-red-800
+                                    {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                                    {{ participant.payment_status|replace('_', ' ')|title }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {{ participant.booking_date.strftime('%Y-%m-%d') }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <button type="button" onclick="openManageBookingModal({{ participant.booking_id }})" class="text-wetravel-cyan hover:text-cyan-900">View Booking</button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% else %}
+                        <tr>
+                            {% set total_cols = 3 + (custom_questions|length) + 5 %}
+                            <td colspan="{{ total_cols }}" class="px-6 py-10 text-center text-sm text-wetravel-cyan font-light">
+                                No participants yet
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Messages Tab Content -->
+        <div id="tab-content-messages" class="tab-content hidden">
+            <!-- Messages Sub-tabs -->
+            <div class="border-b border-gray-200 mb-6">
+                <nav class="-mb-px flex space-x-8">
+                    <button onclick="switchMessageTab('sent')" id="msg-tab-sent"
+                        class="msg-subtab border-wetravel-cyan text-wetravel-cyan whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                        Sent
+                    </button>
+                    <button onclick="switchMessageTab('scheduled')" id="msg-tab-scheduled"
+                        class="msg-subtab border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                        Scheduled
+                    </button>
+                    <button onclick="switchMessageTab('drafts')" id="msg-tab-drafts"
+                        class="msg-subtab border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                        Drafts
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Sent Messages Content -->
+            <div id="msg-content-sent" class="msg-content">
+                <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Recipients</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Sent</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Subject</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Created by</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Date Sent</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {% if sent_messages %}
+                            {% for message in sent_messages %}
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {{ message.total_recipients }} recipient{{ 's' if message.total_recipients != 1 else '' }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                        Sent
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-900">
+                                    {{ message.subject }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {{ message.sender_name }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {{ message.sent_at.strftime('%Y-%m-%d %H:%M') if message.sent_at else '-' }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="px-6 py-10 text-center text-sm text-wetravel-cyan font-light">
+                                    You currently do not have any sent messages.
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Scheduled Messages Content -->
+            <div id="msg-content-scheduled" class="msg-content hidden">
+                <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Recipients</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Subject</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Created by</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Scheduled For</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {% if scheduled_messages %}
+                            {% for message in scheduled_messages %}
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {{ message.total_recipients }} recipient{{ 's' if message.total_recipients != 1 else '' }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                                        Scheduled
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-900">
+                                    {{ message.subject }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {{ message.sender_name }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {{ message.scheduled_at.strftime('%Y-%m-%d %H:%M') if message.scheduled_at else '-' }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="px-6 py-10 text-center text-sm text-wetravel-cyan font-light">
+                                    You currently do not have any scheduled messages.
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Draft Messages Content -->
+            <div id="msg-content-drafts" class="msg-content hidden">
+                <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Recipients</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Subject</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Created by</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Last Updated</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {% if draft_messages %}
+                            {% for message in draft_messages %}
+                            <tr class="hover:bg-gray-50 cursor-pointer" onclick="editDraftMessage({{ message.id }})">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {{ message.total_recipients }} recipient{{ 's' if message.total_recipients != 1 else '' }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                                        Draft
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-900">
+                                    {{ message.subject or '(No subject)' }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {{ message.sender_name }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {{ message.updated_at.strftime('%Y-%m-%d %H:%M') if message.updated_at else message.created_at.strftime('%Y-%m-%d %H:%M') }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="px-6 py-10 text-center text-sm text-wetravel-cyan font-light">
+                                    You currently do not have any draft messages.
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+</div>
+
+<!-- Manual Booking Modal (Advanced Stepper) -->
+<div id="addParticipantModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50" style="z-index: 50;">
+    <div class="relative top-10 mx-auto w-full max-w-4xl shadow-lg rounded-md bg-white flex flex-col"
+        style="height: 80vh;">
+
+        <!-- Header -->
+        <div class="p-5 border-b flex justify-between items-center bg-gray-50 rounded-t-md relative">
+            <div class="text-center w-full">
+                <!-- Circular Image Placeholder (Trip Image) -->
+                <div class="w-16 h-16 rounded-full overflow-hidden mx-auto border-2 border-white shadow-md -mt-10 mb-2">
+                    <img src="{{ url_for('static', filename=trip.hero_image) if trip.hero_image else 'https://via.placeholder.com/150' }}"
+                        class="w-full h-full object-cover">
+                </div>
+                <h3 class="text-lg font-medium text-gray-900">{{ trip.title }}</h3>
+                <p class="text-sm text-gray-500">Manual Booking</p>
+
+                <!-- Stepper Nav -->
+                <div class="flex justify-center mt-4 space-x-2 text-sm text-gray-500">
+                    <span class="step-nav cursor-pointer text-wetravel-cyan font-bold" data-step="1">Package</span>
+                    <span>&gt;</span>
+                    <span class="step-nav cursor-pointer" data-step="2">Buyer and Participant info</span>
+                    <span>&gt;</span>
+                    <span class="step-nav cursor-pointer" data-step="3">Add-ons</span>
+                    <span>&gt;</span>
+                    <span class="step-nav cursor-pointer" data-step="4">Payment</span>
+                </div>
+            </div>
+            <button type="button" id="closeModalBtn" class="absolute top-4 right-4 text-gray-400 hover:text-gray-500 focus:outline-none z-10" style="z-index: 10;">
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- content -->
+        <div class="flex-1 overflow-auto p-8 flex">
+            <!-- Left: Form Steps -->
+            <div class="w-2/3 pr-8 border-r">
+
+                <!-- Step 1: Package Selection -->
+                <div id="step1" class="step-content">
+                    <h4 class="text-lg font-medium mb-4">Select packages</h4>
+                    <p class="text-sm text-gray-500 mb-4">You can select multiple packages with different quantities.</p>
+                    {% for pkg in trip.packages %}
+                    <div class="flex justify-between items-center bg-white border p-4 rounded mb-2 hover:bg-gray-50">
+                        <div class="flex items-center space-x-4">
+                            <select class="pkg-qty-select border rounded p-1 w-20" data-price="{{ pkg.price }}"
+                                data-id="{{ pkg.id }}" data-name="{{ pkg.name }}" data-currency="{{ pkg.currency or 'USD' }}">
+                                <option value="0">0</option>
+                                {% for i in range(1, 21) %}
+                                <option value="{{ i }}">{{ i }}</option>
+                                {% endfor %}
+                            </select>
+                            <div>
+                                <p class="font-medium">{{ pkg.name }}</p>
+                                <p class="text-sm text-gray-500">{{ (pkg.description or '')|truncate(50) }}</p>
+                            </div>
+                        </div>
+                        <div class="font-bold">${{ pkg.price }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Step 2: Info -->
+                <div id="step2" class="step-content hidden">
+                    <h4 class="text-lg font-medium mb-4">Buyer information</h4>
+                    <div class="grid grid-cols-2 gap-4 mb-6">
+                        <input type="text" id="buyerName" placeholder="Full Name"
+                            class="border rounded p-2 text-sm w-full">
+                        <input type="email" id="buyerEmail" placeholder="Email"
+                            class="border rounded p-2 text-sm w-full">
+                        <input type="text" id="buyerPhone" placeholder="Phone"
+                            class="border rounded p-2 text-sm w-full">
+                    </div>
+
+                    <h4 class="text-lg font-medium mb-2">Participant Information</h4>
+                    <div id="participantsContainer" class="space-y-4">
+                        <!-- Dynamic fields injected via JS -->
+                    </div>
+                </div>
+
+                <!-- Step 3: Add-ons -->
+                <div id="step3" class="step-content hidden">
+                    <h4 class="text-lg font-medium mb-4">Select add-ons</h4>
+                    <div id="addonsContainer" class="space-y-6">
+                        <!-- Per-participant addon selection injected via JS -->
+                    </div>
+                </div>
+
+                <!-- Step 4: Payment -->
+                <div id="step4" class="step-content hidden">
+                    <h4 class="text-lg font-medium mb-4">Payment Options</h4>
+                    
+                    <!-- Payment Plan Info (if any package has installment plan) -->
+                    <div id="paymentPlanInfo" class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg hidden">
+                        <p class="text-sm font-medium text-blue-900 mb-2">Payment Plan Details:</p>
+                        <div id="paymentPlanDetails" class="text-sm text-blue-800 space-y-1">
+                            <!-- Dynamically populated -->
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-2">
+                        <label class="flex items-center space-x-2">
+                            <input type="radio" name="paymentOption" value="full" checked
+                                class="text-wetravel-cyan focus:ring-wetravel-cyan">
+                            <span>Pay full amount — <span id="paymentTotalDisplay">$0.00</span></span>
+                        </label>
+                        <label class="flex items-center space-x-2">
+                            <input type="radio" name="paymentOption" value="deposit"
+                                class="text-wetravel-cyan focus:ring-wetravel-cyan">
+                            <span>Pay Deposit Only <span id="depositAmountDisplay" class="text-gray-600">(if applicable)</span></span>
+                        </label>
+                        <label class="flex items-center space-x-2">
+                            <input type="radio" name="paymentOption" value="manual"
+                                class="text-wetravel-cyan focus:ring-wetravel-cyan">
+                            <span>No payment / Manual Entry</span>
+                        </label>
+                    </div>
+
+                    <div class="mt-4">
+                        <label class="block text-sm font-medium text-gray-700">Amount Paid ($)</label>
+                        <input type="text" id="manualAmount" inputmode="numeric" pattern="[0-9]*\.?[0-9]*"
+                            class="mt-1 block w-32 border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none sm:text-sm"
+                            placeholder="0.00">
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Right: Summary -->
+            <div class="w-1/3 pl-8">
+                <h4 class="text-lg font-medium mb-4">Your Booking</h4>
+                <div class="bg-gray-50 p-4 rounded mb-4">
+                    <div id="bookingSummary" class="text-sm space-y-2">
+                        <p class="text-gray-500 italic">Select a package to see summary</p>
+                    </div>
+                    <div class="border-t my-4"></div>
+                    <div class="flex justify-between font-bold text-lg">
+                        <span>Trip Total</span>
+                        <span id="grandTotal">$0.00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="p-5 border-t bg-gray-50 rounded-b-md flex justify-end">
+            <button type="button" id="mainActionBtn"
+                class="bg-wetravel-cyan text-white px-6 py-2 rounded text-base font-medium hover:bg-cyan-400 w-full md:w-auto focus:outline-none">
+                Continue
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Manage Booking Modal -->
+<div id="manageBookingModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+    <div class="relative top-10 mx-auto w-full max-w-4xl shadow-lg rounded-md bg-white flex flex-col"
+        style="max-height: 90vh;">
+        
+        <!-- Header -->
+        <div class="p-5 border-b flex justify-between items-center bg-gray-50 rounded-t-md">
+            <div>
+                <h3 class="text-lg font-medium text-gray-900">Manage Booking</h3>
+                <p class="text-sm text-gray-500" id="bookingIdDisplay">Booking #<span id="bookingId"></span></p>
+            </div>
+            <button type="button" id="closeManageBookingModalBtn" class="text-gray-400 hover:text-gray-500 focus:outline-none">
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- Content -->
+        <div class="flex-1 overflow-auto p-8">
+            <!-- Tabs -->
+            <div class="border-b border-gray-200 mb-6">
+                <nav class="-mb-px flex space-x-8">
+                    <button type="button" id="bookingDetailsTab" class="border-wetravel-cyan text-wetravel-cyan whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                        Booking Details
+                    </button>
+                    <button type="button" id="sendEmailTab" class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                        Send Email
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Tab Content -->
+            <div id="manageBookingContent" class="space-y-6">
+                <!-- Loading state -->
+                <div class="text-center py-8">
+                    <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-wetravel-cyan"></div>
+                    <p class="mt-2 text-sm text-gray-500">Loading booking details...</p>
+                </div>
+            </div>
+
+            <!-- Email Content (Hidden by default) -->
+            <div id="emailContent" class="hidden space-y-6">
+                <div class="bg-white border border-gray-200 rounded-lg p-6">
+                    <h4 class="text-lg font-medium text-gray-900 mb-4">Send Email to Customer</h4>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">To</label>
+                            <p class="text-sm text-gray-900" id="emailRecipient">-</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+                            <input type="text" id="emailSubject" 
+                                class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm"
+                                placeholder="Email Subject">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Message</label>
+                            <textarea id="emailBody" rows="10" 
+                                class="block w-full rounded-md border-0 px-3 py-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm"
+                                placeholder="Enter email message..."></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="p-5 border-t bg-gray-50 rounded-b-md flex justify-between items-center">
+            <div class="flex space-x-3">
+                <button type="button" id="generateReceiptBtn" class="px-4 py-2 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    Generate Receipt
+                </button>
+                <button type="button" id="refundBookingBtn" class="px-4 py-2 border border-orange-300 rounded text-sm font-medium text-orange-700 hover:bg-orange-50 focus:outline-none flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
+                    </svg>
+                    Refund
+                </button>
+                <button type="button" id="deleteBookingBtn" class="px-4 py-2 border border-red-300 rounded text-sm font-medium text-red-700 hover:bg-red-50 focus:outline-none flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                    </svg>
+                    Delete
+                </button>
+            </div>
+            <div class="flex space-x-3">
+                <button type="button" id="cancelManageBookingBtn" class="px-4 py-2 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none">
+                    Cancel
+                </button>
+                <button type="button" id="saveManageBookingBtn" class="px-4 py-2 bg-wetravel-cyan text-white rounded text-sm font-medium hover:bg-cyan-400 focus:outline-none">
+                    Save Changes
+                </button>
+                <button type="button" id="sendEmailBtn" class="hidden px-4 py-2 bg-wetravel-green text-white rounded text-sm font-medium hover:bg-green-600 focus:outline-none">
+                    Send Email
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Refund Modal -->
+<div id="refundModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+    <div class="relative top-20 mx-auto w-full max-w-md shadow-lg rounded-md bg-white">
+        <div class="p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-medium text-gray-900">Process Refund</h3>
+                <button type="button" id="closeRefundModalBtn" class="text-gray-400 hover:text-gray-500">
+                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <p class="text-sm text-gray-600 mb-2">Booking #<span id="refundBookingId"></span></p>
+                    <p class="text-sm text-gray-600">Amount Paid: <span class="font-semibold" id="refundAmountPaid">$0.00</span></p>
+                </div>
+                
+                <div class="border-t pt-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-3">Refund Type</label>
+                    <div class="space-y-2">
+                        <label class="flex items-center">
+                            <input type="radio" name="refundType" value="full" checked class="text-wetravel-cyan focus:ring-wetravel-cyan">
+                            <span class="ml-2 text-sm text-gray-700">Full Refund (<span id="refundFullAmount">$0.00</span>)</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="radio" name="refundType" value="partial" class="text-wetravel-cyan focus:ring-wetravel-cyan">
+                            <span class="ml-2 text-sm text-gray-700">Partial Refund (Custom Amount)</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div id="partialRefundInput" class="hidden">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Refund Amount ($)</label>
+                    <input type="text" id="refundAmount" inputmode="numeric" pattern="[0-9]*\.?[0-9]*" 
+                        class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm"
+                        placeholder="0.00">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Reason (Optional)</label>
+                    <textarea id="refundReason" rows="3" 
+                        class="block w-full rounded-md border-0 px-3 py-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm"
+                        placeholder="Enter refund reason..."></textarea>
+                </div>
+            </div>
+            
+            <div class="mt-6 flex justify-end space-x-3">
+                <button type="button" id="cancelRefundBtn" class="px-4 py-2 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    Cancel
+                </button>
+                <button type="button" id="confirmRefundBtn" class="px-4 py-2 bg-orange-600 text-white rounded text-sm font-medium hover:bg-orange-700">
+                    Process Refund
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="deleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+    <div class="relative top-20 mx-auto w-full max-w-md shadow-lg rounded-md bg-white">
+        <div class="p-6">
+            <div class="flex items-center mb-4">
+                <div class="flex-shrink-0 mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                    <svg class="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                </div>
+            </div>
+            
+            <div class="text-center">
+                <h3 class="text-lg font-medium text-gray-900 mb-2">Delete Booking</h3>
+                <p class="text-sm text-gray-500 mb-4">
+                    Are you sure you want to delete booking #<span id="deleteBookingId"></span>? This action cannot be undone.
+                </p>
+            </div>
+            
+            <div class="mt-6 flex justify-end space-x-3">
+                <button type="button" id="cancelDeleteBtn" class="px-4 py-2 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    Cancel
+                </button>
+                <button type="button" id="confirmDeleteBtn" class="px-4 py-2 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700">
+                    Delete
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block sidebar %}
+<div class="hidden"></div>
+<script>
+    // Trip Addons Data (Passed from backend)
+    const tripAddons = [
+        {% for addon in trip.add_ons %}
+    { id: {{ addon.id }}, name: {{ addon.name | tojson }}, price: {{ addon.price | default(0) }} },
+    {% endfor %}
+    ];
+
+    // Custom Questions from Trip Builder (Passed from backend)
+    const tripCustomQuestions = [
+        {% for question in custom_questions %}
+    { 
+        id: {{ question.id }}, 
+        label: {{ question.label | tojson }}, 
+        type: {{ question.type | tojson }}, 
+        options: {{ question.options | tojson if question.options else 'null' }}, 
+        required: {{ question.required | lower if question.required else 'false' }}
+    },
+    {% endfor %}
+    ];
+
+    // Package Payment Plan Configs (Passed from backend as JavaScript object to avoid HTML attribute issues)
+    const packagePaymentPlans = {
+        {% for pkg in trip.packages %}
+        {{ pkg.id }}: {{ pkg.payment_plan_config|tojson if pkg.payment_plan_config else 'null' }}{% if not loop.last %},{% endif %}
+        {% endfor %}
+    };
+
+    // Global state and functions (accessible before DOMContentLoaded)
+    let currentStep = 1;
+    let selectedPackages = []; // Changed to support multiple packages
+    let modal, actionBtn, grandTotalEl, summaryContainer, manualAmountInput, paymentTotalDisplay;
+    
+    // Global function references (will be assigned in DOMContentLoaded)
+    let goToStep, updateSummary;
+    
+    // Manage Booking Modal - Global function (defined before DOMContentLoaded)
+    window.openManageBookingModal = function(bookingId) {
+        // This will be redefined in DOMContentLoaded with full functionality
+        // For now, just a placeholder to prevent errors
+        console.log('openManageBookingModal called with bookingId:', bookingId);
+    };
+
+    // Open Add Participant Modal Function (Global)
+    window.openAddParticipantModal = function() {
+        const modalEl = document.getElementById('addParticipantModal');
+        if (modalEl) {
+            modalEl.classList.remove('hidden');
+            // Initialize step 1
+            if (typeof goToStep === 'function') {
+                goToStep(1);
+            } else {
+                // If goToStep not ready, manually show step 1
+                document.querySelectorAll('.step-content').forEach(el => el.classList.add('hidden'));
+                const step1 = document.getElementById('step1');
+                if (step1) step1.classList.remove('hidden');
+            }
+            // Reset summary
+            if (typeof updateSummary === 'function') {
+                updateSummary();
+            }
+        }
+    };
+
+    // Close Modal Function (Global)
+    function closeModal() {
+        const modalEl = document.getElementById('addParticipantModal');
+        if (!modalEl) return;
+        
+        modalEl.classList.add('hidden');
+
+        // Reset State
+        currentStep = 1;
+        selectedPackages = [];
+
+        // Reset Inputs (within modal)
+        modalEl.querySelectorAll('input').forEach(i => {
+            if (i.type === 'radio' && i.value === 'full') i.checked = true;
+            else if (i.type === 'radio') i.checked = false;
+            else i.value = '';
+        });
+        modalEl.querySelectorAll('select').forEach(s => s.selectedIndex = 0);
+
+        // Reset UI
+        if (typeof goToStep === 'function') goToStep(1);
+        const participantsContainer = document.getElementById('participantsContainer');
+        const addonsContainer = document.getElementById('addonsContainer');
+        if (participantsContainer) participantsContainer.innerHTML = '';
+        if (addonsContainer) addonsContainer.innerHTML = '';
+        if (typeof updateSummary === 'function') updateSummary();
+    }
+
+    // Make it globally accessible
+    window.closeModal = closeModal;
+
+    // Tab switching function (global, can be called from onclick)
+    window.switchTab = function(targetTab) {
+        console.log('switchTab called with:', targetTab);
+        
+        const tabLinks = document.querySelectorAll('.tab-link');
+        const tabContents = document.querySelectorAll('.tab-content');
+        
+        // Update tab link styles
+        tabLinks.forEach(l => {
+            l.classList.remove('border-wetravel-cyan', 'text-wetravel-cyan');
+            l.classList.add('border-transparent', 'text-gray-500');
+            const badge = l.querySelector('span');
+            if (badge) {
+                badge.classList.remove('bg-wetravel-cyan', 'text-white');
+                badge.classList.add('bg-gray-100', 'text-gray-600');
+            }
+        });
+        
+        // Highlight active tab
+        const activeLink = document.querySelector(`[data-tab="${targetTab}"]`);
+        if (activeLink) {
+            activeLink.classList.remove('border-transparent', 'text-gray-500');
+            activeLink.classList.add('border-wetravel-cyan', 'text-wetravel-cyan');
+            const badge = activeLink.querySelector('span');
+            if (badge) {
+                badge.classList.remove('bg-gray-100', 'text-gray-600');
+                badge.classList.add('bg-wetravel-cyan', 'text-white');
+            }
+        }
+        
+        // Show/hide tab contents
+        tabContents.forEach(content => {
+            content.classList.add('hidden');
+        });
+        const targetContent = document.getElementById(`tab-content-${targetTab}`);
+        if (targetContent) {
+            targetContent.classList.remove('hidden');
+            console.log('Tab switched to:', targetTab);
+        } else {
+            console.error('Target content not found:', `tab-content-${targetTab}`);
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded', function () {
+        console.log('DOMContentLoaded: Initializing tab switching...');
+        
+        // Also attach event listeners as backup
+        const tabLinks = document.querySelectorAll('.tab-link');
+        const tabContents = document.querySelectorAll('.tab-content');
+        
+        console.log('Found tab links:', tabLinks.length);
+        console.log('Found tab contents:', tabContents.length);
+        
+        tabLinks.forEach((link) => {
+            const targetTab = link.getAttribute('data-tab');
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                switchTab(targetTab);
+            });
+        });
+        
+        console.log('Tab switching initialized successfully');
+        
+        // --- Participants Search and Filter Logic ---
+        const participantSearchInput = document.getElementById('participantSearchInput');
+        const participantStatusFilter = document.getElementById('participantStatusFilter');
+        const participantsTableBody = document.getElementById('participantsTableBody');
+        
+        function filterParticipants() {
+            if (!participantsTableBody) return;
+            
+            const searchTerm = (participantSearchInput?.value || '').toLowerCase();
+            const statusFilter = participantStatusFilter?.value || 'all';
+            const rows = participantsTableBody.querySelectorAll('.participant-row');
+            
+            rows.forEach(row => {
+                const name = (row.getAttribute('data-name') || '').toLowerCase();
+                const firstName = (row.getAttribute('data-first-name') || '').toLowerCase();
+                const lastName = (row.getAttribute('data-last-name') || '').toLowerCase();
+                const email = (row.getAttribute('data-email') || '').toLowerCase();
+                const status = row.getAttribute('data-status') || '';
+                
+                const matchesSearch = !searchTerm || 
+                    name.includes(searchTerm) || 
+                    firstName.includes(searchTerm) || 
+                    lastName.includes(searchTerm) || 
+                    email.includes(searchTerm);
+                const matchesStatus = statusFilter === 'all' || status === statusFilter;
+                
+                if (matchesSearch && matchesStatus) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+        
+        if (participantSearchInput) {
+            participantSearchInput.addEventListener('input', filterParticipants);
+        }
+        if (participantStatusFilter) {
+            participantStatusFilter.addEventListener('change', filterParticipants);
+        }
+        
+        // --- Bookings Search and Filter Logic (existing, keep it) ---
+        const searchInput = document.getElementById('searchInput');
+        const statusFilter = document.getElementById('statusFilter');
+        const bookingsTableBody = document.getElementById('bookingsTableBody');
+        
+        function filterBookings() {
+            if (!bookingsTableBody) return;
+            
+            const searchTerm = (searchInput?.value || '').toLowerCase();
+            const statusFilterValue = statusFilter?.value || 'all';
+            const rows = bookingsTableBody.querySelectorAll('.booking-row');
+            
+            rows.forEach(row => {
+                const name = (row.getAttribute('data-name') || '').toLowerCase();
+                const email = (row.getAttribute('data-email') || '').toLowerCase();
+                const status = row.getAttribute('data-status') || '';
+                
+                const matchesSearch = !searchTerm || name.includes(searchTerm) || email.includes(searchTerm);
+                const matchesStatus = statusFilterValue === 'all' || status === statusFilterValue;
+                
+                if (matchesSearch && matchesStatus) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+        
+        if (searchInput) {
+            searchInput.addEventListener('input', filterBookings);
+        }
+        if (statusFilter) {
+            statusFilter.addEventListener('change', filterBookings);
+        }
+        
+        // --- Elements ---
+        modal = document.getElementById('addParticipantModal');
+        actionBtn = document.getElementById('mainActionBtn');
+        grandTotalEl = document.getElementById('grandTotal');
+        summaryContainer = document.getElementById('bookingSummary');
+        manualAmountInput = document.getElementById('manualAmount');
+        paymentTotalDisplay = document.getElementById('paymentTotalDisplay');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        
+        // Re-define openAddParticipantModal with full functionality after DOM is ready
+        window.openAddParticipantModal = function() {
+            if (!modal) {
+                console.error('Modal not found');
+                return;
+            }
+            modal.classList.remove('hidden');
+            // Reset button state
+            if (actionBtn) {
+                actionBtn.disabled = false;
+                actionBtn.innerText = 'Continue';
+            }
+            // Initialize step 1
+            if (typeof goToStep === 'function') {
+                goToStep(1);
+            } else {
+                // Fallback: manually show step 1
+                document.querySelectorAll('.step-content').forEach(el => el.classList.add('hidden'));
+                const step1 = document.getElementById('step1');
+                if (step1) step1.classList.remove('hidden');
+            }
+            // Reset summary
+            if (typeof updateSummary === 'function') {
+                updateSummary();
+            }
+        };
+        
+        // Disable mouse wheel and middle click for manualAmount input
+        if (manualAmountInput) {
+            manualAmountInput.addEventListener('wheel', function(e) {
+                e.preventDefault();
+            });
+            manualAmountInput.addEventListener('mousedown', function(e) {
+                if (e.button === 1) {
+                    e.preventDefault();
+                }
+            });
+            manualAmountInput.addEventListener('input', function(e) {
+                this.value = this.value.replace(/[^0-9.]/g, '');
+                const parts = this.value.split('.');
+                if (parts.length > 2) {
+                    this.value = parts[0] + '.' + parts.slice(1).join('');
+                }
+            });
+            manualAmountInput.addEventListener('paste', function(e) {
+                const paste = (e.clipboardData || window.clipboardData).getData('text');
+                const filteredPaste = paste.replace(/[^0-9.]/g, '');
+                const parts = filteredPaste.split('.');
+                const finalPaste = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : filteredPaste;
+                document.execCommand('insertText', false, finalPaste);
+                e.preventDefault();
+            });
+        }
+        
+        // Disable mouse wheel and middle click for refundAmount input
+        // Note: refundAmountInput is declared later in the refund modal section (line ~1719)
+        // Event listeners will be attached when the refund modal is opened
+
+        // --- Functions (Define first before using) ---
+        // Assign to global scope for closeModal access
+        updateSummary = function() {
+            let total = 0;
+            let html = '';
+
+            // 1. Packages - Collect all selected packages
+            selectedPackages = [];
+            document.querySelectorAll('.pkg-qty-select').forEach(select => {
+                const qty = parseInt(select.value) || 0;
+                if (qty > 0) {
+                    const price = parseFloat(select.getAttribute('data-price'));
+                    const name = select.getAttribute('data-name');
+                    const id = select.getAttribute('data-id');
+                    // Get payment_plan_config from JavaScript object instead of HTML attribute (avoids JSON parsing issues)
+                    const paymentPlanConfig = packagePaymentPlans && packagePaymentPlans[id] ? packagePaymentPlans[id] : null;
+                    if (paymentPlanConfig) {
+                        console.log(`updateSummary: Found payment_plan_config for ${name}:`, paymentPlanConfig);
+                    } else {
+                        console.log(`updateSummary: No payment_plan_config for ${name} (package ID: ${id})`);
+                    }
+                    
+                    const subtotal = qty * price;
+                    total += subtotal;
+
+                    selectedPackages.push({ 
+                        id: id, 
+                        quantity: qty, 
+                        name: name, 
+                        price: price,
+                        payment_plan_config: paymentPlanConfig
+                    });
+
+                    // Display payment plan info in summary
+                    let planInfo = '';
+                    if (paymentPlanConfig && paymentPlanConfig.enabled) {
+                        const installmentsCount = (paymentPlanConfig.installments || []).length;
+                        if (installmentsCount > 0) {
+                            planInfo = ` <span class="text-xs text-gray-500">(${installmentsCount + 1} installment plan)</span>`;
+                        } else if (paymentPlanConfig.deposit_amount) {
+                            planInfo = ` <span class="text-xs text-gray-500">(Deposit plan)</span>`;
+                        }
+                    }
+                    
+                    html += `<div class="flex justify-between"><span>${name} x ${qty}${planInfo}</span><span>$${subtotal.toFixed(2)}</span></div>`;
+                }
+            });
+
+            // 2. Addons (Calculated from Step 3 Inputs)
+            const addonInputs = document.querySelectorAll('.addon-qty-input');
+            addonInputs.forEach(input => {
+                const qty = parseInt(input.value || 0);
+                if (qty > 0) {
+                    const price = parseFloat(input.dataset.price);
+                    const subtotal = qty * price;
+                    total += subtotal;
+                    html += `<div class="flex justify-between text-xs text-gray-500 pl-2"><span>+ ${input.dataset.name}</span><span>$${subtotal.toFixed(2)}</span></div>`;
+                }
+            });
+
+            if (summaryContainer) summaryContainer.innerHTML = html || '<p class="text-gray-500 italic">No package selected</p>';
+            if (grandTotalEl) grandTotalEl.innerText = '$' + total.toFixed(2);
+            if (paymentTotalDisplay) paymentTotalDisplay.innerText = '$' + total.toFixed(2);
+            
+            // Update payment amount based on selected option (only if we're on step 4 to avoid infinite recursion)
+            // Note: updatePaymentAmount will use the selectedPackages we just updated
+            if (currentStep === 4 && typeof updatePaymentAmount === 'function') {
+                updatePaymentAmount();
+            }
+        };
+        
+        // Payment Option Change Handler
+        function updatePaymentAmount() {
+            if (!manualAmountInput) return;
+            
+            const paymentOption = document.querySelector('input[name="paymentOption"]:checked');
+            if (!paymentOption) return;
+            
+            const total = parseFloat(grandTotalEl?.innerText.replace(/[^0-9.]/g, '') || 0);
+            
+            switch(paymentOption.value) {
+                case 'full':
+                    // Pay full amount - auto-fill with total
+                    manualAmountInput.value = total.toFixed(2);
+                    manualAmountInput.disabled = false;
+                    manualAmountInput.placeholder = '';
+                    break;
+                case 'deposit':
+                    // Pay Deposit Only - check if packages have deposit configured
+                    // For now, set to 0 and allow manual entry (can be enhanced later)
+                    manualAmountInput.value = '0.00';
+                    manualAmountInput.disabled = false;
+                    manualAmountInput.placeholder = 'Enter deposit amount';
+                    break;
+                case 'manual':
+                    // No payment / Manual Entry - clear and allow manual input
+                    manualAmountInput.value = '';
+                    manualAmountInput.disabled = false;
+                    manualAmountInput.placeholder = 'Enter amount';
+                    break;
+            }
+        }
+
+        // Assign to global scope for closeModal access
+        goToStep = function(step) {
+            document.querySelectorAll('.step-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.step-nav').forEach(el => el.classList.remove('text-wetravel-cyan', 'font-bold'));
+
+            const stepEl = document.getElementById(`step${step}`);
+            if (stepEl) stepEl.classList.remove('hidden');
+
+            document.querySelectorAll('.step-nav').forEach(el => {
+                if (parseInt(el.dataset.step) <= step) el.classList.add('text-wetravel-cyan', 'font-bold');
+            });
+
+            currentStep = step;
+            if (actionBtn) actionBtn.innerText = (step === 4) ? 'Confirm Booking' : 'Continue';
+            
+            // When entering step 4 (Payment), update payment amount based on selected option and payment plans
+            if (step === 4) {
+                console.log('goToStep(4): Entering Payment step');
+                // Ensure selectedPackages is up-to-date
+                if (typeof updateSummary === 'function') {
+                    console.log('goToStep(4): Calling updateSummary()');
+                    updateSummary();
+                    console.log('goToStep(4): After updateSummary, selectedPackages:', selectedPackages);
+                }
+                // Update payment amount and display payment plan info
+                // Use setTimeout to ensure DOM is ready and selectedPackages is updated
+                setTimeout(() => {
+                    if (typeof updatePaymentAmount === 'function') {
+                        console.log('goToStep(4): Calling updatePaymentAmount()');
+                        updatePaymentAmount();
+                    } else {
+                        console.error('goToStep(4): updatePaymentAmount function not found');
+                    }
+                }, 100);
+            }
+        };
+
+        function validateStep(step) {
+            if (step === 1) {
+                // Update selectedPackages before validation
+                updateSummary();
+                if (!selectedPackages || selectedPackages.length === 0) {
+                    showToast('Please select at least one package', 'warning');
+                    return false;
+                }
+                renderStep2();
+            }
+            if (step === 2) {
+                const bName = document.getElementById('buyerName');
+                const bEmail = document.getElementById('buyerEmail');
+                if (!bName || !bEmail || !bName.value || !bEmail.value) {
+                    showToast('Buyer info required', 'warning');
+                    return false;
+                }
+                
+                // Validate participant fields
+                const participantRows = document.querySelectorAll('.participant-row');
+                for (let idx = 0; idx < participantRows.length; idx++) {
+                    const row = participantRows[idx];
+                    const firstName = row.querySelector('[data-field="first_name"]');
+                    const lastName = row.querySelector('[data-field="last_name"]');
+                    const email = row.querySelector('[data-field="email"]');
+                    
+                    if (!firstName || !firstName.value.trim()) {
+                        showToast(`Participant ${idx + 1}: First name is required`, 'warning');
+                        return false;
+                    }
+                    if (!lastName || !lastName.value.trim()) {
+                        showToast(`Participant ${idx + 1}: Last name is required`, 'warning');
+                        return false;
+                    }
+                    if (!email || !email.value.trim()) {
+                        showToast(`Participant ${idx + 1}: Email is required`, 'warning');
+                        return false;
+                    }
+                }
+                
+                renderStep3();
+            }
+            return true;
+        }
+
+        // --- Event Listeners (After functions are defined) ---
+        // Close button event listener
+        if (closeModalBtn) {
+            closeModalBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Close button clicked'); // Debug
+                closeModal();
+            });
+            console.log('Close button listener attached'); // Debug
+        } else {
+            console.error('Close button not found!'); // Debug
+        }
+
+        // Step 1: Package Selection - Allow multiple packages
+        document.querySelectorAll('.pkg-qty-select').forEach(select => {
+            select.addEventListener('change', (e) => {
+                console.log('Package quantity changed:', select.value, 'for package:', select.getAttribute('data-name'));
+                // Allow multiple packages to be selected (no unselecting others)
+                updateSummary();
+                // Update payment amount based on selected option (only if we're on step 4)
+                if (currentStep === 4 && typeof updatePaymentAmount === 'function') {
+                    updatePaymentAmount();
+                }
+            });
+        });
+        
+        // Payment Option Change Handler
+        function updatePaymentAmount() {
+            if (!manualAmountInput) {
+                console.warn('updatePaymentAmount: manualAmountInput not found');
+                return;
+            }
+            
+            const paymentOption = document.querySelector('input[name="paymentOption"]:checked');
+            if (!paymentOption) {
+                console.warn('updatePaymentAmount: payment option not found');
+                return;
+            }
+            
+            const total = parseFloat(grandTotalEl?.innerText.replace(/[^0-9.]/g, '') || 0);
+            
+            // Debug: Log selectedPackages (don't call updateSummary here to avoid infinite recursion)
+            console.log('updatePaymentAmount: selectedPackages', selectedPackages);
+            console.log('updatePaymentAmount: selectedPackages length =', selectedPackages.length);
+            
+            // Note: selectedPackages should already be up-to-date from updateSummary() which calls this function
+            
+            // Calculate total deposit amount from all selected packages with payment plans
+            let totalDeposit = 0;
+            let hasPaymentPlan = false;
+            
+            if (!selectedPackages || selectedPackages.length === 0) {
+                console.warn('updatePaymentAmount: selectedPackages is empty!');
+            }
+            
+            selectedPackages.forEach((pkg, index) => {
+                console.log(`updatePaymentAmount: Package ${index}:`, {
+                    name: pkg.name,
+                    quantity: pkg.quantity,
+                    payment_plan_config: pkg.payment_plan_config,
+                    has_config: !!pkg.payment_plan_config,
+                    config_enabled: pkg.payment_plan_config?.enabled,
+                    deposit_amount: pkg.payment_plan_config?.deposit_amount
+                });
+                
+                if (pkg.payment_plan_config && pkg.payment_plan_config.enabled) {
+                    hasPaymentPlan = true;
+                    const depositAmount = parseFloat(pkg.payment_plan_config.deposit_amount || 0);
+                    console.log(`updatePaymentAmount: Package ${pkg.name} has deposit_amount:`, depositAmount);
+                    totalDeposit += depositAmount * pkg.quantity;
+                } else {
+                    console.log(`updatePaymentAmount: Package ${pkg.name} does NOT have enabled payment plan. Config:`, pkg.payment_plan_config);
+                }
+            });
+            
+            console.log('updatePaymentAmount: hasPaymentPlan =', hasPaymentPlan, 'totalDeposit =', totalDeposit);
+            
+            // Update deposit amount display
+            const depositDisplay = document.getElementById('depositAmountDisplay');
+            if (depositDisplay) {
+                if (hasPaymentPlan && totalDeposit > 0) {
+                    depositDisplay.textContent = `($${totalDeposit.toFixed(2)})`;
+                } else {
+                    depositDisplay.textContent = '(if applicable)';
+                }
+            }
+            
+            // Show/hide payment plan info
+            const paymentPlanInfo = document.getElementById('paymentPlanInfo');
+            const paymentPlanDetails = document.getElementById('paymentPlanDetails');
+            if (paymentPlanInfo && paymentPlanDetails) {
+                if (hasPaymentPlan) {
+                    paymentPlanInfo.classList.remove('hidden');
+                    let detailsHtml = '';
+                    selectedPackages.forEach(pkg => {
+                        if (pkg.payment_plan_config && pkg.payment_plan_config.enabled) {
+                            const depositAmount = parseFloat(pkg.payment_plan_config.deposit_amount || 0);
+                            const installments = pkg.payment_plan_config.installments || [];
+                            detailsHtml += `<div class="mt-2"><strong>${pkg.name} x${pkg.quantity}:</strong>`;
+                            detailsHtml += ` Deposit: $${depositAmount.toFixed(2)}`;
+                            if (installments.length > 0) {
+                                detailsHtml += `, ${installments.length} installment(s)`;
+                            }
+                            detailsHtml += `</div>`;
+                        }
+                    });
+                    paymentPlanDetails.innerHTML = detailsHtml;
+                } else {
+                    paymentPlanInfo.classList.add('hidden');
+                }
+            }
+            
+            switch(paymentOption.value) {
+                case 'full':
+                    // Pay full amount - auto-fill with total
+                    manualAmountInput.value = total.toFixed(2);
+                    manualAmountInput.disabled = false;
+                    manualAmountInput.placeholder = '';
+                    console.log('updatePaymentAmount: Set amount to full total:', total.toFixed(2));
+                    break;
+                case 'deposit':
+                    // Pay Deposit Only - use calculated deposit amount if available
+                    if (hasPaymentPlan && totalDeposit > 0) {
+                        manualAmountInput.value = totalDeposit.toFixed(2);
+                        console.log('updatePaymentAmount: Set amount to deposit:', totalDeposit.toFixed(2));
+                    } else {
+                        manualAmountInput.value = '0.00';
+                        console.warn('updatePaymentAmount: No payment plan or deposit is 0, setting to 0.00');
+                    }
+                    manualAmountInput.disabled = false;
+                    manualAmountInput.placeholder = 'Enter deposit amount';
+                    break;
+                case 'manual':
+                    // No payment / Manual Entry - clear and allow manual input
+                    manualAmountInput.value = '';
+                    manualAmountInput.disabled = false;
+                    manualAmountInput.placeholder = 'Enter amount';
+                    console.log('updatePaymentAmount: Manual entry mode, cleared amount');
+                    break;
+            }
+        }
+        
+        // Listen for payment option changes (attach listeners after function is defined)
+        setTimeout(() => {
+            document.querySelectorAll('input[name="paymentOption"]').forEach(radio => {
+                radio.addEventListener('change', updatePaymentAmount);
+            });
+        }, 100);
+
+        // Main Button Logic
+        if (actionBtn) {
+            actionBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Action button clicked, currentStep:', currentStep); // Debug
+                if (currentStep < 4) {
+                    if (validateStep(currentStep)) {
+                        goToStep(currentStep + 1);
+                    }
+                } else {
+                    submitBooking();
+                }
+            });
+            console.log('Action button listener attached'); // Debug
+        } else {
+            console.error('Action button not found!'); // Debug
+        }
+
+
+        function renderStep2() {
+            const container = document.getElementById('participantsContainer');
+            
+            // Ensure selectedPackages is up-to-date
+            updateSummary();
+            
+            // Calculate total participants from all selected packages
+            const totalParticipants = selectedPackages.reduce((sum, pkg) => sum + pkg.quantity, 0);
+            
+            // Always re-render to ensure consistency (user might have changed packages)
+            // But preserve existing values if possible
+
+            container.innerHTML = '';
+            
+            // Create participants based on total quantity from all packages
+            let participantIndex = 0;
+            for (let pkgIdx = 0; pkgIdx < selectedPackages.length; pkgIdx++) {
+                const pkg = selectedPackages[pkgIdx];
+                for (let i = 0; i < pkg.quantity; i++) {
+                    participantIndex++;
+                let fieldsHtml = '';
+                
+                // Default mandatory fields (matching builder)
+                fieldsHtml += `
+                    <div class="grid grid-cols-2 gap-2 mb-2">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">First Name <span class="text-red-500">*</span></label>
+                            <input type="text" placeholder="First Name" class="p-field border rounded p-1 text-sm w-full" data-field="first_name" required>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Last Name <span class="text-red-500">*</span></label>
+                            <input type="text" placeholder="Last Name" class="p-field border rounded p-1 text-sm w-full" data-field="last_name" required>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="block text-xs font-medium text-gray-700 mb-1">Email <span class="text-red-500">*</span></label>
+                        <input type="email" placeholder="Email" class="p-field border rounded p-1 text-sm w-full" data-field="email" required>
+                    </div>
+                `;
+                
+                // Custom questions from trip builder
+                if (tripCustomQuestions && tripCustomQuestions.length > 0) {
+                    tripCustomQuestions.forEach(q => {
+                        const fieldId = `p-${i}-q-${q.id}`;
+                        const fieldName = `question_${q.id}`;
+                        let inputHtml = '';
+                        
+                        switch(q.type) {
+                            case 'textarea':
+                                inputHtml = `<textarea id="${fieldId}" name="${fieldName}" class="p-field border rounded p-1 text-sm w-full" data-field="${fieldName}" data-question-id="${q.id}" rows="3" placeholder="${q.label}" ${q.required ? 'required' : ''}></textarea>`;
+                                break;
+                            case 'number':
+                                inputHtml = `<input type="text" inputmode="numeric" pattern="[0-9]*\.?[0-9]*" id="${fieldId}" name="${fieldName}" class="p-field border rounded p-1 text-sm w-full" data-field="${fieldName}" data-question-id="${q.id}" placeholder="${q.label}" ${q.required ? 'required' : ''}>`;
+                                break;
+                            case 'date':
+                                inputHtml = `<input type="date" id="${fieldId}" name="${fieldName}" class="p-field border rounded p-1 text-sm w-full" data-field="${fieldName}" data-question-id="${q.id}" ${q.required ? 'required' : ''}>`;
+                                break;
+                            case 'choice':
+                                if (q.options && Array.isArray(q.options) && q.options.length > 0) {
+                                    inputHtml = `<select id="${fieldId}" name="${fieldName}" class="p-field border rounded p-1 text-sm w-full" data-field="${fieldName}" data-question-id="${q.id}" ${q.required ? 'required' : ''}><option value="">Select...</option>`;
+                                    q.options.forEach(opt => {
+                                        inputHtml += `<option value="${opt}">${opt}</option>`;
+                                    });
+                                    inputHtml += `</select>`;
+                                } else {
+                                    inputHtml = `<input type="text" id="${fieldId}" name="${fieldName}" class="p-field border rounded p-1 text-sm w-full" data-field="${fieldName}" data-question-id="${q.id}" placeholder="${q.label}" ${q.required ? 'required' : ''}>`;
+                                }
+                                break;
+                            case 'file':
+                                inputHtml = `<input type="file" id="${fieldId}" name="${fieldName}" class="p-field border rounded p-1 text-sm w-full" data-field="${fieldName}" data-question-id="${q.id}" ${q.required ? 'required' : ''}>`;
+                                break;
+                            default: // text
+                                inputHtml = `<input type="text" id="${fieldId}" name="${fieldName}" class="p-field border rounded p-1 text-sm w-full" data-field="${fieldName}" data-question-id="${q.id}" placeholder="${q.label}" ${q.required ? 'required' : ''}>`;
+                        }
+                        
+                        fieldsHtml += `
+                            <div class="mb-2">
+                                <label class="block text-xs font-medium text-gray-700 mb-1">${q.label}${q.required ? ' <span class="text-red-500">*</span>' : ''}</label>
+                                ${inputHtml}
+                            </div>
+                        `;
+                    });
+                }
+                
+                    container.innerHTML += `
+                        <div class="border p-3 rounded bg-gray-50 participant-row" data-index="${participantIndex - 1}" data-package-id="${pkg.id}">
+                            <h5 class="text-sm font-bold mb-3">Participant ${participantIndex} - ${pkg.name}</h5>
+                            ${fieldsHtml}
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        function renderStep3() {
+            const container = document.getElementById('addonsContainer');
+            if (!container) return;
+            
+            // Same logic, check if needs update
+            const pInputs = document.querySelectorAll('.participant-row');
+            if (container.children.length === pInputs.length) return; // Assume same count means safe (ignoring addon changes)
+
+            container.innerHTML = '';
+
+            pInputs.forEach((row, idx) => {
+                // Get participant name from first_name and last_name fields
+                const firstNameInput = row.querySelector('[data-field="first_name"]');
+                const lastNameInput = row.querySelector('[data-field="last_name"]');
+                const firstName = firstNameInput ? firstNameInput.value.trim() : '';
+                const lastName = lastNameInput ? lastNameInput.value.trim() : '';
+                const pName = (firstName || lastName) 
+                    ? `${firstName} ${lastName}`.trim() 
+                    : `Participant ${idx + 1}`;
+                let addonsHtml = `<div class="mb-4"><h5 class="font-bold text-sm mb-2">${pName}</h5>`;
+
+                if (tripAddons.length === 0) {
+                    addonsHtml += `<p class="text-sm text-gray-500 italic">No add-ons available.</p>`;
+                } else {
+                    tripAddons.forEach(addon => {
+                        addonsHtml += `
+                            <div class="flex justify-between items-center bg-gray-50 p-2 rounded mb-1">
+                                <span class="text-sm">${addon.name} ($${addon.price})</span>
+                                <div class="flex items-center">
+                                    <input type="text" inputmode="numeric" pattern="[0-9]*" value="0" 
+                                        class="addon-qty-input border w-12 text-center text-sm"
+                                        data-price="${addon.price}" data-id="${addon.id}" data-name="${addon.name}" data-p-index="${idx}">
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
+                addonsHtml += `</div>`;
+                container.innerHTML += addonsHtml;
+            });
+
+            document.querySelectorAll('.addon-qty-input').forEach(input => {
+                // Disable mouse wheel and middle click
+                input.addEventListener('wheel', function(e) {
+                    e.preventDefault();
+                });
+                input.addEventListener('mousedown', function(e) {
+                    if (e.button === 1) {
+                        e.preventDefault();
+                    }
+                });
+                // Input validation - only integers for quantity
+                input.addEventListener('input', function(e) {
+                    this.value = this.value.replace(/[^0-9]/g, '');
+                    updateSummary();
+                });
+                input.addEventListener('paste', function(e) {
+                    const paste = (e.clipboardData || window.clipboardData).getData('text');
+                    const filteredPaste = paste.replace(/[^0-9]/g, '');
+                    document.execCommand('insertText', false, filteredPaste);
+                    e.preventDefault();
+                });
+                input.addEventListener('change', updateSummary);
+            });
+        }
+
+        async function submitBooking() {
+            if (!actionBtn) {
+                console.error('Action button not found');
+                return;
+            }
+            actionBtn.disabled = true;
+            actionBtn.innerText = 'Processing...';
+
+            // Collect packages data (new format: array of {package_id, quantity, payment_plan_type})
+            const paymentOption = document.querySelector('input[name="paymentOption"]:checked').value;
+            const packages = selectedPackages.map(pkg => {
+                // Determine payment_plan_type based on selected option and package's payment plan config
+                let paymentPlanType = 'full';
+                if (paymentOption === 'deposit' && pkg.payment_plan_config && pkg.payment_plan_config.enabled) {
+                    paymentPlanType = 'deposit_installment';
+                } else if (paymentOption === 'full') {
+                    paymentPlanType = 'full';
+                } else {
+                    paymentPlanType = 'full'; // Default
+                }
+                
+                return {
+                    package_id: parseInt(pkg.id),
+                    quantity: pkg.quantity,
+                    payment_plan_type: paymentPlanType
+                };
+            });
+
+            const payload = {
+                packages: packages, // New format: array of packages
+                buyer: {
+                    name: document.getElementById('buyerName').value,
+                    email: document.getElementById('buyerEmail').value,
+                    phone: document.getElementById('buyerPhone').value
+                },
+                participants: [],
+                payment: {
+                    amount_paid: document.getElementById('manualAmount').value || '0',
+                    status: (() => {
+                        const paymentOption = document.querySelector('input[name="paymentOption"]:checked').value;
+                        if (paymentOption === 'full') return 'fully_paid';
+                        if (paymentOption === 'deposit') return 'deposit_paid';
+                        return 'pending'; // manual option
+                    })()
+                }
+            };
+
+            // Collect Participants
+            document.querySelectorAll('.participant-row').forEach((row, idx) => {
+                const addons = {};
+                document.querySelectorAll(`.addon-qty-input[data-p-index="${idx}"]`).forEach(inp => {
+                    if (parseInt(inp.value) > 0) {
+                        addons[inp.dataset.id] = parseInt(inp.value);
+                    }
+                });
+
+                // Collect default fields (matching builder)
+                const firstName = row.querySelector('[data-field="first_name"]')?.value || '';
+                const lastName = row.querySelector('[data-field="last_name"]')?.value || '';
+                const email = row.querySelector('[data-field="email"]')?.value || '';
+                
+                // Collect custom question answers
+                const questionAnswers = {};
+                row.querySelectorAll('.p-field[data-question-id]').forEach(field => {
+                    const questionId = field.getAttribute('data-question-id');
+                    if (questionId && field.value) {
+                        questionAnswers[questionId] = field.value;
+                    }
+                });
+
+                payload.participants.push({
+                    name: `${firstName} ${lastName}`.trim() || 'Unknown',
+                    email: email,
+                    first_name: firstName,
+                    last_name: lastName,
+                    question_answers: questionAnswers,
+                    addons: addons
+                });
+            });
+
+            try {
+                const res = await fetch("{{ url_for('admin.add_participant', id=trip.id) }}", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    showToast('Booking Added!', 'success');
+                    location.reload();
+                } else {
+                    showToast('Error: ' + data.message, 'error');
+                    if (actionBtn) {
+                        actionBtn.disabled = false;
+                        actionBtn.innerText = 'Confirm Booking';
+                    }
+                }
+            } catch (err) {
+                showToast('Request failed', 'error');
+                console.error(err);
+                if (actionBtn) {
+                    actionBtn.disabled = false;
+                    actionBtn.innerText = 'Confirm Booking';
+                }
+            }
+        }
+
+        // Search Filter (removed duplicate - already handled in DOMContentLoaded above)
+        // Note: searchInput and statusFilter are already declared in DOMContentLoaded
+        // This section is redundant and has been removed to avoid duplicate declaration errors
+
+        // --- Manage Booking Modal ---
+        const manageBookingModal = document.getElementById('manageBookingModal');
+        const closeManageBookingModalBtn = document.getElementById('closeManageBookingModalBtn');
+        const cancelManageBookingBtn = document.getElementById('cancelManageBookingBtn');
+        const saveManageBookingBtn = document.getElementById('saveManageBookingBtn');
+        const bookingDetailsTab = document.getElementById('bookingDetailsTab');
+        const sendEmailTab = document.getElementById('sendEmailTab');
+        const emailContent = document.getElementById('emailContent');
+        const sendEmailBtn = document.getElementById('sendEmailBtn');
+        const generateReceiptBtn = document.getElementById('generateReceiptBtn');
+        let currentBookingId = null;
+        let currentBookingData = null;
+
+        // Open Manage Booking Modal (redefine with full functionality)
+        window.openManageBookingModal = function(bookingId) {
+            currentBookingId = bookingId;
+            if (!manageBookingModal) return;
+            
+            // Reset button state when opening modal
+            if (saveManageBookingBtn) {
+                saveManageBookingBtn.disabled = false;
+                saveManageBookingBtn.innerText = 'Save Changes';
+            }
+            
+            manageBookingModal.classList.remove('hidden');
+            
+            // Reset to Details tab (after a small delay to ensure elements are ready)
+            setTimeout(() => {
+                switchToDetailsTab();
+            }, 10);
+            
+            // Show loading state
+            document.getElementById('manageBookingContent').innerHTML = `
+                <div class="text-center py-8">
+                    <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-wetravel-cyan"></div>
+                    <p class="mt-2 text-sm text-gray-500">Loading booking details...</p>
+                </div>
+            `;
+
+            // Fetch booking data
+            fetch(`/admin/trips/{{ trip.id }}/bookings/${bookingId}?format=json`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        renderBookingDetails(data.booking);
+                    } else {
+                        showToast('Failed to load booking details', 'error');
+                        closeManageBookingModal();
+                    }
+                })
+                .catch(err => {
+                    console.error('Error loading booking:', err);
+                    showToast('Error loading booking details', 'error');
+                    closeManageBookingModal();
+                });
+        };
+
+        // Close Manage Booking Modal
+        function closeManageBookingModal() {
+            if (!manageBookingModal) return;
+            manageBookingModal.classList.add('hidden');
+            currentBookingId = null;
+            currentBookingData = null;
+            // Reset to Details tab
+            setTimeout(() => {
+                switchToDetailsTab();
+            }, 10);
+        }
+
+        // Event listeners for close buttons
+        if (closeManageBookingModalBtn) {
+            closeManageBookingModalBtn.addEventListener('click', closeManageBookingModal);
+        }
+        if (cancelManageBookingBtn) {
+            cancelManageBookingBtn.addEventListener('click', closeManageBookingModal);
+        }
+
+        // Tab switching functions (elements already declared above)
+
+        function switchToDetailsTab() {
+            if (!bookingDetailsTab || !sendEmailTab || !emailContent || !saveManageBookingBtn || !sendEmailBtn) return;
+            
+            bookingDetailsTab.classList.add('border-wetravel-cyan', 'text-wetravel-cyan');
+            bookingDetailsTab.classList.remove('border-transparent', 'text-gray-500');
+            sendEmailTab.classList.remove('border-wetravel-cyan', 'text-wetravel-cyan');
+            sendEmailTab.classList.add('border-transparent', 'text-gray-500');
+            const content = document.getElementById('manageBookingContent');
+            if (content) content.classList.remove('hidden');
+            emailContent.classList.add('hidden');
+            saveManageBookingBtn.classList.remove('hidden');
+            sendEmailBtn.classList.add('hidden');
+        }
+
+        function switchToEmailTab() {
+            if (!bookingDetailsTab || !sendEmailTab || !emailContent || !saveManageBookingBtn || !sendEmailBtn) return;
+            
+            sendEmailTab.classList.add('border-wetravel-cyan', 'text-wetravel-cyan');
+            sendEmailTab.classList.remove('border-transparent', 'text-gray-500');
+            bookingDetailsTab.classList.remove('border-wetravel-cyan', 'text-wetravel-cyan');
+            bookingDetailsTab.classList.add('border-transparent', 'text-gray-500');
+            const content = document.getElementById('manageBookingContent');
+            if (content) content.classList.add('hidden');
+            emailContent.classList.remove('hidden');
+            saveManageBookingBtn.classList.add('hidden');
+            sendEmailBtn.classList.remove('hidden');
+        }
+
+        if (bookingDetailsTab) {
+            bookingDetailsTab.addEventListener('click', switchToDetailsTab);
+        }
+        if (sendEmailTab) {
+            sendEmailTab.addEventListener('click', switchToEmailTab);
+        }
+
+        // Render Booking Details
+        function renderBookingDetails(booking) {
+            currentBookingData = booking;
+            const content = document.getElementById('manageBookingContent');
+            
+            // Set email recipient
+            const buyerEmail = booking.buyer?.email || booking.client?.email || '';
+            document.getElementById('emailRecipient').textContent = buyerEmail;
+            // Get first package name for email subject, or use default
+            const firstPackageName = booking.packages && booking.packages.length > 0 
+                ? booking.packages[0].name 
+                : 'Nexus Horizons Tour';
+            document.getElementById('emailSubject').value = `Regarding Your Booking - ${firstPackageName}`;
+            
+            // Calculate pending amount
+            const pendingAmount = booking.pending_amount || (booking.expected_amount - booking.amount_paid);
+            
+            // Generate packages display HTML
+            let packagesHtml = '';
+            if (booking.packages && booking.packages.length > 0) {
+                packagesHtml = booking.packages.map(pkg => {
+                    const quantity = pkg.quantity || 1;
+                    const price = parseFloat(pkg.price) || 0;
+                    const subtotal = pkg.subtotal || (price * quantity);
+                    let planBadge = '';
+                    if (pkg.payment_plan_type === 'deposit_installment') {
+                        planBadge = '<span class="ml-2 px-1.5 py-0.5 text-xs bg-blue-100 text-blue-800 rounded">Installment</span>';
+                    }
+                    return `<div class="flex justify-between items-center py-1">
+                        <span class="text-sm text-gray-900">${pkg.name} x${quantity}${planBadge}</span>
+                        <span class="text-sm text-gray-900 font-medium">$${subtotal.toFixed(2)}</span>
+                    </div>`;
+                }).join('');
+            } else {
+                packagesHtml = '<p class="text-sm text-gray-500 italic">No packages</p>';
+            }
+            
+            // Generate addons display HTML
+            let addonsHtml = '';
+            if (booking.addons && booking.addons.length > 0) {
+                addonsHtml = booking.addons.map(addon => {
+                    const quantity = addon.quantity || 1;
+                    const price = parseFloat(addon.price) || 0;
+                    const subtotal = addon.subtotal || (price * quantity);
+                    return `<div class="flex justify-between items-center py-1">
+                        <span class="text-sm text-gray-600">+ ${addon.name} x${quantity}</span>
+                        <span class="text-sm text-gray-600">$${subtotal.toFixed(2)}</span>
+                    </div>`;
+                }).join('');
+            } else {
+                addonsHtml = '<p class="text-sm text-gray-500 italic">No add-ons</p>';
+            }
+            
+            // Generate payment history HTML
+            let paymentsHtml = '';
+            if (booking.payments && booking.payments.length > 0) {
+                paymentsHtml = booking.payments.map(payment => {
+                    const statusClass = payment.status === 'succeeded' ? 'bg-green-100 text-green-800' : 
+                                        payment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
+                                        'bg-red-100 text-red-800';
+                    const feeText = payment.fee_cents ? ` (Fee: $${(payment.fee_cents / 100).toFixed(2)})` : '';
+                    const cardInfo = payment.brand ? `${payment.brand.toUpperCase()}` : '';
+                    return `<div class="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
+                        <div>
+                            <span class="text-sm text-gray-900">$${payment.amount.toFixed(2)}${feeText}</span>
+                            ${cardInfo ? `<span class="ml-2 text-xs text-gray-500">${cardInfo}</span>` : ''}
+                            <span class="ml-2 px-1.5 py-0.5 text-xs rounded ${statusClass}">${payment.status}</span>
+                        </div>
+                        <span class="text-xs text-gray-500">${payment.paid_at || '-'}</span>
+                    </div>`;
+                }).join('');
+            } else {
+                paymentsHtml = '<p class="text-sm text-gray-500 italic">No payment records</p>';
+            }
+            
+            // Generate installment schedule HTML
+            let installmentsHtml = '';
+            if (booking.installments && booking.installments.length > 0) {
+                installmentsHtml = `
+                    <div class="mt-4 pt-4 border-t border-gray-200">
+                        <h5 class="text-sm font-medium text-gray-700 mb-3">Installment Schedule</h5>
+                        <div class="space-y-2">
+                            ${booking.installments.map(inst => {
+                                const statusClass = inst.status === 'paid' ? 'bg-green-100 text-green-800' : 
+                                                    inst.status === 'overdue' ? 'bg-red-100 text-red-800' :
+                                                    inst.status === 'cancelled' ? 'bg-gray-100 text-gray-600' :
+                                                    'bg-yellow-100 text-yellow-800';
+                                const label = inst.installment_number === 0 ? 'Deposit' : `Payment #${inst.installment_number}`;
+                                return `<div class="flex justify-between items-center py-1.5 px-3 bg-gray-50 rounded">
+                                    <div>
+                                        <span class="text-sm text-gray-900">${label}</span>
+                                        <span class="ml-2 text-xs text-gray-500">Due: ${inst.due_date || '-'}</span>
+                                    </div>
+                                    <div class="flex items-center space-x-2">
+                                        <span class="text-sm font-medium text-gray-900">$${inst.amount.toFixed(2)}</span>
+                                        <span class="px-1.5 py-0.5 text-xs rounded ${statusClass}">${inst.status}</span>
+                                    </div>
+                                </div>`;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Get buyer info
+            const buyer = booking.buyer || booking.client || {};
+            const buyerName = buyer.name || `${buyer.first_name || ''} ${buyer.last_name || ''}`.trim() || '-';
+            const buyerPhone = buyer.phone || '-';
+            const buyerAddress = [buyer.address, buyer.city, buyer.state, buyer.zip_code, buyer.country]
+                .filter(x => x).join(', ') || '-';
+            const emergencyContact = buyer.emergency_contact_name ? 
+                `${buyer.emergency_contact_name} (${buyer.emergency_contact_relationship || 'N/A'}) - ${buyer.emergency_contact_phone || 'N/A'}` : '-';
+            
+            content.innerHTML = `
+                <!-- Buyer Information -->
+                <div class="bg-white border border-gray-200 rounded-lg p-6">
+                    <h4 class="text-lg font-medium text-gray-900 mb-4">Buyer Information</h4>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                            <p class="text-sm text-gray-900">${buyerName}</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                            <p class="text-sm text-gray-900">${buyerEmail || '-'}</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                            <p class="text-sm text-gray-900">${buyerPhone}</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                            <p class="text-sm text-gray-900">${buyerAddress}</p>
+                        </div>
+                        ${buyer.emergency_contact_name ? `
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Emergency Contact</label>
+                            <p class="text-sm text-gray-900">${emergencyContact}</p>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+
+                <!-- Order Summary -->
+                <div class="bg-white border border-gray-200 rounded-lg p-6">
+                    <h4 class="text-lg font-medium text-gray-900 mb-4">Order Summary</h4>
+                    
+                    <!-- Packages -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Packages</label>
+                        <div class="bg-gray-50 rounded-lg p-3">
+                            ${packagesHtml}
+                            ${booking.packages_total ? `<div class="flex justify-between items-center pt-2 mt-2 border-t border-gray-200">
+                                <span class="text-sm font-medium text-gray-700">Subtotal</span>
+                                <span class="text-sm font-medium text-gray-900">$${booking.packages_total.toFixed(2)}</span>
+                            </div>` : ''}
+                        </div>
+                    </div>
+                    
+                    <!-- Add-ons -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Add-ons</label>
+                        <div class="bg-gray-50 rounded-lg p-3">
+                            ${addonsHtml}
+                            ${booking.addons_total ? `<div class="flex justify-between items-center pt-2 mt-2 border-t border-gray-200">
+                                <span class="text-sm font-medium text-gray-700">Subtotal</span>
+                                <span class="text-sm font-medium text-gray-900">$${booking.addons_total.toFixed(2)}</span>
+                            </div>` : ''}
+                        </div>
+                    </div>
+                    
+                    <!-- Discount (if any) -->
+                    ${booking.discount ? `
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Discount</label>
+                        <div class="bg-green-50 rounded-lg p-3">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-green-700">Code: ${booking.discount.code || 'Applied'}</span>
+                                <span class="text-sm font-medium text-green-700">-$${(booking.discount.discount_amount || booking.discount.amount || 0).toFixed(2)}</span>
+                            </div>
+                        </div>
+                    </div>
+                    ` : ''}
+                    
+                    <!-- Total -->
+                    <div class="bg-gray-100 rounded-lg p-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-base font-medium text-gray-900">Total</span>
+                            <span class="text-lg font-bold text-gray-900">$${booking.expected_amount.toFixed(2)}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4 mt-4 text-sm">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Passengers</label>
+                            <p class="text-sm text-gray-900">${booking.passenger_count}</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Booking Date</label>
+                            <p class="text-sm text-gray-900">${booking.created_at}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Payment Information -->
+                <div class="bg-white border border-gray-200 rounded-lg p-6">
+                    <h4 class="text-lg font-medium text-gray-900 mb-4">Payment Information</h4>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                            <select id="bookingStatus" class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm">
+                                <option value="pending" ${booking.status === 'pending' ? 'selected' : ''}>Pending</option>
+                                <option value="deposit_paid" ${booking.status === 'deposit_paid' ? 'selected' : ''}>Deposit Paid</option>
+                                <option value="fully_paid" ${booking.status === 'fully_paid' ? 'selected' : ''}>Fully Paid</option>
+                                <option value="cancelled" ${booking.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+                            </select>
+                        </div>
+                        <div class="grid grid-cols-3 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Expected Amount</label>
+                                <p class="text-sm text-gray-900 font-medium">$${booking.expected_amount.toFixed(2)}</p>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Amount Paid</label>
+                                <input type="text" id="bookingAmountPaid" inputmode="numeric" pattern="[0-9]*\.?[0-9]*" value="${booking.amount_paid}" 
+                                    class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Pending Amount</label>
+                                <p id="bookingPendingAmount" class="text-sm font-medium ${pendingAmount > 0 ? 'text-red-600' : 'text-green-600'}" data-expected="${booking.expected_amount}">$${pendingAmount.toFixed(2)}</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Payment History -->
+                        <div class="mt-4 pt-4 border-t border-gray-200">
+                            <h5 class="text-sm font-medium text-gray-700 mb-3">Payment History</h5>
+                            <div class="bg-gray-50 rounded-lg p-3">
+                                ${paymentsHtml}
+                            </div>
+                        </div>
+                        
+                        ${installmentsHtml}
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Special Requests</label>
+                            <p class="text-xs text-gray-500 mb-2">Special requirements provided by the customer at booking time (e.g., dietary restrictions, accommodation preferences, medical needs, etc.)</p>
+                            <textarea id="bookingSpecialRequests" rows="3" 
+                                class="block w-full rounded-md border-0 px-3 py-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm"
+                                placeholder="e.g., Vegetarian, Allergies, Wheelchair access, etc...">${booking.special_requests || ''}</textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Participants -->
+                <div class="bg-white border border-gray-200 rounded-lg p-6">
+                    <h4 class="text-lg font-medium text-gray-900 mb-4">Participants</h4>
+                    ${booking.participants.length > 0 ? `
+                        <div class="space-y-3">
+                            ${booking.participants.map((p, idx) => {
+                                // Parse name into first_name and last_name (try to split by space)
+                                const nameParts = (p.name || '').trim().split(/\s+/);
+                                const firstName = nameParts.length > 0 ? nameParts[0] : '';
+                                const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+                                
+                                // Get question answers (if stored, otherwise empty object)
+                                const questionAnswers = p.question_answers || {};
+                                
+                                let fieldsHtml = '';
+                                
+                                // Default mandatory fields (matching builder: First Name, Last Name, Email)
+                                fieldsHtml += `
+                                    <div class="grid grid-cols-2 gap-2 mb-2">
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-700 mb-1">First Name <span class="text-red-500">*</span></label>
+                                            <input type="text" 
+                                                id="participant-first-name-${p.id}" 
+                                                value="${firstName}" 
+                                                class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm"
+                                                placeholder="First Name"
+                                                data-field="first_name"
+                                                required>
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-700 mb-1">Last Name <span class="text-red-500">*</span></label>
+                                            <input type="text" 
+                                                id="participant-last-name-${p.id}" 
+                                                value="${lastName}" 
+                                                class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm"
+                                                placeholder="Last Name"
+                                                data-field="last_name"
+                                                required>
+                                        </div>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="block text-xs font-medium text-gray-700 mb-1">Email <span class="text-red-500">*</span></label>
+                                        <input type="email" 
+                                            id="participant-email-${p.id}" 
+                                            value="${p.email || ''}" 
+                                            class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm"
+                                            placeholder="participant@example.com"
+                                            data-field="email"
+                                            required>
+                                    </div>
+                                `;
+                                
+                                // Custom questions from trip builder (matching builder structure)
+                                if (tripCustomQuestions && tripCustomQuestions.length > 0) {
+                                    tripCustomQuestions.forEach(q => {
+                                        const fieldId = `participant-${p.id}-q-${q.id}`;
+                                        const fieldName = `question_${q.id}`;
+                                        const existingValue = questionAnswers[q.id] || '';
+                                        let inputHtml = '';
+                                        
+                                        switch(q.type) {
+                                            case 'textarea':
+                                                inputHtml = `<textarea id="${fieldId}" name="${fieldName}" class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm" rows="3" placeholder="${q.label}" data-field="${fieldName}" data-question-id="${q.id}" ${q.required ? 'required' : ''}>${existingValue}</textarea>`;
+                                                break;
+                                            case 'number':
+                                                inputHtml = `<input type="text" inputmode="numeric" pattern="[0-9]*\\.?[0-9]*" id="${fieldId}" name="${fieldName}" class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm" placeholder="${q.label}" data-field="${fieldName}" data-question-id="${q.id}" value="${existingValue}" ${q.required ? 'required' : ''}>`;
+                                                break;
+                                            case 'date':
+                                                inputHtml = `<input type="date" id="${fieldId}" name="${fieldName}" class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm" data-field="${fieldName}" data-question-id="${q.id}" value="${existingValue}" ${q.required ? 'required' : ''}>`;
+                                                break;
+                                            case 'choice':
+                                                if (q.options && Array.isArray(q.options) && q.options.length > 0) {
+                                                    inputHtml = `<select id="${fieldId}" name="${fieldName}" class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm" data-field="${fieldName}" data-question-id="${q.id}" ${q.required ? 'required' : ''}><option value="">Select...</option>`;
+                                                    q.options.forEach(opt => {
+                                                        inputHtml += `<option value="${opt}" ${existingValue === opt ? 'selected' : ''}>${opt}</option>`;
+                                                    });
+                                                    inputHtml += `</select>`;
+                                                } else {
+                                                    inputHtml = `<input type="text" id="${fieldId}" name="${fieldName}" class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm" placeholder="${q.label}" data-field="${fieldName}" data-question-id="${q.id}" value="${existingValue}" ${q.required ? 'required' : ''}>`;
+                                                }
+                                                break;
+                                            case 'file':
+                                                inputHtml = `<input type="file" id="${fieldId}" name="${fieldName}" class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm" data-field="${fieldName}" data-question-id="${q.id}" ${q.required ? 'required' : ''}>`;
+                                                break;
+                                            default: // text
+                                                inputHtml = `<input type="text" id="${fieldId}" name="${fieldName}" class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm" placeholder="${q.label}" data-field="${fieldName}" data-question-id="${q.id}" value="${existingValue}" ${q.required ? 'required' : ''}>`;
+                                        }
+                                        
+                                        fieldsHtml += `
+                                            <div class="mb-2">
+                                                <label class="block text-xs font-medium text-gray-700 mb-1">${q.label}${q.required ? ' <span class="text-red-500">*</span>' : ''}</label>
+                                                ${inputHtml}
+                                            </div>
+                                        `;
+                                    });
+                                }
+                                
+                                return `
+                                <div class="border border-gray-200 rounded p-4">
+                                    <h5 class="text-sm font-semibold text-gray-900 mb-3">Participant ${idx + 1}</h5>
+                                    <div class="space-y-3">
+                                        ${fieldsHtml}
+                                    </div>
+                                    ${p.addons && p.addons.length > 0 ? `
+                                        <div class="mt-3 pt-3 border-t border-gray-100">
+                                            <p class="text-xs text-gray-500 mb-1">Add-ons:</p>
+                                            ${p.addons.map(a => `<span class="inline-block text-xs bg-gray-100 px-2 py-1 rounded mr-1">${a.name} x${a.quantity} ($${(a.price * a.quantity).toFixed(2)})</span>`).join('')}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `;
+                            }).join('')}
+                        </div>
+                    ` : '<p class="text-sm text-gray-500">No participants</p>'}
+                </div>
+            `;
+
+            // Update booking ID display
+            const bookingIdEl = document.getElementById('bookingId');
+            if (bookingIdEl) bookingIdEl.textContent = booking.id;
+            
+            // Attach event listener to Amount Paid input for real-time update
+            // Use setTimeout to ensure DOM is updated after innerHTML
+            setTimeout(() => {
+                const amountPaidInput = document.getElementById('bookingAmountPaid');
+                if (amountPaidInput) {
+                    // Remove old listeners by cloning the element
+                    const newInput = amountPaidInput.cloneNode(true);
+                    amountPaidInput.parentNode.replaceChild(newInput, amountPaidInput);
+                    
+                    // Re-attach listeners to the new element
+                    const updatedInput = document.getElementById('bookingAmountPaid');
+                    if (updatedInput) {
+                        updatedInput.addEventListener('input', updatePendingAmount);
+                        updatedInput.addEventListener('change', updatePendingAmount);
+                    }
+                }
+            }, 10);
+        }
+        // Real-time update of pending amount
+        function updatePendingAmount() {
+            const amountPaidInput = document.getElementById('bookingAmountPaid');
+            const pendingAmountEl = document.getElementById('bookingPendingAmount');
+            
+            if (!amountPaidInput || !pendingAmountEl) return;
+            
+            const amountPaid = parseFloat(amountPaidInput.value) || 0;
+            const expectedAmount = parseFloat(pendingAmountEl.getAttribute('data-expected')) || 0;
+            const pendingAmount = expectedAmount - amountPaid;
+            
+            pendingAmountEl.textContent = '$' + pendingAmount.toFixed(2);
+            pendingAmountEl.classList.remove('text-red-600', 'text-green-600');
+            if (pendingAmount > 0) {
+                pendingAmountEl.classList.add('text-red-600');
+            } else {
+                pendingAmountEl.classList.add('text-green-600');
+            }
+        }
+
+        if (saveManageBookingBtn) {
+            saveManageBookingBtn.addEventListener('click', async function() {
+                if (!currentBookingId) return;
+
+                const status = document.getElementById('bookingStatus').value;
+                const amountPaid = parseFloat(document.getElementById('bookingAmountPaid').value) || 0;
+                const specialRequests = document.getElementById('bookingSpecialRequests').value;
+
+                saveManageBookingBtn.disabled = true;
+                saveManageBookingBtn.innerText = 'Saving...';
+
+                try {
+                    // Collect participant updates (matching builder structure: first_name, last_name, question_answers)
+                    const participants = [];
+                    if (currentBookingData && currentBookingData.participants) {
+                        currentBookingData.participants.forEach(p => {
+                            const firstNameInput = document.getElementById(`participant-first-name-${p.id}`);
+                            const lastNameInput = document.getElementById(`participant-last-name-${p.id}`);
+                            const emailInput = document.getElementById(`participant-email-${p.id}`);
+                            
+                            if (firstNameInput && lastNameInput && emailInput) {
+                                const firstName = firstNameInput.value.trim();
+                                const lastName = lastNameInput.value.trim();
+                                const email = emailInput.value.trim();
+                                
+                                // Collect custom question answers
+                                const questionAnswers = {};
+                                if (tripCustomQuestions && tripCustomQuestions.length > 0) {
+                                    tripCustomQuestions.forEach(q => {
+                                        const fieldId = `participant-${p.id}-q-${q.id}`;
+                                        const field = document.getElementById(fieldId);
+                                        if (field && field.value) {
+                                            questionAnswers[q.id] = field.value;
+                                        }
+                                    });
+                                }
+                                
+                                participants.push({
+                                    id: p.id,
+                                    name: `${firstName} ${lastName}`.trim() || 'Unknown',
+                                    first_name: firstName,
+                                    last_name: lastName,
+                                    email: email,
+                                    question_answers: questionAnswers
+                                });
+                            }
+                        });
+                    }
+                    
+                    const formData = new FormData();
+                    formData.append('status', status);
+                    formData.append('amount_paid', amountPaid);
+                    formData.append('special_requests', specialRequests);
+                    formData.append('participants', JSON.stringify(participants));
+
+                    const response = await fetch(`/admin/trips/{{ trip.id }}/bookings/${currentBookingId}`, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    // Check if response is ok
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    if (data.success) {
+                        // Reset button state before closing modal
+                        saveManageBookingBtn.disabled = false;
+                        saveManageBookingBtn.innerText = 'Save Changes';
+                        
+                        // Update booking row in the list
+                        updateBookingRowInList(currentBookingId);
+                        
+                        // Update financials without full page reload
+                        updateFinancials();
+                        closeManageBookingModal();
+                        showToast('Booking updated successfully!', 'success');
+                    } else {
+                        showToast('Error: ' + (data.message || 'Failed to update booking'), 'error');
+                        saveManageBookingBtn.disabled = false;
+                        saveManageBookingBtn.innerText = 'Save Changes';
+                    }
+                } catch (err) {
+                    console.error('Error saving booking:', err);
+                    showToast('Error saving booking: ' + err.message, 'error');
+                    saveManageBookingBtn.disabled = false;
+                    saveManageBookingBtn.innerText = 'Save Changes';
+                }
+            });
+        }
+
+        // Update Booking Row in List
+        async function updateBookingRowInList(bookingId) {
+            try {
+                const response = await fetch(`/admin/trips/{{ trip.id }}/bookings/${bookingId}?format=json`);
+                const data = await response.json();
+                
+                if (data.success && data.booking) {
+                    const booking = data.booking;
+                    const row = document.querySelector(`tr[data-booking-id="${bookingId}"]`);
+                    if (!row) return;
+                    
+                    // Update status badge
+                    const statusCell = row.querySelector('td:nth-child(4)');
+                    if (statusCell) {
+                        const statusText = booking.status.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                        let statusClass = 'bg-yellow-100 text-yellow-800';
+                        if (booking.status === 'fully_paid') statusClass = 'bg-green-100 text-green-800';
+                        else if (booking.status === 'deposit_paid') statusClass = 'bg-blue-100 text-blue-800';
+                        else if (booking.status === 'cancelled') statusClass = 'bg-red-100 text-red-800';
+                        
+                        statusCell.innerHTML = `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass}">${statusText}</span>`;
+                    }
+                    
+                    // Update add-ons cell
+                    const addonsCell = document.getElementById(`addons-cell-${bookingId}`);
+                    if (addonsCell) {
+                        // Collect and merge add-ons from all sources
+                        const addonsMap = {};
+                        const seenAddonIds = new Set();
+                        
+                        // 方法1：从 participant.addons 获取
+                        if (booking.participants) {
+                            booking.participants.forEach(p => {
+                                if (p.addons && p.addons.length > 0) {
+                                    p.addons.forEach(a => {
+                                        const addonKey = a.id || a.name;
+                                        if (!seenAddonIds.has(addonKey)) {
+                                            if (addonsMap[a.name]) {
+                                                addonsMap[a.name] += a.quantity;
+                                            } else {
+                                                addonsMap[a.name] = a.quantity;
+                                            }
+                                            seenAddonIds.add(addonKey);
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                        
+                        // 方法2：从 booking.addons 获取
+                        if (booking.addons && booking.addons.length > 0) {
+                            booking.addons.forEach(a => {
+                                const addonKey = a.id || a.name;
+                                if (!seenAddonIds.has(addonKey)) {
+                                    if (addonsMap[a.name]) {
+                                        addonsMap[a.name] += a.quantity;
+                                    } else {
+                                        addonsMap[a.name] = a.quantity;
+                                    }
+                                    seenAddonIds.add(addonKey);
+                                }
+                            });
+                        }
+                        
+                        const addonNames = Object.keys(addonsMap);
+                        if (addonNames.length > 0) {
+                            addonsCell.innerHTML = addonNames.map(name => {
+                                const qty = addonsMap[name];
+                                return `<span class="inline-block text-xs bg-gray-100 px-2 py-0.5 rounded mr-1 mb-1">${name}${qty > 1 ? ' x' + qty : ''}</span>`;
+                            }).join('');
+                        } else {
+                            addonsCell.innerHTML = '-';
+                        }
+                    }
+                    
+                    // Update data-status attribute for filtering
+                    row.setAttribute('data-status', booking.status);
+                }
+            } catch (err) {
+                console.error('Error updating booking row:', err);
+            }
+        }
+
+        // Update Financials Function
+        async function updateFinancials() {
+            try {
+                const response = await fetch(`/admin/trips/{{ trip.id }}/financials`);
+                const data = await response.json();
+                if (data.success && data.financials) {
+                    const financials = data.financials;
+                    // Update the financial display elements
+                    const grossEl = document.getElementById('financialGross');
+                    const discountEl = document.getElementById('financialDiscount');
+                    const discountRow = document.getElementById('discountRow');
+                    const expectedEl = document.getElementById('financialExpected');
+                    const paidEl = document.getElementById('financialPaid');
+                    const pendingEl = document.getElementById('financialPending');
+                    
+                    if (grossEl) grossEl.textContent = '$' + financials.gross_amount.toFixed(2);
+                    if (discountEl && discountRow) {
+                        if (financials.total_discount > 0) {
+                            discountEl.textContent = '-$' + financials.total_discount.toFixed(2);
+                            discountRow.classList.remove('hidden');
+                        } else {
+                            discountRow.classList.add('hidden');
+                        }
+                    }
+                    if (expectedEl) expectedEl.textContent = '$' + financials.expected_amount.toFixed(2);
+                    if (paidEl) paidEl.textContent = '$' + financials.amount_paid.toFixed(2);
+                    if (pendingEl) {
+                        pendingEl.textContent = '$' + financials.amount_pending.toFixed(2);
+                        // Update color based on pending amount
+                        pendingEl.classList.remove('text-green-600', 'text-amber-600');
+                        if (financials.amount_pending > 0) {
+                            pendingEl.classList.add('text-amber-600');
+                        } else {
+                            pendingEl.classList.add('text-green-600');
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Error updating financials:', err);
+                // Fallback to page reload if AJAX fails
+                location.reload();
+            }
+        }
+
+        // Send Email Function
+        if (sendEmailBtn) {
+            sendEmailBtn.addEventListener('click', async function() {
+                if (!currentBookingId || !currentBookingData) return;
+
+                const subject = document.getElementById('emailSubject').value.trim();
+                const body = document.getElementById('emailBody').value.trim();
+
+                if (!subject) {
+                    showToast('Please enter email subject', 'warning');
+                    return;
+                }
+                if (!body) {
+                    showToast('Please enter email message', 'warning');
+                    return;
+                }
+
+                sendEmailBtn.disabled = true;
+                sendEmailBtn.innerText = 'Sending...';
+
+                try {
+                    const response = await fetch(`/admin/trips/{{ trip.id }}/bookings/${currentBookingId}/send-email`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            subject: subject,
+                            body: body
+                        })
+                    });
+
+                    const data = await response.json();
+                    if (data.success) {
+                        showToast('Email sent successfully!', 'success');
+                        document.getElementById('emailBody').value = '';
+                    } else {
+                        showToast('Failed to send email: ' + (data.message || 'Unknown error'), 'error');
+                        sendEmailBtn.disabled = false;
+                        sendEmailBtn.innerText = 'Send Email';
+                    }
+                } catch (err) {
+                    console.error('Error sending email:', err);
+                    showToast('Error sending email', 'error');
+                    sendEmailBtn.disabled = false;
+                    sendEmailBtn.innerText = 'Send Email';
+                }
+            });
+        }
+
+        // Generate Receipt Function
+        if (generateReceiptBtn) {
+            generateReceiptBtn.addEventListener('click', function() {
+                if (!currentBookingId) return;
+                // Open receipt in new window
+                window.open(`/admin/trips/{{ trip.id }}/bookings/${currentBookingId}/receipt`, '_blank');
+            });
+        }
+
+        // Refund Modal Functions
+        const refundModal = document.getElementById('refundModal');
+        const refundBookingBtn = document.getElementById('refundBookingBtn');
+        const closeRefundModalBtn = document.getElementById('closeRefundModalBtn');
+        const cancelRefundBtn = document.getElementById('cancelRefundBtn');
+        const confirmRefundBtn = document.getElementById('confirmRefundBtn');
+        const refundTypeRadios = document.querySelectorAll('input[name="refundType"]');
+        const partialRefundInput = document.getElementById('partialRefundInput');
+        const refundAmountInput = document.getElementById('refundAmount');
+        
+        // Attach event listeners to refundAmountInput if it exists
+        if (refundAmountInput) {
+            refundAmountInput.addEventListener('wheel', function(e) {
+                e.preventDefault();
+            });
+            refundAmountInput.addEventListener('mousedown', function(e) {
+                if (e.button === 1) {
+                    e.preventDefault();
+                }
+            });
+            refundAmountInput.addEventListener('input', function(e) {
+                this.value = this.value.replace(/[^0-9.]/g, '');
+                const parts = this.value.split('.');
+                if (parts.length > 2) {
+                    this.value = parts[0] + '.' + parts.slice(1).join('');
+                }
+            });
+            refundAmountInput.addEventListener('paste', function(e) {
+                const paste = (e.clipboardData || window.clipboardData).getData('text');
+                const filteredPaste = paste.replace(/[^0-9.]/g, '');
+                const parts = filteredPaste.split('.');
+                const finalPaste = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : filteredPaste;
+                document.execCommand('insertText', false, finalPaste);
+                e.preventDefault();
+            });
+        }
+
+        // Toggle partial refund input
+        refundTypeRadios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.value === 'partial') {
+                    partialRefundInput.classList.remove('hidden');
+                    refundAmountInput.required = true;
+                } else {
+                    partialRefundInput.classList.add('hidden');
+                    refundAmountInput.required = false;
+                }
+            });
+        });
+
+        // Open Refund Modal
+        if (refundBookingBtn) {
+            refundBookingBtn.addEventListener('click', function() {
+                if (!currentBookingId || !currentBookingData) return;
+                
+                document.getElementById('refundBookingId').textContent = currentBookingId;
+                document.getElementById('refundAmountPaid').textContent = '$' + parseFloat(currentBookingData.expected_amount || 0).toFixed(2);
+                document.getElementById('refundFullAmount').textContent = '$' + parseFloat(currentBookingData.amount_paid || 0).toFixed(2);
+                
+                // Reset form
+                document.querySelector('input[name="refundType"][value="full"]').checked = true;
+                partialRefundInput.classList.add('hidden');
+                refundAmountInput.value = '';
+                refundAmountInput.required = false;
+                document.getElementById('refundReason').value = '';
+                
+                refundModal.classList.remove('hidden');
+            });
+        }
+
+        // Close Refund Modal
+        function closeRefundModal() {
+            refundModal.classList.add('hidden');
+        }
+
+        if (closeRefundModalBtn) {
+            closeRefundModalBtn.addEventListener('click', closeRefundModal);
+        }
+        if (cancelRefundBtn) {
+            cancelRefundBtn.addEventListener('click', closeRefundModal);
+        }
+
+        // Process Refund
+        if (confirmRefundBtn) {
+            confirmRefundBtn.addEventListener('click', async function() {
+                if (!currentBookingId) return;
+                
+                const refundType = document.querySelector('input[name="refundType"]:checked').value;
+                let refundAmount = 0;
+                
+                if (refundType === 'full') {
+                    refundAmount = parseFloat(currentBookingData.amount_paid || 0);
+                } else {
+                    refundAmount = parseFloat(refundAmountInput.value);
+                    if (!refundAmount || refundAmount <= 0) {
+                        showToast('Please enter a valid refund amount', 'warning');
+                        return;
+                    }
+                    if (refundAmount > parseFloat(currentBookingData.amount_paid || 0)) {
+                        showToast('Refund amount cannot exceed amount paid', 'error');
+                        return;
+                    }
+                }
+                
+                const reason = document.getElementById('refundReason').value;
+                
+                confirmRefundBtn.disabled = true;
+                confirmRefundBtn.innerText = 'Processing...';
+                
+                try {
+                    const response = await fetch(`/admin/trips/{{ trip.id }}/bookings/${currentBookingId}/refund`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            amount: refundAmount,
+                            reason: reason,
+                            type: refundType
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    if (data.success) {
+                        showToast('Refund processed successfully!', 'success');
+                        closeRefundModal();
+                        closeManageBookingModal();
+                        location.reload(); // Reload to update financials
+                    } else {
+                        showToast('Error: ' + (data.message || 'Failed to process refund'), 'error');
+                        confirmRefundBtn.disabled = false;
+                        confirmRefundBtn.innerText = 'Process Refund';
+                    }
+                } catch (err) {
+                    console.error('Error processing refund:', err);
+                    showToast('Error processing refund: ' + err.message, 'error');
+                    confirmRefundBtn.disabled = false;
+                    confirmRefundBtn.innerText = 'Process Refund';
+                }
+            });
+        }
+
+        // Delete Modal Functions
+        const deleteModal = document.getElementById('deleteModal');
+        const deleteBookingBtn = document.getElementById('deleteBookingBtn');
+        const closeDeleteModalBtn = document.getElementById('cancelDeleteBtn');
+        const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+
+        // Open Delete Modal
+        if (deleteBookingBtn) {
+            deleteBookingBtn.addEventListener('click', function() {
+                if (!currentBookingId) return;
+                document.getElementById('deleteBookingId').textContent = currentBookingId;
+                deleteModal.classList.remove('hidden');
+            });
+        }
+
+        // Close Delete Modal
+        function closeDeleteModal() {
+            deleteModal.classList.add('hidden');
+        }
+
+        if (closeDeleteModalBtn) {
+            closeDeleteModalBtn.addEventListener('click', closeDeleteModal);
+        }
+
+        // Confirm Delete
+        if (confirmDeleteBtn) {
+            confirmDeleteBtn.addEventListener('click', async function() {
+                if (!currentBookingId) return;
+                
+                confirmDeleteBtn.disabled = true;
+                confirmDeleteBtn.innerText = 'Deleting...';
+                
+                try {
+                    const response = await fetch(`/admin/trips/{{ trip.id }}/bookings/${currentBookingId}/delete`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    if (data.success) {
+                        showToast('Booking deleted successfully!', 'success');
+                        closeDeleteModal();
+                        closeManageBookingModal();
+                        location.reload(); // Reload to update list
+                    } else {
+                        showToast('Error: ' + (data.message || 'Failed to delete booking'), 'error');
+                        confirmDeleteBtn.disabled = false;
+                        confirmDeleteBtn.innerText = 'Delete';
+                    }
+                } catch (err) {
+                    console.error('Error deleting booking:', err);
+                    showToast('Error deleting booking: ' + err.message, 'error');
+                    confirmDeleteBtn.disabled = false;
+                    confirmDeleteBtn.innerText = 'Delete';
+                }
+            });
+        }
+    });
+
+    // Messages Tab Functions
+    window.switchMessageTab = function(tab) {
+        // Hide all message content
+        document.querySelectorAll('.msg-content').forEach(el => el.classList.add('hidden'));
+        // Remove active class from all subtabs
+        document.querySelectorAll('.msg-subtab').forEach(el => {
+            el.classList.remove('border-wetravel-cyan', 'text-wetravel-cyan');
+            el.classList.add('border-transparent', 'text-gray-500');
+        });
+        // Show selected content
+        document.getElementById('msg-content-' + tab).classList.remove('hidden');
+        // Activate selected tab
+        const activeTab = document.getElementById('msg-tab-' + tab);
+        activeTab.classList.remove('border-transparent', 'text-gray-500');
+        activeTab.classList.add('border-wetravel-cyan', 'text-wetravel-cyan');
+    };
+
+    window.openNewMessageModal = function() {
+        document.getElementById('newMessageModal').classList.remove('hidden');
+        // Initialize Quill editor if not already initialized
+        if (!window.messageQuill) {
+            window.messageQuill = new Quill('#messageEditor', {
+                theme: 'snow',
+                modules: {
+                    toolbar: [
+                        [{ 'header': [1, 2, 3, false] }],
+                        ['bold', 'italic', 'underline', 'strike'],
+                        [{ 'color': [] }, { 'background': [] }],
+                        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                        [{ 'align': [] }],
+                        ['link'],
+                        ['clean']
+                    ]
+                }
+            });
+        }
+    };
+
+    window.closeNewMessageModal = function() {
+        document.getElementById('newMessageModal').classList.add('hidden');
+        // Reset form
+        document.getElementById('newMessageForm').reset();
+        if (window.messageQuill) {
+            window.messageQuill.setContents([]);
+        }
+    };
+
+    // Update switchTab to show/hide action buttons
+    const originalSwitchTab = window.switchTab;
+    window.switchTab = function(targetTab) {
+        originalSwitchTab(targetTab);
+        // Show/hide action buttons based on tab
+        if (targetTab === 'messages') {
+            document.getElementById('messagesActions').style.display = 'flex';
+            document.getElementById('bookingsActions').style.display = 'none';
+        } else {
+            document.getElementById('messagesActions').style.display = 'none';
+            document.getElementById('bookingsActions').style.display = 'flex';
+        }
+    };
+</script>
+
+<!-- New Message Modal -->
+<div id="newMessageModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+    <div class="relative top-10 mx-auto w-full max-w-4xl shadow-lg rounded-lg bg-white">
+        <!-- Modal Header -->
+        <div class="p-6 border-b">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h3 class="text-lg font-medium text-gray-900">New Message</h3>
+                    <p class="text-sm text-gray-500 mt-1">Send emails with critical reminders and trip updates.</p>
+                </div>
+                <button onclick="closeNewMessageModal()" class="text-gray-400 hover:text-gray-500">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Modal Body -->
+        <form id="newMessageForm" onsubmit="handleMessageSubmit(event)">
+            <div class="p-6 space-y-6">
+                <!-- Sender Name -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Sender name</label>
+                    <input type="text" name="sender_name" value="{{ sender_name }}" 
+                        class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6" required>
+                </div>
+
+                <!-- Send To -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Send to</label>
+                    <select name="recipient_type" id="recipientType" 
+                        class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6" required>
+                        <option value="">Please select the recipients</option>
+                        <option value="all">Everyone on this trip ({{ total_participants_count }})</option>
+                        <option value="package">Everyone with a specific package or add-on</option>
+                        <option value="payment_due">Everyone with payments past due</option>
+                        <option value="incomplete_questions">Everyone with incomplete required questions</option>
+                        <option value="missing_signatures">Everyone with missing signatures</option>
+                        <option value="specific">Specific recipients</option>
+                    </select>
+                    <!-- Specific Recipients (hidden by default) -->
+                    <div id="specificRecipients" class="mt-2 hidden">
+                        <select name="specific_recipients" multiple 
+                            class="block w-full rounded-md border-0 h-32 px-3 py-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm">
+                            {% for participant in all_participants %}
+                            <option value="{{ participant.email }}">{{ participant.name }} ({{ participant.email }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Reply-to Email -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Reply-to email</label>
+                    <input type="email" name="reply_to_email" value="{{ sender_email }}" 
+                        class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6" required>
+                </div>
+
+                <!-- Subject -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+                    <input type="text" name="subject" 
+                        class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6" required>
+                </div>
+
+                <!-- Message Body -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Message</label>
+                    <div id="messageEditor" style="height: 300px;"></div>
+                    <textarea name="body_html" id="messageBodyHtml" style="display: none;"></textarea>
+                </div>
+
+                <!-- Add Attachment -->
+                <div>
+                    <button type="button" onclick="document.getElementById('attachmentInput').click()" 
+                        class="border border-wetravel-cyan text-wetravel-cyan px-4 py-2 rounded text-sm hover:bg-gray-50">
+                        Add Attachment
+                    </button>
+                    <input type="file" id="attachmentInput" multiple style="display: none;" onchange="handleAttachmentChange(event)">
+                    <div id="attachmentList" class="mt-2"></div>
+                </div>
+
+                <!-- Send Options -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Send:</label>
+                    <div class="flex space-x-4">
+                        <label class="flex items-center">
+                            <input type="radio" name="send_option" value="now" checked class="mr-2">
+                            <span>Now</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="radio" name="send_option" value="schedule" class="mr-2">
+                            <span>Schedule</span>
+                        </label>
+                    </div>
+                    <!-- Schedule Date/Time (hidden by default) -->
+                    <div id="scheduleDateTime" class="mt-2 hidden">
+                        <input type="datetime-local" name="scheduled_at" 
+                            class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="p-6 border-t flex justify-end space-x-4">
+                <button type="button" onclick="closeNewMessageModal()" 
+                    class="border border-wetravel-cyan text-wetravel-cyan px-4 py-2 rounded text-sm hover:bg-gray-50">
+                    Discard
+                </button>
+                <button type="button" onclick="saveMessageAsDraft()" 
+                    class="bg-wetravel-cyan text-white px-4 py-2 rounded text-sm hover:bg-cyan-600">
+                    Save As Draft
+                </button>
+                <button type="submit" 
+                    class="bg-wetravel-green text-white px-4 py-2 rounded text-sm hover:bg-green-600">
+                    Send Now
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Quill.js CSS and JS -->
+<link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+<script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+
+<script>
+    // Initialize Quill editor when modal opens
+    let messageQuill = null;
+
+    // Handle recipient type change
+    document.getElementById('recipientType')?.addEventListener('change', function() {
+        if (this.value === 'specific') {
+            document.getElementById('specificRecipients').classList.remove('hidden');
+        } else {
+            document.getElementById('specificRecipients').classList.add('hidden');
+        }
+    });
+
+    // Handle send option change
+    document.querySelectorAll('input[name="send_option"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            if (this.value === 'schedule') {
+                document.getElementById('scheduleDateTime').classList.remove('hidden');
+            } else {
+                document.getElementById('scheduleDateTime').classList.add('hidden');
+            }
+        });
+    });
+
+    // Handle attachment change
+    function handleAttachmentChange(event) {
+        const files = event.target.files;
+        const attachmentList = document.getElementById('attachmentList');
+        attachmentList.innerHTML = '';
+        Array.from(files).forEach(file => {
+            const div = document.createElement('div');
+            div.className = 'text-sm text-gray-600 mb-1';
+            div.textContent = file.name;
+            attachmentList.appendChild(div);
+        });
+    }
+
+    // Handle message submit
+    async function handleMessageSubmit(event) {
+        event.preventDefault();
+        const form = event.target;
+        const formData = new FormData(form);
+        
+        // Get Quill content
+        if (messageQuill) {
+            formData.append('body_html', messageQuill.root.innerHTML);
+        }
+        
+        // Get recipient config
+        const recipientType = formData.get('recipient_type');
+        const recipientConfig = { type: recipientType };
+        
+        if (recipientType === 'specific') {
+            const specificRecipients = Array.from(form.querySelectorAll('select[name="specific_recipients"] option:checked'))
+                .map(opt => ({ email: opt.value, name: opt.text.split(' (')[0] }));
+            recipientConfig.recipients = specificRecipients;
+        }
+        
+        formData.append('recipient_config', JSON.stringify(recipientConfig));
+        
+        // Send to server
+        try {
+            const response = await fetch('{{ url_for("admin.create_message", id=trip.id) }}', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            if (result.success) {
+                showToast('Message sent successfully!', 'success');
+                closeNewMessageModal();
+                location.reload();
+            } else {
+                showToast('Error: ' + result.message, 'error');
+            }
+        } catch (error) {
+            showToast('Error sending message: ' + error.message, 'error');
+        }
+    }
+
+    // Save as draft
+    async function saveMessageAsDraft() {
+        const form = document.getElementById('newMessageForm');
+        const formData = new FormData(form);
+        
+        if (messageQuill) {
+            formData.append('body_html', messageQuill.root.innerHTML);
+        }
+        
+        formData.append('status', 'draft');
+        formData.append('recipient_config', JSON.stringify({ type: formData.get('recipient_type') }));
+        
+        try {
+            const response = await fetch('{{ url_for("admin.create_message", id=trip.id) }}', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            if (result.success) {
+                showToast('Draft saved successfully!', 'success');
+                closeNewMessageModal();
+                location.reload();
+            } else {
+                showToast('Error: ' + result.message, 'error');
+            }
+        } catch (error) {
+            showToast('Error saving draft: ' + error.message, 'error');
+        }
+    }
+
+    // Edit draft message
+    function editDraftMessage(messageId) {
+        // TODO: Load draft message and open modal
+        console.log('Edit draft:', messageId);
+    }
+
+    // Initialize Quill when modal opens
+    window.openNewMessageModal = function() {
+        document.getElementById('newMessageModal').classList.remove('hidden');
+        if (!messageQuill) {
+            messageQuill = new Quill('#messageEditor', {
+                theme: 'snow',
+                modules: {
+                    toolbar: [
+                        [{ 'header': [1, 2, 3, false] }],
+                        ['bold', 'italic', 'underline', 'strike'],
+                        [{ 'color': [] }, { 'background': [] }],
+                        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                        [{ 'align': [] }],
+                        ['link'],
+                        ['clean']
+                    ]
+                }
+            });
+        }
+    };
+</script>
+{% endblock %}

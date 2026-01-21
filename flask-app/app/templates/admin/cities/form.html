@@ -1,0 +1,55 @@
+{% extends "admin/base_wetravel.html" %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <div class="mb-6 flex items-center justify-between">
+        <h2 class="text-2xl font-normal text-gray-500">{{ title }}</h2>
+        <a href="{{ url_for('admin.cities') }}" class="text-sm text-gray-500 hover:text-gray-700 flex items-center">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18">
+                </path>
+            </svg>
+            Back to Cities
+        </a>
+    </div>
+
+    <div class="bg-white shadow sm:rounded-lg overflow-hidden">
+        <form method="post" class="space-y-6 p-6">
+            {{ form.hidden_tag() }}
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    {{ form.name.label(class="block text-sm font-medium text-gray-700 mb-1") }}
+                    {{ form.name(class="shadow-sm focus:outline-none focus:ring-wetravel-cyan focus:border-wetravel-cyan
+                    block w-full
+                    sm:text-sm border-gray-300 rounded-md p-2 border") }}
+                </div>
+
+                <div>
+                    {{ form.country.label(class="block text-sm font-medium text-gray-700 mb-1") }}
+                    {{ form.country(class="shadow-sm focus:outline-none focus:ring-wetravel-cyan
+                    focus:border-wetravel-cyan block w-full
+                    sm:text-sm border-gray-300 rounded-md p-2 border") }}
+                </div>
+            </div>
+
+            <div>
+                {{ form.description.label(class="block text-sm font-medium text-gray-700 mb-1") }}
+                {{ form.description(class="shadow-sm focus:outline-none focus:ring-wetravel-cyan
+                focus:border-wetravel-cyan block w-full
+                sm:text-sm border-gray-300 rounded-md p-2 border", rows="4") }}
+            </div>
+
+            <div class="flex justify-end pt-4 border-t border-gray-100">
+                <a href="{{ url_for('admin.cities') }}"
+                    class="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none mr-3">
+                    Cancel
+                </a>
+                {{ form.submit(class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm
+                font-medium rounded-md text-white bg-wetravel-green hover:bg-green-500 focus:outline-none
+                cursor-pointer") }}
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

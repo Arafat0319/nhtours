@@ -1,0 +1,520 @@
+{% extends "admin/trips/builder/base_builder.html" %}
+
+{% block builder_step_content %}
+<div class="max-w-4xl mx-auto">
+    <div class="mb-6">
+        <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:truncate sm:text-3xl sm:tracking-tight">Participant
+            Questionnaire</h2>
+        <p class="mt-1 text-sm text-gray-500">Collect necessary information from your participants.</p>
+    </div>
+
+    <form method="POST" id="questionsForm" onsubmit="return ensureQuestionsSaved()">
+        {{ form.hidden_tag() }}
+        {{ form.questions_json(id="questions_json") }}
+
+        <!-- Main Card: Checkout Info -->
+        <div class="bg-white shadow sm:rounded-lg border border-gray-200 overflow-hidden">
+            <!-- Header -->
+            <div class="px-4 py-5 sm:px-6 border-b border-gray-200 flex justify-between items-start bg-white">
+                <div>
+                    <h3 class="text-lg font-medium leading-6 text-gray-900">Checkout Info</h3>
+                    <p class="mt-1 text-sm text-gray-500">Information collected at checkout</p>
+                </div>
+                <div class="text-right">
+                    <!-- Right side content removed as per user request -->
+                </div>
+            </div>
+
+            <!-- Fields List -->
+            <div class="bg-white">
+                <ul role="list" class="divide-y divide-gray-100">
+                    <!-- Default Mandatory Fields -->
+                    <li class="px-4 py-4 sm:px-6 flex items-center justify-between hover:bg-gray-50">
+                        <div class="flex items-center gap-3">
+                            <svg class="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd"
+                                    d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                            <span class="text-sm font-medium text-gray-900">First Name <span
+                                    class="text-red-500">*</span></span>
+                        </div>
+                        <span class="text-sm text-gray-400 italic">Collected by default</span>
+                    </li>
+                    <li class="px-4 py-4 sm:px-6 flex items-center justify-between hover:bg-gray-50">
+                        <div class="flex items-center gap-3">
+                            <svg class="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd"
+                                    d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                            <span class="text-sm font-medium text-gray-900">Last Name <span
+                                    class="text-red-500">*</span></span>
+                        </div>
+                        <span class="text-sm text-gray-400 italic">Collected by default</span>
+                    </li>
+                    <li class="px-4 py-4 sm:px-6 flex items-center justify-between hover:bg-gray-50">
+                        <div class="flex items-center gap-3">
+                            <svg class="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd"
+                                    d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                            <span class="text-sm font-medium text-gray-900">Email <span
+                                    class="text-red-500">*</span></span>
+                        </div>
+                        <span class="text-sm text-gray-400 italic">Collected by default</span>
+                    </li>
+
+                    <!-- Dynamic Questions Container -->
+                    <div id="custom-questions-container">
+                        <!-- Populated by JS -->
+                    </div>
+                </ul>
+
+                <!-- Add Question Row -->
+                <div class="px-4 py-4 sm:px-6 bg-white border-t border-gray-100">
+                    <button type="button" onclick="openQuestionModal()"
+                        class="flex items-center text-wetravel-cyan hover:text-wetravel-cyan-dark font-medium text-sm">
+                        <svg class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd"
+                                d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z"
+                                clip-rule="evenodd" />
+                        </svg>
+                        Add question
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-6 flex items-center justify-end gap-x-6">
+            <a href="{{ url_for('admin.trip_builder', id=trip.id, step='buyer_info') }}"
+                class="text-sm font-semibold leading-6 text-gray-900">Back</a>
+            <button type="submit"
+                class="rounded-md bg-wetravel-cyan px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-wetravel-cyan-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wetravel-cyan">Save
+                & Continue</button>
+        </div>
+    </form>
+</div>
+
+<!-- Modal -->
+<div id="questionModal" class="relative z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+    <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+        <div class="flex min-h-full items-center justify-center p-4 text-center">
+            <div
+                class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:w-full sm:max-w-lg">
+                <!-- Close Button -->
+                <div class="absolute right-4 top-4">
+                    <button type="button" onclick="closeQuestionModal()" class="text-gray-400 hover:text-gray-500">
+                        <span class="sr-only">Close</span>
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="bg-white px-4 pb-4 pt-5 sm:p-6 pb-4">
+                    <h3 class="text-lg font-semibold leading-6 text-gray-900 mb-6" id="modal-title">Add Question</h3>
+
+                    <div class="space-y-5">
+                        <input type="hidden" id="q_id">
+
+                        <!-- Question Type & Required Row -->
+                        <div class="flex items-start gap-6">
+                            <div class="flex-1">
+                                <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Question
+                                    Type</label>
+                                <select id="q_type" onchange="toggleOptionField()"
+                                    class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
+                                    <option value="text">Text Answer</option>
+                                    <option value="textarea">Long Text Answer</option>
+                                    <option value="number">Number</option>
+                                    <option value="date">Date</option>
+                                    <option value="choice">Multiple Choice (Dropdown)</option>
+                                    <option value="file">File Upload</option>
+                                </select>
+                            </div>
+
+                            <!-- Required Toggle (Yes/No Button Group) -->
+                            <div>
+                                <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Required?</label>
+                                <div class="flex rounded-md shadow-sm" role="group">
+                                    <button type="button" onclick="toggleRequired(true)" id="btn-req-yes"
+                                        class="px-3 py-1.5 text-sm font-medium rounded-l-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
+                                        Yes
+                                    </button>
+                                    <button type="button" onclick="toggleRequired(false)" id="btn-req-no"
+                                        class="px-3 py-1.5 text-sm font-medium rounded-r-md border border-l-0 border-gray-300 bg-gray-100 text-gray-900 hover:bg-gray-200 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
+                                        No
+                                    </button>
+                                </div>
+                                <input type="hidden" id="q_required_val" value="false">
+                            </div>
+                        </div>
+
+                        <!-- Question Label -->
+                        <div class="border-t border-gray-200 pt-5">
+                            <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Question Label</label>
+                            <input type="text" id="q_label"
+                                class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6"
+                                placeholder="e.g. Dietary Restrictions">
+                        </div>
+
+                        <!-- Options (Conditional) -->
+                        <div id="options_container" class="hidden border-t border-gray-200 pt-5">
+                            <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Options (Comma
+                                separated)</label>
+                            <textarea id="q_options" rows="3"
+                                class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6"
+                                placeholder="Option A, Option B"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6 border-t border-gray-100">
+                    <button type="button" onclick="saveQuestion()"
+                        class="inline-flex w-full justify-center rounded-md bg-wetravel-green px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-600 sm:ml-3 sm:w-auto">Save
+                        Question</button>
+                    <button type="button" onclick="closeQuestionModal()"
+                        class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto">Cancel</button>
+                    <button type="button" id="deleteBtn" onclick="deleteCurrentQuestion()"
+                        class="hidden mt-3 inline-flex w-full justify-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:mt-0 sm:ml-3 sm:w-auto">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let questions = [];
+    let currentEditIndex = -1;
+    let isRequired = false;
+
+    let listContainer, hiddenInput, optionsContainer;
+    
+    // 初始化 questions 数组：从模板数据读取
+    function initializeQuestionsFromTemplate() {
+        try {
+            // 从模板数据读取（这是页面加载时的数据源）
+            const templateData = {{ form.questions_json.data|tojson if form.questions_json.data else '[]' }};
+            if (typeof templateData === 'string') {
+                questions = JSON.parse(templateData);
+            } else if (Array.isArray(templateData)) {
+                questions = templateData;
+            } else {
+                questions = [];
+            }
+        } catch (e) {
+            console.error('Error initializing questions from template:', e);
+            questions = [];
+        }
+    }
+    
+    // 初始化 questions 数组：从 hiddenInput 读取（DOM 加载后）
+    function initializeQuestionsFromInput() {
+        try {
+            if (hiddenInput && hiddenInput.value) {
+                const parsed = JSON.parse(hiddenInput.value);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    // 如果 hiddenInput 有数据，使用它（可能是用户修改后的数据）
+                    questions = parsed;
+                    return true;
+                }
+            }
+            return false;
+        } catch (e) {
+            console.error('Error initializing questions from input:', e);
+            return false;
+        }
+    }
+    
+    // 立即从模板数据初始化（在 DOM 加载前）
+    initializeQuestionsFromTemplate();
+
+
+    // Question Logic
+    function toggleOptionField() {
+        const type = document.getElementById('q_type').value;
+        if (type === 'choice') {
+            optionsContainer.classList.remove('hidden');
+        } else {
+            optionsContainer.classList.add('hidden');
+        }
+    }
+
+    function toggleRequired(val) {
+        isRequired = val;
+        const btnYes = document.getElementById('btn-req-yes');
+        const btnNo = document.getElementById('btn-req-no');
+
+        if (val) {
+            btnYes.className = "px-3 py-1.5 text-sm font-medium rounded-l-md border border-gray-300 bg-wetravel-cyan text-white hover:bg-cyan-600 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan";
+            btnNo.className = "px-3 py-1.5 text-sm font-medium rounded-r-md border border-l-0 border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan";
+        } else {
+            btnYes.className = "px-3 py-1.5 text-sm font-medium rounded-l-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan";
+            btnNo.className = "px-3 py-1.5 text-sm font-medium rounded-r-md border border-l-0 border-gray-300 bg-gray-100 text-gray-900 hover:bg-gray-200 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan";
+        }
+    }
+
+    function renderQuestions() {
+        // 确保 DOM 元素已获取
+        if (!listContainer) {
+            listContainer = document.getElementById('custom-questions-container');
+        }
+        if (!hiddenInput) {
+            hiddenInput = document.getElementById('questions_json');
+        }
+        
+        // 如果 DOM 元素不存在，直接返回
+        if (!listContainer || !hiddenInput) {
+            console.warn('DOM elements not ready, cannot render questions');
+            return;
+        }
+        
+        // 确保hiddenInput的值始终是最新的
+        hiddenInput.value = JSON.stringify(questions);
+        // 也更新form的value属性，确保提交时能获取到
+        if (hiddenInput.form) {
+            hiddenInput.form.questions_json.value = JSON.stringify(questions);
+        }
+        listContainer.innerHTML = '';
+
+        questions.forEach((item, index) => {
+            const li = document.createElement('li');
+            li.className = "px-4 py-4 sm:px-6 flex items-center justify-between hover:bg-gray-50 border-t border-gray-100 cursor-pointer group";
+            li.onclick = (e) => {
+                // Prevent edit if clicked on delete/move icons (future implementation)
+                editQuestion(index);
+            };
+
+            li.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <!-- Grab Icon (Visual Only) -->
+                    <svg class="h-5 w-5 text-gray-300 cursor-move" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" />
+                    </svg>
+                    <div>
+                        <span class="text-sm font-medium text-gray-900">${item.label} ${item.required ? '<span class="text-red-500">*</span>' : ''}</span>
+                        <p class="text-xs text-gray-500 capitalize">${item.type}</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                     <button type="button" class="text-gray-400 hover:text-wetravel-cyan">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                    </button>
+                    <button type="button" onclick="event.stopPropagation(); deleteQuestion(${index})" class="text-gray-400 hover:text-red-600">
+                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                    </button>
+                    <button type="button" class="text-gray-400 hover:text-gray-600">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                        </svg>
+                    </button>
+                </div>
+            `;
+            listContainer.appendChild(li);
+        });
+    }
+
+    function openQuestionModal() {
+        currentEditIndex = -1;
+        document.getElementById('modal-title').innerText = 'Add Question';
+        document.getElementById('q_id').value = '';
+        document.getElementById('q_label').value = '';
+        document.getElementById('q_type').value = 'text';
+        document.getElementById('q_options').value = '';
+        toggleRequired(false);
+
+        toggleOptionField();
+        document.getElementById('deleteBtn').classList.add('hidden');
+        document.getElementById('questionModal').classList.remove('hidden');
+    }
+
+    function editQuestion(index) {
+        currentEditIndex = index;
+        const item = questions[index];
+        document.getElementById('modal-title').innerText = 'Edit Question';
+        document.getElementById('q_id').value = item.id || '';
+        document.getElementById('q_label').value = item.label;
+        document.getElementById('q_type').value = item.type;
+
+        let opts = item.options;
+        if (Array.isArray(opts)) opts = opts.join(', ');
+        document.getElementById('q_options').value = opts || '';
+
+        toggleRequired(item.required);
+
+        toggleOptionField();
+        document.getElementById('deleteBtn').classList.remove('hidden');
+        document.getElementById('questionModal').classList.remove('hidden');
+    }
+
+    function closeQuestionModal() {
+        document.getElementById('questionModal').classList.add('hidden');
+    }
+
+    async function saveQuestion() {
+        const label = document.getElementById('q_label').value;
+        const type = document.getElementById('q_type').value;
+        if (!label) {
+            await customAlert('Question Label is required', 'Validation Error');
+            return;
+        }
+
+        let options = null;
+        if (type === 'choice') {
+            const rawOpts = document.getElementById('q_options').value;
+            if (rawOpts) {
+                options = rawOpts.split(',').map(s => s.trim()).filter(s => s.length > 0);
+            }
+        }
+
+        const data = {
+            id: document.getElementById('q_id').value ? parseInt(document.getElementById('q_id').value) : null,
+            label: label,
+            type: type,
+            options: options,
+            required: isRequired
+        };
+
+        if (currentEditIndex === -1) {
+            questions.push(data);
+        } else {
+            if (questions[currentEditIndex].id) {
+                data.id = questions[currentEditIndex].id;
+            }
+            questions[currentEditIndex] = data;
+        }
+
+        renderQuestions();
+        closeQuestionModal();
+    }
+
+    async function deleteQuestion(index) {
+        const confirmed = await customConfirm('Are you sure you want to delete this question? This action cannot be undone.', 'Delete Question', 'danger');
+        if (confirmed) {
+            questions.splice(index, 1);
+            renderQuestions();
+        }
+    }
+
+    async function deleteCurrentQuestion() {
+        if (currentEditIndex > -1) {
+            const confirmed = await customConfirm('Are you sure you want to delete this question? This action cannot be undone.', 'Delete Question', 'danger');
+            if (confirmed) {
+                questions.splice(currentEditIndex, 1);
+                renderQuestions();
+                closeQuestionModal();
+            }
+        }
+    }
+
+    // Init Logic
+    // If empty and clean (no questions), maybe add "Notes to Organizer" by default? 
+    // User requested "Notes to Organizer" as a default field. 
+    // Check if it exists, if not and total questions == 0, add it.
+
+    /**
+     * 确保表单提交前questions_json已更新
+     */
+    function ensureQuestionsSaved() {
+        // 在提交前再次确保hiddenInput的值是最新的
+        hiddenInput.value = JSON.stringify(questions);
+        console.log('Submitting questions:', questions);
+        console.log('Questions JSON:', hiddenInput.value);
+        return true;
+    }
+
+    // Wait for DOM
+    document.addEventListener('DOMContentLoaded', () => {
+        // 获取 DOM 元素
+        listContainer = document.getElementById('custom-questions-container');
+        hiddenInput = document.getElementById('questions_json');
+        optionsContainer = document.getElementById('options_container');
+        
+        // UI Logic for Lock Date
+        const lockDateBtn = document.getElementById('toggle-lock-date-btn');
+        const lockDateInputContainer = document.getElementById('lock-date-input-container');
+        const lockDateText = document.getElementById('lock-date-text');
+        const lockDateInput = document.querySelector('input[name="lock_date"]');
+
+        function updateLockDateUI() {
+            if (lockDateInput && lockDateInput.value) {
+                if (lockDateInputContainer) lockDateInputContainer.classList.remove('hidden');
+                if (lockDateText) lockDateText.innerText = 'Change lock date';
+            } else {
+                if (lockDateInputContainer) lockDateInputContainer.classList.add('hidden');
+                if (lockDateText) lockDateText.innerText = 'Set lock date (optional)';
+            }
+        }
+
+        if (lockDateBtn) {
+            lockDateBtn.addEventListener('click', function () {
+                if (lockDateInputContainer) {
+                    if (lockDateInputContainer.classList.contains('hidden')) {
+                        lockDateInputContainer.classList.remove('hidden');
+                    } else {
+                        lockDateInputContainer.classList.add('hidden');
+                    }
+                }
+            });
+        }
+
+        // Initial check
+        updateLockDateUI();
+        if (lockDateInput) {
+            lockDateInput.addEventListener('change', updateLockDateUI);
+        }
+        
+        // 确保 questions 数组正确初始化
+        if (!Array.isArray(questions)) {
+            console.warn('Questions data is not an array, re-initializing from template');
+            initializeQuestionsFromTemplate();
+        }
+        
+        // 检查 hiddenInput 的初始值（从模板渲染的值）
+        if (hiddenInput && hiddenInput.value) {
+            try {
+                const inputData = JSON.parse(hiddenInput.value);
+                if (Array.isArray(inputData) && inputData.length > 0) {
+                    // 如果 hiddenInput 有数据，使用它（这是从数据库加载的数据）
+                    questions = inputData;
+                    console.log('Loaded questions from hiddenInput:', questions);
+                }
+            } catch (e) {
+                console.error('Error parsing hiddenInput value:', e);
+            }
+        } else if (hiddenInput) {
+            // 如果 hiddenInput 没有值，确保它与 questions 数组同步
+            hiddenInput.value = JSON.stringify(questions);
+            console.log('Synced questions to hiddenInput:', questions);
+        }
+        
+        // 调试输出
+        console.log('Final questions array:', questions);
+        console.log('HiddenInput value:', hiddenInput ? hiddenInput.value : 'N/A');
+        
+        // 渲染问题列表
+        renderQuestions();
+        
+        // 监听表单提交，确保数据已保存
+        const form = document.getElementById('questionsForm');
+        if (form) {
+            form.addEventListener('submit', function(e) {
+                // 在提交前确保questions_json是最新的
+                if (hiddenInput) {
+                    hiddenInput.value = JSON.stringify(questions);
+                    console.log('Submitting questions:', questions);
+                    console.log('Submitting JSON:', hiddenInput.value);
+                }
+            });
+        }
+    });
+
+</script>
+{% endblock %}

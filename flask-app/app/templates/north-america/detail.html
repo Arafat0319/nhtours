@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Nexus Horizons | North America Tour{% endblock %}
+
+{% block description %}Nexus Horizons North America Tour Details{% endblock %}
+
+{% block content %}
+{# Hero背景区域 #}
+<div class="w-full h-[70vh]" style="background:url({{ url_for('static', filename='images/backgrounds/L1000655.DUAJU8VS.jpg') }}) center / cover no-repeat;">
+	<div class="flex h-full w-full items-center pr-10">
+		<div class="hidden md:grid w-full grid-cols-1 justify-items-end">
+			<a class="border-2 border-white w-[80px] h-[80px] bg-no-repeat bg-center bg-top bg-size-[50px] rounded-full bg-amber-800/80 transition-colors hover:bg-amber-800/90"
+				href="{{ url_for('main.asia_index') }}" style="background-image:url({{ url_for('static', filename='images/icons/asia-tower.Dubk1hOS.png') }})"></a>
+			<a class="mt-20 border-2 border-white w-[80px] h-[80px] bg-no-repeat bg-center bg-top bg-size-[30px] rounded-full bg-indigo-800/40 transition-colors hover:bg-indigo-800/50"
+				href="{{ url_for('main.north_america_index') }}" style="background-image:url({{ url_for('static', filename='images/icons/na-tower.2RQScOSr.png') }})"></a>
+		</div>
+	</div>
+</div>
+
+<div class="w-full h-[16px] bg-indigo-800"></div>
+
+<div class="max-w-6xl mx-auto py-8 px-8 pb-8 md:px-0">
+	<nav>
+		<ol class="flex flex-wrap items-center space-x-2 text-lg font-medium text-amber-800">
+			<li class="flex items-center">
+				<a class="hover:underline" href="{{ url_for('main.index') }}">Home</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<a class="hover:underline" href="{{ url_for('main.north_america_index') }}">North America</a>
+			</li>
+		</ol>
+	</nav>
+
+	<h1>North America Tour Details</h1>
+	<p class="content overview">
+		Tour information for: <span class="font-medium">{{ tour_name }}</span>
+	</p>
+	<p class="content overview mt-4">
+		此页面内容需要根据具体的旅游项目进一步完善。当前路由已正确配置。
+	</p>
+</div>
+{% endblock %}
+
+

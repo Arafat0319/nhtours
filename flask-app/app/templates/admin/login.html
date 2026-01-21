@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In - My Trips</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        wetravel: {
+                            cyan: '#00D1C1',
+                            green: '#4ADE80',
+                            dark: '#5F6B72'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Montserrat', 'Roboto', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Montserrat', sans-serif;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 flex flex-col justify-center min-h-screen py-12 sm:px-6 lg:px-8">
+
+    <div class="sm:mx-auto sm:w-full sm:max-w-md">
+        <!-- Brand Logo -->
+        <div class="flex justify-center">
+            <!-- Using the site logo logic, but dark version since bg is light? Or just the white logo on a dark circle? -->
+            <!-- Let's use the text logo color for now as requested by user "colors up to you" but clean -->
+            <img class="h-10 w-auto" src="{{ url_for('static', filename='images/icons/logo-2-white.DyAUH4zT.svg') }}"
+                alt="Nexus Horizons"
+                style="filter: invert(48%) sepia(13%) saturate(3207%) hue-rotate(130deg) brightness(95%) contrast(101%);">
+            <!-- Note: The SVG is white. To show it on light bg, we need a container or filter. 
+                  Actually, user said "replace header left with website logo". For login page, let's use a nice container. -->
+        </div>
+
+
+        <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+            Sign in to your account
+        </h2>
+    </div>
+
+    <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        <div class="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10 border border-gray-100">
+            <form class="space-y-6" method="post">
+                {{ form.hidden_tag() }}
+
+                <div>
+                    {{ form.username.label(class="block text-sm font-medium text-gray-700") }}
+                    <div class="mt-1">
+                        {{ form.username(class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md
+                        shadow-sm placeholder-gray-400 focus:outline-none focus:ring-wetravel-cyan
+                        focus:border-wetravel-cyan sm:text-sm") }}
+                    </div>
+                </div>
+
+                <div>
+                    {{ form.password.label(class="block text-sm font-medium text-gray-700") }}
+                    <div class="mt-1">
+                        {{ form.password(class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md
+                        shadow-sm placeholder-gray-400 focus:outline-none focus:ring-wetravel-cyan
+                        focus:border-wetravel-cyan sm:text-sm") }}
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        {{ form.remember_me(class="h-4 w-4 text-wetravel-cyan focus:ring-wetravel-cyan border-gray-300
+                        rounded") }}
+                        {{ form.remember_me.label(class="ml-2 block text-sm text-gray-900") }}
+                    </div>
+
+                    <div class="text-sm">
+                        <a href="#" class="font-medium text-wetravel-cyan hover:text-cyan-500">
+                            Forgot your password?
+                        </a>
+                    </div>
+                </div>
+
+                <div>
+                    {{ form.submit(class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md
+                    shadow-sm text-sm font-medium text-white bg-wetravel-green hover:bg-green-600 focus:outline-none
+                    focus:ring-2 focus:ring-offset-2 focus:ring-wetravel-green cursor-pointer") }}
+                </div>
+            </form>
+
+            <!-- Flask Flash Messages -->
+            {% with messages = get_flashed_messages() %}
+            {% if messages %}
+            <div class="mt-6 space-y-2">
+                {% for message in messages %}
+                <div class="bg-red-50 border-1 border-red-200 text-red-600 text-sm p-3 rounded text-center">
+                    {{ message }}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endwith %}
+        </div>
+    </div>
+
+</body>
+
+</html>

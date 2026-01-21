@@ -1,0 +1,374 @@
+{% extends "admin/base_wetravel.html" %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header Area -->
+    <div class="flex justify-between items-center">
+        <div>
+            <h2 class="text-2xl font-normal text-gray-500">
+                {% if filter_type == 'upcoming' %}Upcoming Trips
+                {% elif filter_type == 'past' %}Past Trips
+                {% elif filter_type == 'draft' %}Draft Trips
+                {% elif filter_type == 'archived' %}Archived Trips
+                {% else %}Trips{% endif %}
+                <span class="text-gray-400">({{ count }})</span>
+            </h2>
+        </div>
+
+        <div class="flex space-x-4">
+            <!-- Search & Sort Form -->
+            <form action="{{ url_for('admin.trips') }}" method="get" class="flex items-center space-x-4"
+                id="searchForm">
+                <input type="hidden" name="view" value="{{ request.args.get('view', 'list') }}">
+                <input type="hidden" name="filter" value="{{ filter_type }}">
+
+                <!-- Search -->
+                <div class="relative">
+                    <input type="text" name="q" id="searchInput" placeholder="Search trips..."
+                        value="{{ request.args.get('q', '') }}"
+                        class="pl-8 pr-4 py-2 border border-gray-300 rounded text-sm w-64 focus:outline-none focus:border-wetravel-cyan"
+                        {% if request.args.get('q') %}autofocus
+                        onfocus="var val=this.value; this.value=''; this.value= val;" {% endif %}>
+                    <svg class="w-4 h-4 text-wetravel-cyan absolute left-2.5 top-3" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                </div>
+
+                <!-- Sort -->
+                <div class="flex items-center space-x-2 text-sm text-gray-500">
+                    <select name="sort" onchange="this.form.submit()"
+                        class="border-none bg-transparent focus:ring-0 cursor-pointer text-gray-500 font-medium text-sm">
+                        <option value="created_desc" {% if request.args.get('sort')=='created_desc' %}selected{% endif
+                            %}>Date Created: Latest</option>
+                        <option value="created_asc" {% if request.args.get('sort')=='created_asc' %}selected{% endif %}>
+                            Date Created: Earliest</option>
+                        <option value="start_date_asc" {% if request.args.get('sort')=='start_date_asc' %}selected{%
+                            endif %}>Start Date: Earliest</option>
+                        <option value="start_date_desc" {% if request.args.get('sort')=='start_date_desc' %}selected{%
+                            endif %}>Start Date: Latest</option>
+                        <option value="title_asc" {% if request.args.get('sort')=='title_asc' %}selected{% endif %}>
+                            Title: A-Z</option>
+                    </select>
+                </div>
+            </form>
+
+            <script>
+                // Debounce Search
+                let searchTimeout;
+                const searchInput = document.getElementById('searchInput');
+                const searchForm = document.getElementById('searchForm');
+
+                searchInput.addEventListener('input', function () {
+                    clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(function () {
+                        searchForm.submit();
+                    }, 800); // Wait 800ms after user stops typing
+                });
+            </script>
+
+            <!-- View Toggle -->
+            <div class="border border-wetravel-cyan rounded flex overflow-hidden">
+                <span class="bg-wetravel-cyan text-white px-3 py-1 flex items-center space-x-1 text-sm cursor-default">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                    <span>List</span>
+                </span>
+                <a href="{{ url_for('admin.trips', view='calendar', filter=filter_type) }}"
+                    class="bg-white text-gray-400 hover:text-wetravel-cyan hover:bg-gray-50 px-3 py-1 flex items-center space-x-1 text-sm">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z">
+                        </path>
+                    </svg>
+                    <span>Calendar</span>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Warning Message (as in screenshot) -->
+    <!-- Warning Message Removed -->
+
+    <!-- Cards Grid -->
+    <div class="grid grid-cols-1 gap-4">
+        {% for trip in trips %}
+        <div class="bg-white p-4 rounded shadow-sm hover:shadow transition-shadow flex">
+            <!-- Image -->
+            <div class="w-48 h-32 flex-shrink-0 bg-gray-200 rounded overflow-hidden mr-6 relative">
+                {% if trip.highlight_image or trip.hero_image %}
+                <img src="{{ url_for('static', filename=trip.highlight_image or trip.hero_image) }}"
+                    alt="{{ trip.title }}" class="w-full h-full object-cover">
+                {% else %}
+                <div class="w-full h-full flex items-center justify-center text-gray-400">
+                    <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
+                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                </div>
+                {% endif %}
+                <!-- Status Badge if needed -->
+                {% if trip.status == 'draft' %}
+                <span class="absolute top-2 left-2 bg-gray-600 text-white text-xs px-2 py-0.5 rounded">DRAFT</span>
+                {% elif trip.status == 'deactivated' %}
+                <span
+                    class="absolute top-2 left-2 bg-yellow-500 text-white text-xs px-2 py-0.5 rounded font-bold">DEACTIVATED</span>
+                {% endif %}
+            </div>
+
+            <!-- Content -->
+            <div class="flex-1 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center mb-1">
+                        <span class="w-3 h-3 rounded-full mr-2" style="background-color: {{ trip.color or '#00D1C1' }};"
+                            title="Calendar Color"></span>
+                        <h3 class="text-xl font-normal text-gray-600">{{ trip.title }}</h3>
+                    </div>
+                    <div class="flex items-center text-gray-400 text-sm space-x-4 mb-2">
+                        <span class="flex items-center">
+                            </svg>
+                            {% if trip.start_date and trip.end_date %}
+                            {{ trip.start_date.strftime('%b %d, %Y') }} - {{ trip.end_date.strftime('%b %d, %Y') }}
+                            {% else %}
+                            Date TBD
+                            {% endif %}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                    <span class="text-xs text-gray-400 font-medium bg-gray-100 px-2 py-1 rounded">
+                        Duration: {{ trip.duration_days }} Days
+                    </span>
+                </div>
+
+                <div class="flex items-center space-x-8 mt-2 text-sm text-gray-400">
+                    <div>
+                        Amount expected: <span class="text-gray-600">${{ "%.2f"|format(trip_stats.get(trip.id, {}).get('amount_expected', 0.0)) if trip_stats else 0.00 }}</span>
+                    </div>
+                    <div class="flex items-center">
+                        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+                                clip-rule="evenodd" />
+                        </svg>
+                        <span>{{ trip_stats.get(trip.id, {}).get('participants_count', 0) if trip_stats else 0 }}/{{ trip.capacity or '∞' }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex flex-col justify-between items-end ml-4">
+                <div class="flex space-x-3 text-gray-400">
+                    <a href="{{ url_for('admin.edit_trip', id=trip.id) }}" class="hover:text-wetravel-cyan"
+                        title="Edit">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z">
+                            </path>
+                        </svg>
+                    </a>
+                    <a href="{{ url_for('main.trip_detail', slug=trip.slug) }}" target="_blank"
+                        class="hover:text-wetravel-cyan" title="View Public Page">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z">
+                            </path>
+                        </svg>
+                    </a>
+                    <div class="relative">
+                        <button onclick="toggleDropdown(event, 'dropdown-{{ trip.id }}')"
+                            class="hover:text-wetravel-cyan focus:outline-none">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z">
+                                </path>
+                            </svg>
+                        </button>
+                        <!-- Dropdown Menu -->
+                        <div id="dropdown-{{ trip.id }}"
+                            class="hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-50 py-1 border border-gray-100">
+                            <button onclick="submitPost('{{ url_for('admin.copy_trip', id=trip.id) }}')"
+                                class="w-full text-left block px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:border-wetravel-cyan">Copy</button>
+
+                            {% if trip.status == 'deactivated' %}
+                            <button onclick="submitPost('{{ url_for('admin.reactivate_trip', id=trip.id) }}')"
+                                class="w-full text-left block px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:border-wetravel-green">Reactivate</button>
+                            {% else %}
+                            <button onclick="submitPost('{{ url_for('admin.deactivate_trip', id=trip.id) }}')"
+                                class="w-full text-left block px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:border-wetravel-green">Deactivate</button>
+                            {% endif %}
+
+                            <button onclick="openDeleteModal('{{ url_for('admin.delete_trip', id=trip.id) }}')"
+                                class="w-full text-left block px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-red-600 border-l-4 border-transparent hover:border-red-500">Delete</button>
+
+                            <!-- Archive action removed -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <a href="{{ url_for('admin.manage_trip', id=trip.id) }}"
+                        class="bg-wetravel-green text-white font-bold py-2 px-6 rounded shadow-sm hover:bg-green-500">
+                        Manage Trip
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="text-center py-10">
+            <h3 class="mt-2 text-sm font-medium text-gray-900">No trips found</h3>
+            <p class="mt-1 text-sm text-gray-500">
+                {% if filter_type == 'upcoming' %}You don't have any upcoming trips.
+                {% elif filter_type == 'past' %}You don't have any past trips.
+                {% elif filter_type == 'draft' %}You don't have any draft trips.
+                {% elif filter_type == 'deactivated' %}You don't have any deactivated trips.
+                {% elif filter_type == 'archived' %}You don't have any archived trips.
+                {% else %}Get started by creating a new trip.{% endif %}
+            </p>
+            {% if filter_type not in ['past', 'deactivated', 'archived'] %}
+            <div class="mt-6">
+                <a href="{{ url_for('admin.new_trip') }}"
+                    class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-wetravel-cyan hover:bg-cyan-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500">
+                    <svg class="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"
+                        fill="currentColor" aria-hidden="true">
+                        <path fill-rule="evenodd"
+                            d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
+                            clip-rule="evenodd" />
+                    </svg>
+                    Create Trip
+                </a>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+</div>
+
+<!-- Custom Delete Modal -->
+<div id="deleteModal"
+    class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 transform transition-all duration-300"
+    role="dialog" aria-modal="true" aria-labelledby="modal-headline">
+    <div
+        class="relative top-1/4 mx-auto p-0 border w-96 shadow-lg rounded-lg bg-white overflow-hidden animate-fade-in-down">
+
+        <!-- Header -->
+        <div class="flex justify-between items-center px-6 py-4 border-b border-gray-100 hidden">
+            <!-- Header Hidden as per WeTravel style sometimes, but screenshot shows "Delete Trip"? -->
+            <!-- Screenshot shows Title "Delete Trip" inside body area top left, inside the modal -->
+        </div>
+
+        <div class="px-8 py-6">
+            <!-- Close X -->
+            <button onclick="closeDeleteModal()"
+                class="absolute top-4 right-4 text-gray-400 hover:text-gray-500 focus:outline-none">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                    </path>
+                </svg>
+            </button>
+
+            <!-- Title -->
+            <h3 class="text-xl leading-6 font-medium text-gray-500 mb-6" id="modal-headline">
+                Delete Trip
+            </h3>
+
+            <!-- Content -->
+            <div class="mt-2 space-y-4">
+                <p class="text-sm text-gray-400 font-light">
+                    You are about to delete the trip.
+                </p>
+                <p class="text-sm text-gray-400 font-light">
+                    This will fully remove the trip. Neither you nor your participants will have access to the trip
+                    dashboard.
+                </p>
+            </div>
+
+            <!-- Buttons -->
+            <div class="mt-8 flex justify-end space-x-3">
+                <button onclick="closeDeleteModal()"
+                    class="px-4 py-2 bg-white text-gray-500 text-base font-medium rounded-md border border-wetravel-cyan hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 sm:text-sm shadow-sm">
+                    Cancel
+                </button>
+                <button onclick="confirmDelete()"
+                    class="px-4 py-2 bg-red-400 text-white text-base font-medium rounded-md shadow-sm hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:text-sm">
+                    Delete
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden Form for POST actions -->
+<form id="actionForm" method="post" style="display: none;"></form>
+
+<script>
+    let currentDeleteUrl = '';
+
+    function openDeleteModal(url) {
+        currentDeleteUrl = url;
+        const modal = document.getElementById('deleteModal');
+        modal.classList.remove('hidden');
+        // Close dropdowns
+        document.querySelectorAll('[id^="dropdown-"]').forEach(el => {
+            el.classList.add('hidden');
+        });
+    }
+
+    function closeDeleteModal() {
+        const modal = document.getElementById('deleteModal');
+        modal.classList.add('hidden');
+        currentDeleteUrl = '';
+    }
+
+    function confirmDelete() {
+        if (currentDeleteUrl) {
+            submitPost(currentDeleteUrl);
+        }
+    }
+
+    function submitPost(url) {
+        const form = document.getElementById('actionForm');
+        form.action = url;
+        form.submit();
+    }
+
+    function toggleDropdown(event, dropdownId) {
+        event.stopPropagation();
+        const dropdown = document.getElementById(dropdownId);
+        const isHidden = dropdown.classList.contains('hidden');
+
+        // Close all other dropdowns
+        document.querySelectorAll('[id^="dropdown-"]').forEach(el => {
+            el.classList.add('hidden');
+        });
+
+        // Toggle current
+        if (isHidden) {
+            dropdown.classList.remove('hidden');
+        } else {
+            dropdown.classList.add('hidden');
+        }
+    }
+
+    // Close dropdowns when clicking outside
+    window.addEventListener('click', function (event) {
+        document.querySelectorAll('[id^="dropdown-"]').forEach(el => {
+            if (!el.contains(event.target)) {
+                el.classList.add('hidden');
+            }
+        });
+
+        // Also close modal if clicked outside content box? Screenshot doesn't specify, standard behavior ok.
+        const modal = document.getElementById('deleteModal');
+        if (event.target === modal) {
+            closeDeleteModal();
+        }
+    });
+</script>
+{% endblock %}

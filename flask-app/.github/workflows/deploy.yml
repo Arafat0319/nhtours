@@ -1,0 +1,42 @@
+name: Deploy to AWS Elastic Beanstalk
+
+# 触发条件：当代码推送到main分支时
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # 步骤1: 检出代码
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    # 步骤2: 设置Python环境
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    # 步骤3: 安装EB CLI（Elastic Beanstalk命令行工具）
+    - name: Install EB CLI
+      run: |
+        pip install awsebcli
+    
+    # 步骤4: 配置AWS凭证
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1  # 改成你的AWS区域
+    
+    # 步骤5: 部署到Elastic Beanstalk
+    - name: Deploy to EB
+      run: |
+        cd flask-app
+        eb deploy nexus-horizons-env  # 改成你的环境名称
+

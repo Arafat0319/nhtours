@@ -1,0 +1,37 @@
+# Flask核心依赖
+Flask==3.0.0
+Werkzeug==3.0.1
+
+# 表单处理
+Flask-WTF==1.2.1
+WTForms==3.1.1
+
+# 环境变量管理
+python-dotenv==1.0.0
+
+# HTTP客户端（用于调用AWS Lambda）
+requests==2.31.0
+
+# AWS SDK（用于调用SES）
+boto3>=1.28.0
+
+# 生产环境WSGI服务器（部署时需要）
+gunicorn==21.2.0
+# waitress>=2.1.0  # Windows兼容的WSGI服务器
+
+
+
+# 数据库 & 认证
+Flask-SQLAlchemy==3.1.1
+Flask-Migrate==4.0.5
+Flask-Login==0.6.3
+email_validator==2.1.0
+
+# 支付
+stripe==7.6.0
+
+# Excel 导出
+openpyxl==3.1.5
+
+# 定时任务
+APScheduler==3.10.4

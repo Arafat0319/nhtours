@@ -1,0 +1,434 @@
+{% extends "admin/trips/builder/base_builder.html" %}
+
+{% block builder_step_content %}
+<form method="post" enctype="multipart/form-data" class="space-y-8 max-w-4xl">
+    {{ form.hidden_tag() }}
+
+    <!-- Section 1: Basic Details (Horizontal Layout) -->
+    <div class="space-y-6">
+
+        <!-- Trip Title -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 items-center">
+            <label for="title" class="block text-sm font-semibold text-gray-700 md:col-span-1">Trip Title</label>
+            <div class="md:col-span-3">
+                <div
+                    class="border border-gray-200 rounded-md px-3 bg-white shadow-sm focus-within:ring-1 focus-within:ring-wetravel-cyan focus-within:border-wetravel-cyan">
+                    {{ form.title(class="block w-full border-0 focus:ring-0 focus:outline-none sm:text-sm py-2
+                    bg-transparent placeholder-gray-400") }}
+                </div>
+                {% for error in form.title.errors %}
+                <p class="mt-1 text-sm text-red-600">{{ error }}</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Destination -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 items-center">
+            <label for="destination_text"
+                class="block text-sm font-semibold text-gray-700 md:col-span-1">Destination</label>
+            <div
+                class="md:col-span-3 relative rounded-md shadow-sm border border-gray-200 bg-white focus-within:ring-1 focus-within:ring-wetravel-cyan focus-within:border-wetravel-cyan">
+                {{ form.destination_text(class="block w-full border-0 focus:ring-0 focus:outline-none sm:text-sm py-2
+                pl-10 bg-transparent placeholder-gray-400", placeholder="Start typing to search") }}
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z">
+                        </path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                </div>
+                <!-- Remove right icon since it was for search indicator, kept left marker -->
+            </div>
+            {% for error in form.destination_text.errors %}
+            <p class="mt-1 text-sm text-red-600 md:col-start-2 md:col-span-3">{{ error }}</p>
+            {% endfor %}
+        </div>
+
+        <!-- Trip Dates -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 items-center">
+            <label class="block text-sm font-semibold text-gray-700 md:col-span-1">Trip Dates</label>
+            <div class="md:col-span-3">
+                <!-- Date Range -->
+                <style>
+                    /* Hide native calendar picker indicator */
+                    input[type="date"]::-webkit-calendar-picker-indicator {
+                        display: none;
+                        -webkit-appearance: none;
+                    }
+                </style>
+                <div
+                    class="flex items-center border border-gray-200 rounded-md px-3 py-0.5 bg-white shadow-sm focus-within:ring-1 focus-within:ring-wetravel-cyan focus-within:border-wetravel-cyan">
+                    <!-- Start Date: Left Aligned Group -->
+                    <div class="flex-1 flex justify-start items-center">
+                        {{ form.start_date(class="w-[8rem] border-0 focus:ring-0 focus:outline-none text-sm py-2
+                        text-gray-900 placeholder-gray-400 bg-transparent p-0 text-left", type="date", min=min_date) }}
+                        <svg onclick="this.previousElementSibling.showPicker()"
+                            class="h-4 w-4 text-gray-400 flex-shrink-0 ml-2 cursor-pointer hover:text-wetravel-cyan transition-colors"
+                            fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z">
+                            </path>
+                        </svg>
+                    </div>
+
+                    <!-- Center Arrow -->
+                    <svg class="h-4 w-4 text-gray-400 flex-shrink-0 mx-4" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                    </svg>
+
+                    <!-- End Date: Right Aligned Group -->
+                    <div class="flex-1 flex justify-end items-center">
+                        {{ form.end_date(class="w-[8rem] border-0 focus:ring-0 focus:outline-none text-sm py-2
+                        text-gray-900 placeholder-gray-400 bg-transparent p-0 text-left", type="date", min=min_date) }}
+                        <svg onclick="this.previousElementSibling.showPicker()"
+                            class="h-4 w-4 text-gray-400 flex-shrink-0 ml-2 cursor-pointer hover:text-wetravel-cyan transition-colors"
+                            fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z">
+                            </path>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+            <!-- Error message for dates -->
+            {% if form.start_date.errors or form.end_date.errors %}
+            <div class="md:col-start-2 md:col-span-3">
+                <p class="text-sm text-red-600">{{ form.start_date.errors[0] if form.start_date.errors else '' }} {{
+                    form.end_date.errors[0] if form.end_date.errors else '' }}</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Color Picker -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 items-center">
+            <label class="block text-sm font-semibold text-gray-700 md:col-span-1">Calendar Color</label>
+            <div class="md:col-span-3">
+                <div class="flex items-center space-x-3">
+                    {{ form.color(class="hidden", id="trip_color") }}
+                    <!-- Predefined Colors -->
+                    <button type="button" onclick="selectColor('#00D1C1')"
+                        class="w-8 h-8 rounded-full bg-[#00D1C1] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#00D1C1] color-swatch"
+                        data-color="#00D1C1"></button>
+                    <button type="button" onclick="selectColor('#4ADE80')"
+                        class="w-8 h-8 rounded-full bg-[#4ADE80] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#4ADE80] color-swatch"
+                        data-color="#4ADE80"></button>
+                    <button type="button" onclick="selectColor('#FBBF24')"
+                        class="w-8 h-8 rounded-full bg-[#FBBF24] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#FBBF24] color-swatch"
+                        data-color="#FBBF24"></button>
+                    <button type="button" onclick="selectColor('#F87171')"
+                        class="w-8 h-8 rounded-full bg-[#F87171] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#F87171] color-swatch"
+                        data-color="#F87171"></button>
+                    <button type="button" onclick="selectColor('#A78BFA')"
+                        class="w-8 h-8 rounded-full bg-[#A78BFA] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#A78BFA] color-swatch"
+                        data-color="#A78BFA"></button>
+                    <!-- Custom Input fallback -->
+                    <div class="relative">
+                        <input type="color" onchange="selectColor(this.value)"
+                            class="w-8 h-8 p-0 border-0 rounded-full overflow-hidden cursor-pointer"
+                            id="custom_color_picker">
+                    </div>
+                </div>
+                <p class="mt-2 text-xs text-gray-500">Pick a color to distinguish this trip in the dashboard calendar.
+                </p>
+            </div>
+        </div>
+
+        <script>
+            function selectColor(color) {
+                // unexpected case handling
+                if (!color) return;
+
+                document.getElementById('trip_color').value = color;
+
+                // Update visual state
+                document.querySelectorAll('.color-swatch').forEach(btn => {
+                    // Reset rings
+                    btn.classList.remove('ring-2', 'ring-offset-2', 'ring-gray-400');
+                    if (btn.dataset.color.toLowerCase() === color.toLowerCase()) {
+                        btn.classList.add('ring-2', 'ring-offset-2', 'ring-gray-400');
+                    }
+                });
+                // Also update the custom color picker if the selected color is not one of the presets
+                const customPicker = document.getElementById('custom_color_picker');
+                const presetColors = Array.from(document.querySelectorAll('.color-swatch')).map(btn => btn.dataset.color.toLowerCase());
+                if (!presetColors.includes(color.toLowerCase())) {
+                    customPicker.value = color;
+                }
+            }
+
+            // Initialize selection on load
+            window.addEventListener('DOMContentLoaded', () => {
+                const currentColor = document.getElementById('trip_color').value || '#00D1C1'; // Default to Cyan if no value
+                selectColor(currentColor);
+            });
+        </script>
+
+        <!-- Slug (URL) -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 items-center">
+            <label for="slug" class="block text-sm font-semibold text-gray-700 md:col-span-1">URL Slug</label>
+            <div
+                class="md:col-span-3 flex rounded-md shadow-sm border border-gray-200 bg-white focus-within:ring-1 focus-within:ring-wetravel-cyan focus-within:border-wetravel-cyan">
+                <span
+                    class="inline-flex items-center px-3 rounded-l-md border-r border-gray-200 bg-gray-50 text-gray-500 sm:text-sm">
+                    .../trips/
+                </span>
+                {{ form.slug(class="flex-1 border-0 focus:ring-0 focus:outline-none block w-full min-w-0 rounded-none
+                rounded-r-md sm:text-sm py-2 px-3 bg-transparent") }}
+            </div>
+        </div>
+    </div>
+
+    <hr class="border-gray-200 my-6">
+
+    <!-- Section 2: Photos -->
+    <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-4">Photos</label>
+
+        <div id="photo-upload-container"
+            class="bg-gray-50 rounded-lg p-6 border-2 border-dashed border-gray-200 text-center hover:border-wetravel-cyan transition-colors relative group">
+            {% if trip.hero_image %}
+            <div id="existing-image-container" class="aspect-w-16 aspect-h-5 mb-4 rounded-lg overflow-hidden bg-gray-200 shadow-sm">
+                <img id="existing-hero-image" src="{{ url_for('static', filename=trip.hero_image) }}" alt="Hero"
+                    class="object-cover w-full h-full">
+            </div>
+            <div class="flex justify-center">
+                <label for="hero_image"
+                    class="cursor-pointer bg-white py-2 px-4 border border-gray-200 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-wetravel-cyan">
+                    <span>Change Cover Photo</span>
+                    {{ form.hero_image(class="sr-only", id="hero_image", onchange="handleImagePreview(event)") }}
+                </label>
+            </div>
+            <div id="preview-container" class="hidden"></div>
+            {% else %}
+            <div id="upload-placeholder" class="space-y-2 py-8">
+                <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                    <path
+                        d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <div class="flex text-sm text-gray-600 justify-center">
+                    <label for="hero_image"
+                        class="relative cursor-pointer bg-white rounded-md font-medium text-wetravel-cyan hover:text-cyan-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-wetravel-cyan">
+                        <span>Upload a file</span>
+                        {{ form.hero_image(class="sr-only", id="hero_image", onchange="handleImagePreview(event)") }}
+                    </label>
+                    <p class="pl-1">or drag and drop</p>
+                </div>
+                <p class="text-xs text-gray-500">
+                    PNG, JPG up to 10MB
+                </p>
+            </div>
+            <div id="preview-container" class="hidden"></div>
+            {% endif %}
+        </div>
+    </div>
+
+    <hr class="border-gray-200 my-6">
+
+    <!-- Section 3: Group Size -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-3">Group Size</label>
+            <div
+                class="relative rounded-md shadow-sm border border-gray-200 bg-white focus-within:ring-1 focus-within:ring-wetravel-cyan focus-within:border-wetravel-cyan max-w-xs">
+                {{ form.capacity(class="block w-full border-0 focus:ring-0 focus:outline-none pl-3 sm:text-sm
+                py-2 bg-transparent placeholder-gray-400", placeholder="e.g. 25", type="text", inputmode="numeric", pattern="[0-9]*") }}
+                <!-- Hide Min Capacity as user requested simple text box -->
+                {{ form.min_capacity(class="hidden") }}
+            </div>
+            <p class="mt-2 text-xs text-gray-500">Maximum number of participants.</p>
+        </div>
+
+        <!-- Waitlist Toggle (Visual Only for now) -->
+        <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-3">Enable waitlist when sold out?</label>
+            <div class="flex items-center space-x-2">
+                <button type="button"
+                    class="bg-wetravel-cyan text-white px-4 py-2 rounded-md text-sm font-medium shadow-sm">Yes</button>
+                <button type="button"
+                    class="bg-white text-gray-700 border border-gray-200 px-4 py-2 rounded-md text-sm font-medium shadow-sm hover:bg-gray-50">No</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="mt-8 flex items-center justify-end gap-x-6 border-t border-gray-200 pt-6">
+        <button type="submit"
+            class="rounded-md bg-wetravel-cyan px-6 py-2 text-sm font-semibold text-white shadow-sm hover:bg-wetravel-cyan-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wetravel-cyan">
+            Save & Continue
+        </button>
+    </div>
+</form>
+
+<script>
+    // Handle image preview when file is selected
+    function handleImagePreview(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        // Validate file type
+        const validTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+        if (!validTypes.includes(file.type)) {
+            customAlert('Please upload a valid image file (JPG or PNG)', 'Invalid File Type');
+            return;
+        }
+
+        // Validate file size (10MB)
+        if (file.size > 10 * 1024 * 1024) {
+            customAlert('File size must be less than 10MB', 'File Too Large');
+            return;
+        }
+
+        // Create FileReader to read the file
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const previewContainer = document.getElementById('preview-container');
+            const uploadPlaceholder = document.getElementById('upload-placeholder');
+            const existingImageContainer = document.getElementById('existing-image-container');
+            const existingHeroImage = document.getElementById('existing-hero-image');
+
+            // Create preview HTML
+            const previewHTML = `
+                <div class="aspect-w-16 aspect-h-5 mb-4 rounded-lg overflow-hidden bg-gray-200 shadow-sm">
+                    <img src="${e.target.result}" alt="Preview" class="object-cover w-full h-full" id="preview-image">
+                </div>
+                <div class="flex justify-center">
+                    <label for="hero_image"
+                        class="cursor-pointer bg-white py-2 px-4 border border-gray-200 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-wetravel-cyan">
+                        <span>Change Cover Photo</span>
+                    </label>
+                </div>
+            `;
+
+            // Hide existing elements and show preview
+            if (uploadPlaceholder) {
+                uploadPlaceholder.classList.add('hidden');
+            }
+            if (existingImageContainer) {
+                existingImageContainer.classList.add('hidden');
+            }
+            if (existingHeroImage) {
+                existingHeroImage.classList.add('hidden');
+            }
+
+            // Show preview
+            previewContainer.innerHTML = previewHTML;
+            previewContainer.classList.remove('hidden');
+        };
+
+        reader.onerror = function() {
+            customAlert('Error reading file. Please try again.', 'File Read Error');
+        };
+
+        // Read the file as data URL
+        reader.readAsDataURL(file);
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        // Use ID selectors (WTForms default ID is field name)
+        const startInput = document.getElementById('start_date');
+        const endInput = document.getElementById('end_date');
+
+        if (startInput && endInput) {
+            startInput.addEventListener('change', function () {
+                // Ensure End Date min is at least Start Date
+                endInput.min = this.value;
+                if (endInput.value && endInput.value < this.value) {
+                    endInput.value = this.value;
+                }
+            });
+        }
+
+        // Disable mouse wheel and middle button for capacity input
+        const capacityInput = document.getElementById('capacity');
+        if (capacityInput) {
+            // Prevent mouse wheel from changing value
+            capacityInput.addEventListener('wheel', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }, { passive: false });
+
+            // Prevent middle button click from changing value
+            capacityInput.addEventListener('mousedown', function(e) {
+                if (e.button === 1) { // Middle button
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+            });
+
+            // Prevent context menu on middle button
+            capacityInput.addEventListener('contextmenu', function(e) {
+                e.preventDefault();
+            });
+
+            // Only allow numeric input (already handled by type="text" with pattern)
+            capacityInput.addEventListener('input', function(e) {
+                // Remove any non-numeric characters
+                this.value = this.value.replace(/[^0-9]/g, '');
+            });
+
+            // Prevent paste of non-numeric content
+            capacityInput.addEventListener('paste', function(e) {
+                e.preventDefault();
+                const paste = (e.clipboardData || window.clipboardData).getData('text');
+                const numericOnly = paste.replace(/[^0-9]/g, '');
+                this.value = numericOnly;
+            });
+        }
+
+        // Also handle drag and drop for image upload
+        const photoContainer = document.getElementById('photo-upload-container');
+        const heroImageInput = document.getElementById('hero_image');
+
+        if (photoContainer && heroImageInput) {
+            // Prevent default drag behaviors
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                photoContainer.addEventListener(eventName, preventDefaults, false);
+                document.body.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            // Highlight drop area when item is dragged over it
+            ['dragenter', 'dragover'].forEach(eventName => {
+                photoContainer.addEventListener(eventName, highlight, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                photoContainer.addEventListener(eventName, unhighlight, false);
+            });
+
+            function highlight(e) {
+                photoContainer.classList.add('border-wetravel-cyan', 'bg-cyan-50');
+            }
+
+            function unhighlight(e) {
+                photoContainer.classList.remove('border-wetravel-cyan', 'bg-cyan-50');
+            }
+
+            // Handle dropped files
+            photoContainer.addEventListener('drop', handleDrop, false);
+
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+
+                if (files.length > 0) {
+                    heroImageInput.files = files;
+                    // Trigger change event to show preview
+                    const event = new Event('change', { bubbles: true });
+                    heroImageInput.dispatchEvent(event);
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}

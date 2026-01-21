@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Nexus Horizons | Say YES to North America{% endblock %}
+
+{% block description %}Explore North America with Nexus Horizons - Educational, Family, and Business tours.{% endblock %}
+
+{% block og_title %}Nexus Horizons | Say YES to North America{% endblock %}
+
+{% block content %}
+{# Hero背景区域 #}
+<div class="w-full h-[70vh]" style="background:url({{ url_for('static', filename='images/backgrounds/L1000655.DUAJU8VS.jpg') }}) center / cover no-repeat;">
+	<div class="h-full mx-auto pt-30 md:pt-55">
+		<h5>Say <span class="text-yellow-500">Yes</span> to North America</h5>
+	</div>
+</div>
+
+<div class="w-full h-[16px] bg-indigo-800"></div>
+
+{# 主要内容区域 #}
+<div class="max-w-6xl mx-auto py-8 px-8 pb-8 md:px-0">
+	{# Breadcrumb导航 #}
+	<nav>
+		<ol class="flex flex-wrap items-center space-x-2 text-lg font-medium text-amber-800">
+			<li class="flex items-center">
+				<a class="hover:underline" href="{{ url_for('main.index') }}">Home</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<span class="text-indigo-800 font-medium cursor-default">North America</span>
+			</li>
+		</ol>
+	</nav>
+
+	<h1>North America Program</h1>
+	<div class="text-center">
+		<img class="inline-block w-[120px] mt-4 mb-6" src="{{ url_for('static', filename='images/icons/cloud.DKxBl1dp.svg') }}"/>
+	</div>
+	<p class="content overview">
+		North America is a continent of vibrant modern cities, cultural openness, and constant innovation. It is home to strong Asian immigrant communities, making it a truly diverse and welcoming region where East meets West in daily life, cuisine, and culture. Looking ahead, global events such as the 2026 FIFA World Cup and the 2028 Los Angeles Olympics will shine a spotlight on North America, making it one of the most exciting destinations of the next five years.​
+	</p>
+
+	<br/><br/>
+
+	<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-10">
+		<div class="overflow-hidden rounded-lg shadow flex flex-col">
+			<div class="aspect-[4/3] relative hover:saturate-150">
+				<a href="{{ url_for('main.north_america_educational') }}">
+					<img alt="Photo" class="absolute inset-0 w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/na-educational.CMnMc-5t.jpg') }}"/>
+				</a>
+			</div>
+			<div class="p-4 flex-1">
+				<a href="{{ url_for('main.north_america_educational') }}">
+					<span class="text-xl font-medium">Educational Tours</span>
+					<span class="inline-block py-1 px-2 uppercase font-medium text-xs rounded-full text-white bg-indigo-800">Popular</span>
+					<p class="text-zinc-600">For our programs, we carefully select only the regions we know well and those with strong resources—prioritizing both safety and quality. Over the years, we have built a reliable and experienced local operations team to ensure students enjoy a safe, secure, and well-organized learning journey in North America.​​</p>
+				</a>
+			</div>
+		</div>
+
+		<div class="overflow-hidden rounded-lg shadow flex flex-col">
+			<div class="aspect-[4/3] relative hover:saturate-150">
+				<a href="{{ url_for('main.north_america_index') }}">
+					<img alt="Photo" class="absolute inset-0 w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/na-family.EhKd3q62.jpg') }}"/>
+				</a>
+			</div>
+			<div class="p-4 flex-1">
+				<a href="{{ url_for('main.north_america_index') }}">
+					<span class="text-xl font-medium">Family Tours</span>
+					<span class="inline-block py-1 px-2 uppercase font-medium text-xs rounded-full text-white bg-indigo-800">New</span>
+					<p class="text-zinc-600">Our Family Tours are designed to bring parents and children closer through shared experiences that are fun, safe, and meaningful, supported by our trusted resources and expertise in North America.</p>
+				</a>
+			</div>
+		</div>
+
+		<div class="overflow-hidden rounded-lg shadow flex flex-col">
+			<div class="aspect-[4/3] relative hover:saturate-150">
+				<a href="{{ url_for('main.north_america_index') }}">
+					<img alt="Photo" class="absolute inset-0 w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/business-tours.BZeG91ia.jpg') }}"/>
+				</a>
+			</div>
+			<div class="p-4 flex-1">
+				<a href="{{ url_for('main.north_america_index') }}">
+					<span class="text-xl font-medium">Business Tours</span>
+					<span class="inline-block py-1 px-2 uppercase font-medium text-xs rounded-full text-white bg-indigo-800">New</span>
+					<p class="text-zinc-600">With extensive local knowledge and resources, we create tailored travel solutions for diverse business needs. From team-building and market visits to professional exchanges with companies, schools, and institutions, our programs go beyond a standard "business tour."</p>
+				</a>
+			</div>
+		</div>
+	</div>
+	<br/><br/>
+</div>
+{% endblock %}
+

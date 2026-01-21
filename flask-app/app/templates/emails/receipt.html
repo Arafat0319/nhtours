@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>{{ receipt_title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { margin: 0; padding: 0; background: #f5f5f5; font-family: Arial, sans-serif; }
+        .container { max-width: 640px; margin: 0 auto; background: #ffffff; }
+        .header { padding: 24px 32px; border-bottom: 1px solid #e5e7eb; }
+        .brand { font-size: 20px; font-weight: 700; color: #111827; }
+        .subtitle { font-size: 14px; color: #6b7280; margin-top: 4px; }
+        .section { padding: 20px 32px; }
+        .title { font-size: 18px; font-weight: 600; color: #111827; margin: 0 0 8px; }
+        .text { font-size: 14px; color: #374151; margin: 4px 0; }
+        .muted { color: #6b7280; }
+        .row { display: flex; justify-content: space-between; gap: 12px; }
+        .card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px; }
+        .table { width: 100%; border-collapse: collapse; }
+        .table th, .table td { padding: 8px 0; font-size: 14px; border-bottom: 1px solid #e5e7eb; text-align: left; }
+        .table th { color: #6b7280; font-weight: 500; }
+        .table tfoot td { border-bottom: none; }
+        .total { font-weight: 700; }
+        .footer { padding: 20px 32px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #6b7280; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="brand">Nexus Horizons Tours</div>
+            <div class="subtitle">{{ receipt_title }}</div>
+        </div>
+
+        <div class="section">
+            <div class="row">
+                <div>
+                    <p class="text"><strong>Receipt #:</strong> {{ receipt_number }}</p>
+                    <p class="text"><strong>Issued:</strong> {{ issued_at }}</p>
+                    <p class="text"><strong>Booking ID:</strong> {{ booking_id }}</p>
+                </div>
+                <div>
+                    <p class="text"><strong>Payment Status:</strong> {{ payment_status }}</p>
+                    {% if payment_intent_id %}
+                    <p class="text"><strong>Payment Intent:</strong> {{ payment_intent_id }}</p>
+                    {% endif %}
+                    {% if payment_method_summary %}
+                    <p class="text"><strong>Payment Method:</strong> {{ payment_method_summary }}</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <p class="title">Trip Details</p>
+            <div class="card">
+                <p class="text"><strong>{{ trip_title }}</strong></p>
+                <p class="text muted">{{ trip_dates }}</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <p class="title">Customer</p>
+            <div class="card">
+                <p class="text"><strong>{{ customer_name }}</strong></p>
+                <p class="text muted">{{ customer_email }}</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <p class="title">Line Items</p>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Description</th>
+                        <th style="text-align:right;">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in line_items %}
+                    <tr>
+                        <td>{{ item.label }}</td>
+                        <td style="text-align:right;">${{ "%.2f"|format(item.amount) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    {% if discount_amount is defined and discount_amount > 0 %}
+                    <tr>
+                        <td>Subtotal</td>
+                        <td style="text-align:right;">${{ "%.2f"|format(base_amount + discount_amount) }}</td>
+                    </tr>
+                    <tr style="color: #10b981;">
+                        <td>Discount{% if discount_code %} ({{ discount_code }}){% endif %}</td>
+                        <td style="text-align:right;">-${{ "%.2f"|format(discount_amount) }}</td>
+                    </tr>
+                    <tr>
+                        <td>Amount After Discount</td>
+                        <td style="text-align:right;">${{ "%.2f"|format(base_amount) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td>Base Amount</td>
+                        <td style="text-align:right;">${{ "%.2f"|format(base_amount) }}</td>
+                    </tr>
+                    {% endif %}
+                    <tr>
+                        <td>Card Fee</td>
+                        <td style="text-align:right;">${{ "%.2f"|format(fee_amount) }}</td>
+                    </tr>
+                    <tr class="total">
+                        <td>Total</td>
+                        <td style="text-align:right;">${{ "%.2f"|format(total_amount) }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <div class="footer">
+            <p>Thank you for your payment.</p>
+            <p>Questions? Contact us at info@nhtours.com</p>
+        </div>
+    </div>
+</body>
+</html>

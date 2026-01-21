@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="{{ url_for('static', filename='favicon/favicon-dark.png') }}" media="(prefers-color-scheme: dark)"
+        rel="icon" type="image/png" />
+    <link href="{{ url_for('static', filename='favicon/favicon-light.png') }}" media="(prefers-color-scheme: light)"
+        rel="icon" type="image/png" />
+    <title>{% block title %}My Trips{% endblock %} - NHTours Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        wetravel: {
+                            cyan: '#00D1C1',
+                            yellow: '#FFC107',
+                            green: '#4ADE80',
+                            dark: '#5F6B72',
+                            gray: '#F8F9FA'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Montserrat', 'Roboto', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Add Font awesome or similar icons if needed, using simple SVGs for now -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Montserrat', sans-serif;
+        }
+    </style>
+    {% block head_extra %}{% endblock %}
+</head>
+
+<body class="bg-gray-50 text-gray-700">
+
+    <!-- L1: Top Bar -->
+    <div class="bg-gray-900 border-b border-gray-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <!-- Left: Logo -->
+                <div class="flex items-center">
+                    <a href="{{ url_for('admin.trips') }}" class="flex-shrink-0 flex items-center">
+                        <img class="h-8 w-auto"
+                            src="{{ url_for('static', filename='images/icons/logo-2-white.DyAUH4zT.svg') }}"
+                            alt="Nexus Horizons">
+                    </a>
+                </div>
+
+                <!-- Right: Actions -->
+                <div class="flex items-center space-x-6">
+                    <!-- Items removed: HELP CENTER, MY TRIPS -->
+
+                    <!-- User Profile Dropdown (Simplified) -->
+                    <div class="relative flex items-center group cursor-pointer">
+                        <div class="flex items-center">
+                            <!-- Removed Avatar Circle, Changed Text to Log Out -->
+                            <a href="{{ url_for('admin.logout') }}"
+                                class="text-sm font-medium text-gray-300 hover:text-white">Log Out</a>
+                        </div>
+                    </div>
+
+                    <!-- CTA Button -->
+                    <a href="{{ url_for('admin.new_trip') }}"
+                        class="bg-wetravel-yellow hover:bg-yellow-400 text-white font-bold py-2 px-4 rounded shadow-sm text-sm">
+                        CREATE YOUR TRIP
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- L2: Main Nav -->
+    {% block secondary_nav %}
+    <div class="bg-wetravel-dark text-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex space-x-8 h-12 items-center text-sm font-medium overflow-x-auto">
+                <a href="{{ url_for('admin.trips') }}"
+                    class="{% if request.endpoint and 'trips' in request.endpoint %}border-b-4 border-wetravel-cyan text-white{% else %}text-gray-300 hover:text-white{% endif %} h-full flex items-center px-1">
+                    MY TRIPS
+                </a>
+                <a href="#"
+                    class="{% if request.endpoint and 'itineraries' in request.endpoint %}border-b-4 border-wetravel-cyan text-white{% else %}text-gray-300 hover:text-white{% endif %} h-full flex items-center px-1">
+                    ITINERARIES
+                </a>
+                <a href="{{ url_for('admin.customers') }}"
+                    class="{% if request.endpoint and ('customers' in request.endpoint or 'leads' in request.endpoint) %}border-b-4 border-wetravel-cyan text-white{% else %}text-gray-300 hover:text-white{% endif %} h-full flex items-center px-1">
+                    CUSTOMERS
+                </a>
+                <a href="{{ url_for('admin.payments') }}"
+                    class="{% if request.endpoint and 'payments' in request.endpoint %}border-b-4 border-wetravel-cyan text-white{% else %}text-gray-300 hover:text-white{% endif %} h-full flex items-center px-1">
+                    PAYMENTS
+                </a>
+                <a href="{{ url_for('admin.reports') }}"
+                    class="{% if request.endpoint and 'reports' in request.endpoint %}border-b-4 border-wetravel-cyan text-white{% else %}text-gray-300 hover:text-white{% endif %} h-full flex items-center px-1">
+                    REPORTS
+                </a>
+                <!-- Items removed: INVENTORY, NETWORK, ACCOUNT -->
+            </div>
+        </div>
+    </div>
+    {% endblock %}
+
+    <!-- Main Content Wrapper -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="flex flex-col md:flex-row gap-8">
+
+            <!-- L3: Sidebar (Optional) -->
+            {% block sidebar %}
+            <!-- Default Sidebar for My Trips context -->
+            <div class="w-full md:w-64 flex-shrink-0 sidebar-container">
+                <div class="space-y-1">
+                    {% set navigation = [
+                    ('Upcoming Trips', 'admin.trips', {'filter': 'upcoming'}),
+                    ('Past Trips', 'admin.trips', {'filter': 'past'}),
+                    ('Draft Trips', 'admin.trips', {'filter': 'draft'}),
+                    ('Deactivated Trips', 'admin.trips', {'filter': 'deactivated'})
+                    ] %}
+
+                    {% set current_filter = request.args.get('filter', 'upcoming') %}
+                    {% for name, endpoint, args in navigation %}
+                    {% set isActive = (current_filter == args['filter']) %}
+                    <a href="{{ url_for(endpoint, **args) }}"
+                        class="group flex justify-between items-center px-1 py-4 text-sm font-medium border-b border-dotted border-gray-200 hover:text-wetravel-cyan last:border-0 {% if isActive %}text-gray-900 font-bold{% else %}text-gray-500{% endif %}">
+                        <span>
+                            {{ name }}
+                            {% if trip_counts is defined and trip_counts.get(args['filter']) is not none %}
+                            ({{ trip_counts.get(args['filter']) }})
+                            {% endif %}
+                        </span>
+                        {% if isActive %}
+                        <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7">
+                            </path>
+                        </svg>
+                        {% endif %}
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endblock %}
+
+            <!-- L4: Content Area -->
+            <div class="flex-1 min-w-0">
+
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                <div class="mb-6">
+                    {% for message in messages %}
+                    <div class="bg-blue-50 border-l-4 border-wetravel-cyan p-4">
+                        <div class="flex">
+                            <div class="flex-shrink-0">
+                                <svg class="h-5 w-5 text-wetravel-cyan" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd"
+                                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                                        clip-rule="evenodd" />
+                                </svg>
+                            </div>
+                            <div class="ml-3">
+                                <p class="text-sm text-blue-700">{{ message }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% endwith %}
+
+                <!-- Content Block -->
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toastContainer" class="fixed top-4 right-4 z-50 space-y-2" style="max-width: 400px;"></div>
+
+    <script>
+        // Toast Notification System
+        function showToast(message, type = 'success', duration = 4000) {
+            const container = document.getElementById('toastContainer');
+            if (!container) return;
+
+            // Create toast element
+            const toast = document.createElement('div');
+            toast.className = `rounded-lg shadow-lg p-4 flex items-start space-x-3 animate-slide-in-right`;
+            
+            // Set colors based on type
+            let bgColor, borderColor, iconColor, iconPath;
+            switch(type) {
+                case 'success':
+                    bgColor = 'bg-wetravel-green';
+                    borderColor = 'border-green-500';
+                    iconColor = 'text-white';
+                    iconPath = 'M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z';
+                    break;
+                case 'error':
+                    bgColor = 'bg-red-500';
+                    borderColor = 'border-red-600';
+                    iconColor = 'text-white';
+                    iconPath = 'M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z';
+                    break;
+                case 'warning':
+                    bgColor = 'bg-wetravel-yellow';
+                    borderColor = 'border-yellow-600';
+                    iconColor = 'text-white';
+                    iconPath = 'M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z';
+                    break;
+                case 'info':
+                default:
+                    bgColor = 'bg-wetravel-cyan';
+                    borderColor = 'border-cyan-600';
+                    iconColor = 'text-white';
+                    iconPath = 'M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z';
+            }
+
+            toast.className += ` ${bgColor} border-l-4 ${borderColor} text-white`;
+            
+            toast.innerHTML = `
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 ${iconColor}" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="${iconPath}" clip-rule="evenodd" />
+                    </svg>
+                </div>
+                <div class="flex-1">
+                    <p class="text-sm font-medium">${message}</p>
+                </div>
+                <button onclick="this.parentElement.remove()" class="flex-shrink-0 ml-2 text-white hover:text-gray-200 focus:outline-none">
+                    <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+            `;
+
+            // Add animation styles if not already present
+            if (!document.getElementById('toastStyles')) {
+                const style = document.createElement('style');
+                style.id = 'toastStyles';
+                style.textContent = `
+                    @keyframes slide-in-right {
+                        from {
+                            transform: translateX(100%);
+                            opacity: 0;
+                        }
+                        to {
+                            transform: translateX(0);
+                            opacity: 1;
+                        }
+                    }
+                    .animate-slide-in-right {
+                        animation: slide-in-right 0.3s ease-out;
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            // Add to container
+            container.appendChild(toast);
+
+            // Auto remove after duration
+            setTimeout(() => {
+                toast.style.transition = 'opacity 0.3s ease-out, transform 0.3s ease-out';
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                setTimeout(() => {
+                    if (toast.parentElement) {
+                        toast.remove();
+                    }
+                }, 300);
+            }, duration);
+        }
+
+        // Make it globally accessible
+        window.showToast = showToast;
+    </script>
+
+</body>
+
+</html>

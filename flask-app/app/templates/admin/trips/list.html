@@ -1,0 +1,73 @@
+{% extends "admin/layout.html" %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-6">
+    <h2 class="text-2xl font-bold text-gray-800">行程管理</h2>
+    <a href="{{ url_for('admin.new_trip') }}"
+        class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+        新建行程
+    </a>
+</div>
+
+<div class="bg-white shadow-md rounded my-6">
+    <table class="min-w-full table-auto">
+        <thead>
+            <tr class="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
+                <th class="py-3 px-6 text-left">ID</th>
+                <th class="py-3 px-6 text-left">标题</th>
+                <th class="py-3 px-6 text-left">日期</th>
+                <th class="py-3 px-6 text-center">状态</th>
+                <th class="py-3 px-6 text-center">价格</th>
+                <th class="py-3 px-6 text-center">操作</th>
+            </tr>
+        </thead>
+        <tbody class="text-gray-600 text-sm font-light">
+            {% for trip in trips %}
+            <tr class="border-b border-gray-200 hover:bg-gray-100">
+                <td class="py-3 px-6 text-left whitespace-nowrap">
+                    <span class="font-medium">{{ trip.id }}</span>
+                </td>
+                <td class="py-3 px-6 text-left">
+                    <span>{{ trip.title }}</span>
+                </td>
+                <td class="py-3 px-6 text-left">
+                    <span>{{ trip.start_date }} - {{ trip.end_date }}</span>
+                </td>
+                <td class="py-3 px-6 text-center">
+                    {% if trip.is_published %}
+                    <span class="bg-green-200 text-green-600 py-1 px-3 rounded-full text-xs">已发布</span>
+                    {% else %}
+                    <span class="bg-gray-200 text-gray-600 py-1 px-3 rounded-full text-xs">草稿</span>
+                    {% endif %}
+                </td>
+                <td class="py-3 px-6 text-center">
+                    ${{ trip.price }}
+                </td>
+                <td class="py-3 px-6 text-center">
+                    <div class="flex item-center justify-center">
+                        <a href="{{ url_for('admin.edit_trip', id=trip.id) }}"
+                            class="w-4 mr-2 transform hover:text-purple-500 hover:scale-110">
+                            编辑
+                        </a>
+                        <form action="{{ url_for('admin.delete_trip', id=trip.id) }}" method="post"
+                            onsubmit="return confirm('确定要删除吗？');">
+                            <button type="submit" class="w-4 mr-2 transform hover:text-red-500 hover:scale-110">
+                                删除
+                            </button>
+                        </form>
+                        <a href="{{ url_for('admin.checkout_test', id=trip.id) }}"
+                            class="w-4 mr-2 transform hover:text-green-500 hover:scale-110" title="测试支付">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                            </svg>
+                        </a>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

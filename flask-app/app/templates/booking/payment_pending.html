@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include 'includes/meta.html' %}
+    <title>Payment Pending</title>
+    <style>
+        .dots::after {
+            content: "";
+            animation: dots 1.2s steps(4, end) infinite;
+        }
+        @keyframes dots {
+            0%, 20% { content: ""; }
+            40% { content: "."; }
+            60% { content: ".."; }
+            80%, 100% { content: "..."; }
+        }
+    </style>
+</head>
+<body class="bg-white">
+    <header class="max-w-6xl mx-auto px-6 pt-3 pb-2">
+        <a href="{{ url_for('main.index') }}" class="inline-block">
+            <img class="w-[180px]" src="{{ url_for('static', filename='images/icons/logo-2-white.DyAUH4zT.svg') }}" alt="Nexus Horizons" />
+        </a>
+    </header>
+
+    <main class="max-w-3xl mx-auto px-6 py-16">
+        <div class="bg-white rounded-lg p-8 text-center space-y-4 shadow-sm">
+            <h1 class="text-3xl font-semibold text-gray-800 tracking-wide">PROCESSING YOUR PAYMENT</h1>
+            <p class="text-gray-500">Please wait while we confirm your payment. This usually takes a few seconds.</p>
+            <div class="flex items-center justify-center">
+                <div class="w-10 h-10 border-2 border-gray-300 border-t-amber-700 rounded-full animate-spin"></div>
+            </div>
+            <p class="text-sm text-gray-500 dots">Confirming</p>
+            <p id="pending-message" class="text-sm text-gray-500"></p>
+        </div>
+    </main>
+
+    <script>
+    const bookingId = {{ booking_id or 'null' }};
+    const paymentIntentId = {{ payment_intent_id|tojson }};
+    const successUrl = {{ success_url|tojson }};
+    const statusUrl = `/api/payment/status?booking_id=${bookingId || ""}&payment_intent_id=${paymentIntentId || ""}`;
+    const messageEl = document.getElementById('pending-message');
+
+    const updateMessage = (text) => {
+        if (messageEl) messageEl.textContent = text || '';
+    };
+
+    let attempts = 0;
+    const maxAttempts = 30;
+
+    const pollStatus = async () => {
+        attempts += 1;
+        try {
+            const res = await fetch(statusUrl);
+            const data = await res.json();
+            if (data.status === 'succeeded') {
+                // 优先使用 API 返回的 redirect_url，其次使用服务端传入的 successUrl
+                const redirectUrl = data.redirect_url || successUrl;
+                if (redirectUrl) {
+                    window.location.href = redirectUrl;
+                    return;
+                } else if (data.booking_id) {
+                    // 如果没有 redirect_url，但有 booking_id，构建跳转 URL
+                    window.location.href = `/booking/success?booking_id=${data.booking_id}`;
+                    return;
+                }
+            } else if (data.status === 'failed') {
+                updateMessage('Payment failed. Please try again or use your payment link.');
+                return;
+            } else if (data.status === 'refunded' || data.status === 'partially_refunded') {
+                updateMessage('Payment was refunded. Please contact support if needed.');
+                return;
+            }
+        } catch (err) {
+            updateMessage('Still processing. Please wait...');
+        }
+
+        if (attempts < maxAttempts) {
+            setTimeout(pollStatus, 2000);
+        } else {
+            updateMessage('We are still confirming your payment. Please refresh the page in a moment.');
+        }
+    };
+
+    pollStatus();
+    </script>
+</body>
+</html>

@@ -1,0 +1,1099 @@
+{% extends "admin/trips/builder/base_builder.html" %}
+
+{% block builder_step_content %}
+<div class="max-w-5xl mx-auto">
+    <div class="md:flex md:items-center md:justify-between mb-6">
+        <div class="min-w-0 flex-1">
+            <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:truncate sm:text-3xl sm:tracking-tight">Pricing &
+                Packages</h2>
+            <p class="mt-1 text-sm text-gray-500">Create pricing options for your trip. Define payment plans, deposits,
+                and capacity.</p>
+        </div>
+        <div class="mt-4 flex md:ml-4 md:mt-0">
+            <button type="button" onclick="openPackageModal()"
+                class="inline-flex items-center rounded-md bg-wetravel-cyan px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-wetravel-cyan-dark transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wetravel-cyan">
+                <svg class="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path
+                        d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                </svg>
+                Add Package
+            </button>
+        </div>
+    </div>
+
+    <form method="POST" id="packagesForm">
+        {{ form.hidden_tag() }}
+        <!-- Hidden field to store JSON data -->
+        {{ form.packages_json(id="packages_json") }}
+
+        <!-- Packages List Container -->
+        <div id="packages-list" class="space-y-4">
+            <!-- JS will populate this -->
+            <div id="empty-state"
+                class="hidden text-center py-12 bg-white rounded-lg border-2 border-dashed border-gray-300">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
+                        d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <h3 class="mt-2 text-sm font-semibold text-gray-900">No packages created yet</h3>
+                <p class="mt-1 text-sm text-gray-500">Start by adding a pricing option for your trip.</p>
+                <div class="mt-6">
+                    <button type="button" onclick="openPackageModal()"
+                        class="inline-flex items-center rounded-md bg-wetravel-cyan px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-wetravel-cyan-dark">
+                        Add Package
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-8 flex items-center justify-end gap-x-6 border-t border-gray-200 pt-6">
+            <a href="{{ url_for('admin.trip_builder', id=trip.id, step='description') }}"
+                class="text-sm font-semibold leading-6 text-gray-900">Back</a>
+            <button type="submit"
+                class="rounded-md bg-wetravel-cyan px-6 py-2 text-sm font-semibold text-white shadow-sm hover:bg-wetravel-cyan-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wetravel-cyan">
+                Save & Continue
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Full Screen Modal for Package Builder -->
+<div id="packageModal" class="relative z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity backdrop-blur-sm"></div>
+
+    <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+        <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+            <div
+                class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-2xl">
+                <!-- Header -->
+                <div class="bg-gray-50 px-4 py-3 sm:px-6 flex justify-between items-center border-b border-gray-200">
+                    <h3 class="text-lg font-semibold leading-6 text-gray-900" id="modal-title">Package Details</h3>
+                    <button type="button" onclick="closePackageModal()" class="text-gray-400 hover:text-gray-500">
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Scrollable Content -->
+                <div class="px-4 py-5 sm:p-6 max-h-[80vh] overflow-y-auto">
+                    <input type="hidden" id="pkg_id">
+
+                    <div class="space-y-6">
+                        <!-- 1. Basic Info -->
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Package Name</label>
+                                <input type="text" id="pkg_name" placeholder="e.g. Shared Room"
+                                    class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Description <span
+                                        class="text-gray-400 font-normal">(optional)</span></label>
+                                <div class="mt-1">
+                                    <!-- Standard Textarea Style -->
+                                    <textarea id="pkg_description" rows="3"
+                                        class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6"
+                                        placeholder="Enter package description..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 2. Pricing & Deposit -->
+                        <div class="border-t border-gray-200 pt-5">
+                            <div class="grid grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Full price per
+                                        person</label>
+                                    <div class="relative mt-1 rounded-md shadow-sm">
+                                        <div
+                                            class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                            <span class="text-gray-500 sm:text-sm currency-symbol">$</span>
+                                        </div>
+                                        <input type="text" id="pkg_price" inputmode="numeric" pattern="[0-9]*\.?[0-9]*" oninput="recalculatePlan()"
+                                            class="block w-full rounded-md border-0 h-9 pl-7 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6"
+                                            placeholder="0.00">
+                                    </div>
+                                </div>
+                                <!-- Currency Display -->
+                                <div>
+                                    <label
+                                        class="block text-sm font-medium leading-6 text-gray-900 mb-2">Currency</label>
+                                    <select id="pkg_currency" onchange="updateCurrencySymbol()"
+                                        class="mt-1 block w-full rounded-md border-0 h-9 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
+                                        <option value="USD">USD ($)</option>
+                                        <option value="CNY">CNY (¥)</option>
+                                        <option value="CAD">CAD (C$)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 3. Payment Plan Toggle -->
+                        <div class="border-t border-gray-200 pt-5">
+                            <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                <div class="flex items-center justify-between mb-2">
+                                    <label class="text-sm font-medium text-gray-900">Add Deposit / Payment Plan</label>
+                                    <div class="flex rounded-md shadow-sm" role="group">
+                                        <button type="button" onclick="togglePaymentPlan(true)" id="btn-pp-yes"
+                                            class="px-3 py-1 text-sm font-medium rounded-l-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
+                                            Yes
+                                        </button>
+                                        <button type="button" onclick="togglePaymentPlan(false)" id="btn-pp-no"
+                                            class="px-3 py-1 text-sm font-medium rounded-r-lg border border-l-0 border-gray-300 bg-wetravel-cyan text-white hover:bg-wetravel-cyan-dark focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
+                                            No
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Payment Plan Builder -->
+                                <div id="payment-plan-container" class="hidden mt-3 space-y-3">
+                                    <div>
+                                        <label
+                                            class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Number
+                                            of payments</label>
+                                        <div class="grid grid-cols-6 gap-2">
+                                            <!-- Deposit plus 1..12 -->
+                                            {% for i in range(1, 13) %}
+                                            <button type="button" onclick="setInstallments({{ i }})"
+                                                id="inst-btn-{{ i }}"
+                                                class="inst-btn px-2 py-1.5 text-sm border border-gray-300 rounded hover:border-wetravel-cyan focus:outline-none transition-colors bg-white">
+                                                {{ i }}
+                                            </button>
+                                            {% endfor %}
+                                        </div>
+                                        <p class="text-xs text-gray-500 mt-1">Select logic: "Deposit plus X payments"
+                                        </p>
+                                    </div>
+
+                                    <!-- Auto-Balance Toggle -->
+                                    <div class="flex items-center justify-between bg-white p-3 rounded border border-gray-200">
+                                        <div class="flex items-center">
+                                            <label class="text-sm font-medium text-gray-900 mr-2">Auto-balance amounts</label>
+                                            <span class="text-xs text-gray-500">(Automatically distribute remaining amount)</span>
+                                        </div>
+                                        <div class="flex rounded-md shadow-sm" role="group">
+                                            <button type="button" onclick="toggleAutoBalance(true)" id="btn-auto-yes"
+                                                class="px-3 py-1 text-sm font-medium rounded-l-lg border border-gray-300 bg-wetravel-cyan text-white hover:bg-wetravel-cyan-dark focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
+                                                On
+                                            </button>
+                                            <button type="button" onclick="toggleAutoBalance(false)" id="btn-auto-no"
+                                                class="px-3 py-1 text-sm font-medium rounded-r-lg border border-l-0 border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
+                                                Off
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Manual Mode Validation Message -->
+                                    <div id="manual-mode-actions" class="hidden flex items-center justify-end bg-yellow-50 p-3 rounded border border-yellow-200">
+                                        <div id="total-validation-message" class="text-sm font-medium"></div>
+                                    </div>
+
+                                    <!-- Schedule Table -->
+                                    <div class="bg-white rounded border border-gray-200 overflow-hidden">
+                                        <div
+                                            class="grid grid-cols-12 gap-0 text-xs font-medium text-gray-500 bg-gray-50 border-b border-gray-200">
+                                            <div class="col-span-4 p-2">PAYMENT</div>
+                                            <div class="col-span-4 p-2">DUE DATE</div>
+                                            <div class="col-span-4 p-2 text-right">AMOUNT</div>
+                                        </div>
+                                        <div id="schedule-rows" class="divide-y divide-gray-100">
+                                            <!-- JS creates rows here -->
+                                        </div>
+                                    </div>
+
+                                    <!-- Payment Options (Hidden per request) -->
+                                    <div class="space-y-2 pt-2 hidden">
+                                        <div class="relative flex items-start">
+                                            <div class="flex h-6 items-center">
+                                                <input id="allow_partial" type="checkbox"
+                                                    class="h-4 w-4 rounded border-gray-300 text-wetravel-cyan focus:ring-wetravel-cyan">
+                                            </div>
+                                            <div class="ml-3 text-sm leading-6">
+                                                <label for="allow_partial" class="font-medium text-gray-900">Allow
+                                                    partial
+                                                    payment</label>
+                                                <p class="text-gray-500 text-xs">Client can pay custom amounts until
+                                                    fully
+                                                    paid.</p>
+                                            </div>
+                                        </div>
+                                        <div class="relative flex items-start">
+                                            <div class="flex h-6 items-center">
+                                                <input id="enable_auto_billing" type="checkbox"
+                                                    class="h-4 w-4 rounded border-gray-300 text-wetravel-cyan focus:ring-wetravel-cyan">
+                                            </div>
+                                            <div class="ml-3 text-sm leading-6">
+                                                <label for="enable_auto_billing"
+                                                    class="font-medium text-gray-900">Enable
+                                                    auto-billing</label>
+                                                <p class="text-gray-500 text-xs">Automatically charge saved card on due
+                                                    dates.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 4. Advanced Settings: Availability & Participants -->
+                        <div class="border-t border-gray-200 pt-5 space-y-4">
+                                <!-- Availability -->
+                                <div>
+                                    <label
+                                        class="block text-sm font-medium leading-6 text-gray-900">Availability</label>
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <select id="pkg_availability_type" onchange="toggleCapacityInput()"
+                                            class="block w-full rounded-md border-0 h-9 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
+                                            <option value="unlimited">Unlimited</option>
+                                            <option value="limited">Limited</option>
+                                        </select>
+                                        <div id="capacity-input-container" class="hidden">
+                                            <input type="text" id="pkg_capacity" inputmode="numeric" pattern="[0-9]*" placeholder="Total spots"
+                                                class="block w-full rounded-md border-0 h-9 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Participants per booking removed - customers can add any number of packages when booking -->
+                        </div>
+
+                        <!-- Booking Deadline -->
+                        <div class="border-t border-gray-200 pt-5">
+                                <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Is there a booking
+                                    deadline?</label>
+                                <div class="flex items-center gap-4">
+                                    <div class="flex rounded-md shadow-sm" role="group">
+                                        <button type="button" onclick="toggleDeadline(true)" id="btn-deadline-yes"
+                                            class="px-3 py-1 text-sm font-medium rounded-l-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
+                                            Yes
+                                        </button>
+                                        <button type="button" onclick="toggleDeadline(false)" id="btn-deadline-no"
+                                            class="px-3 py-1 text-sm font-medium rounded-r-lg border border-l-0 border-gray-300 bg-wetravel-cyan text-white hover:bg-wetravel-cyan-dark focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
+                                            No
+                                        </button>
+                                    </div>
+                                    <div id="deadline-input-container" class="hidden flex-1">
+                                        <input type="date" id="pkg_deadline"
+                                            class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-black ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <!-- Footer -->
+                    <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6 border-t border-gray-200">
+                        <button type="button" onclick="savePackage()"
+                            class="inline-flex w-full justify-center rounded-md bg-wetravel-cyan px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-wetravel-cyan-dark sm:ml-3 sm:w-auto">
+                            Save Package
+                        </button>
+                        <button type="button" onclick="closePackageModal()"
+                            class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto">
+                            Cancel
+                        </button>
+                        <button type="button" id="deleteBtn" onclick="deleteCurrentPackage()"
+                            class="hidden mt-3 inline-flex w-full justify-center rounded-md bg-red-50 text-red-600 border border-red-200 px-3 py-2 text-sm font-semibold shadow-sm hover:bg-red-100 sm:mt-0 sm:mr-auto sm:w-auto">
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Data State ---
+        let packages = [];
+        let currentEditIndex = -1;
+
+        // Payment Plan State
+        let hasPaymentPlan = false;
+        let numberOfInstallments = 1; // Default: Deposit + 1
+        let isAutoBalancing = false; // Flag to prevent infinite loops during auto-balance
+        let autoBalanceEnabled = true; // Auto-balance mode: true = auto, false = manual
+        let hasDeadline = false;
+
+        // --- DOM Elements ---
+        const listContainer = document.getElementById('packages-list');
+        const emptyState = document.getElementById('empty-state');
+        const hiddenInput = document.getElementById('packages_json');
+        
+        // 初始化 packages 数组：优先从 hiddenInput 读取，如果没有则从模板数据读取
+        function initializePackages() {
+            try {
+                // 首先尝试从 hiddenInput 读取（这是最可靠的数据源）
+                if (hiddenInput && hiddenInput.value) {
+                    const parsed = JSON.parse(hiddenInput.value);
+                    if (Array.isArray(parsed)) {
+                        packages = parsed;
+                        return;
+                    }
+                }
+                
+                // 如果 hiddenInput 没有值，从模板数据读取
+                const templateData = {{ form.packages_json.data|tojson if form.packages_json.data else '[]' }};
+                if (typeof templateData === 'string') {
+                    packages = JSON.parse(templateData);
+                } else if (Array.isArray(templateData)) {
+                    packages = templateData;
+                } else {
+                    packages = [];
+                }
+                
+                // 确保 hiddenInput 的值与 packages 数组同步
+                if (hiddenInput) {
+                    hiddenInput.value = JSON.stringify(packages);
+                }
+            } catch (e) {
+                console.error('Error initializing packages:', e);
+                packages = [];
+                if (hiddenInput) {
+                    hiddenInput.value = '[]';
+                }
+            }
+        }
+        
+        // 立即初始化（在 DOM 加载前）
+        initializePackages();
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // 再次确保 packages 数组正确初始化（DOM 加载后）
+            if (!Array.isArray(packages)) {
+                console.warn('Packages data is not an array, re-initializing');
+                initializePackages();
+            }
+            
+            // 确保 hiddenInput 的值与 packages 数组同步
+            if (hiddenInput && hiddenInput.value !== JSON.stringify(packages)) {
+                hiddenInput.value = JSON.stringify(packages);
+            }
+            
+            // Disable mouse wheel and middle click for pkg_price input
+            const pkgPriceInput = document.getElementById('pkg_price');
+            if (pkgPriceInput) {
+                pkgPriceInput.addEventListener('wheel', function(e) {
+                    e.preventDefault();
+                });
+                pkgPriceInput.addEventListener('mousedown', function(e) {
+                    if (e.button === 1) {
+                        e.preventDefault();
+                    }
+                });
+                pkgPriceInput.addEventListener('input', function(e) {
+                    this.value = this.value.replace(/[^0-9.]/g, '');
+                    const parts = this.value.split('.');
+                    if (parts.length > 2) {
+                        this.value = parts[0] + '.' + parts.slice(1).join('');
+                    }
+                });
+                pkgPriceInput.addEventListener('paste', function(e) {
+                    const paste = (e.clipboardData || window.clipboardData).getData('text');
+                    const filteredPaste = paste.replace(/[^0-9.]/g, '');
+                    const parts = filteredPaste.split('.');
+                    const finalPaste = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : filteredPaste;
+                    document.execCommand('insertText', false, finalPaste);
+                    e.preventDefault();
+                });
+            }
+            
+            // Disable mouse wheel and middle click for pkg_capacity input
+            const pkgCapacityInput = document.getElementById('pkg_capacity');
+            if (pkgCapacityInput) {
+                pkgCapacityInput.addEventListener('wheel', function(e) {
+                    e.preventDefault();
+                });
+                pkgCapacityInput.addEventListener('mousedown', function(e) {
+                    if (e.button === 1) {
+                        e.preventDefault();
+                    }
+                });
+                pkgCapacityInput.addEventListener('input', function(e) {
+                    this.value = this.value.replace(/[^0-9]/g, '');
+                });
+                pkgCapacityInput.addEventListener('paste', function(e) {
+                    const paste = (e.clipboardData || window.clipboardData).getData('text');
+                    const filteredPaste = paste.replace(/[^0-9]/g, '');
+                    document.execCommand('insertText', false, filteredPaste);
+                    e.preventDefault();
+                });
+            }
+            renderPackages();
+        });
+
+        // --- Actions ---
+
+        function openPackageModal() {
+            currentEditIndex = -1;
+            resetModal();
+            document.getElementById('modal-title').innerText = 'Add New Package';
+            document.getElementById('deleteBtn').classList.add('hidden');
+            document.getElementById('packageModal').classList.remove('hidden');
+        }
+
+        function editPackage(index) {
+            currentEditIndex = index;
+            const pkg = packages[index];
+            resetModal(); // Clear first
+            document.getElementById('modal-title').innerText = 'Edit Package';
+
+            // Load Basic Data
+            document.getElementById('pkg_id').value = pkg.id || '';
+            document.getElementById('pkg_name').value = pkg.name;
+            document.getElementById('pkg_price').value = pkg.price;
+            document.getElementById('pkg_description').value = pkg.description || '';
+
+            // Load Currency
+            if (pkg.currency) {
+                document.getElementById('pkg_currency').value = pkg.currency;
+                updateCurrencySymbol();
+            }
+
+            // Load Availability
+            if (pkg.capacity) {
+                document.getElementById('pkg_availability_type').value = 'limited';
+                document.getElementById('pkg_capacity').value = pkg.capacity;
+                toggleCapacityInput();
+            } else {
+                document.getElementById('pkg_availability_type').value = 'unlimited';
+                toggleCapacityInput();
+            }
+
+            // Load Participants
+            // min_per_booking and max_per_booking removed
+
+            // Load Deadline
+            if (pkg.booking_deadline) {
+                toggleDeadline(true);
+                // Format ISO date string to YYYY-MM-DD for input[type=date]
+                const d = new Date(pkg.booking_deadline);
+                const yyyy = d.getFullYear();
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+                document.getElementById('pkg_deadline').value = `${yyyy}-${mm}-${dd}`;
+            } else {
+                toggleDeadline(false);
+            }
+
+            // Load Payment Plan
+            if (pkg.payment_plan_config && pkg.payment_plan_config.enabled) {
+                togglePaymentPlan(true);
+
+                // Populate Plan Config
+                document.getElementById('allow_partial').checked = pkg.payment_plan_config.allow_partial || false;
+                document.getElementById('enable_auto_billing').checked = pkg.payment_plan_config.enable_auto_billing || false;
+
+                const installments = pkg.payment_plan_config.installments || [];
+                numberOfInstallments = installments.length;
+                setInstallments(numberOfInstallments, false); // Update UI only
+
+                // Manually fill rows
+                isAutoBalancing = true; // Prevent triggering auto-balance during load
+                const rows = document.querySelectorAll('.schedule-row');
+                // Deposit Row
+                const depositRow = rows[0];
+                depositRow.querySelector('.amount-input').value = pkg.payment_plan_config.deposit_amount || 0;
+
+                // Installment Rows
+                installments.forEach((inst, i) => {
+                    if (rows[i + 1]) {
+                        rows[i + 1].querySelector('.date-input').value = inst.date;
+                        rows[i + 1].querySelector('.amount-input').value = inst.amount;
+                    }
+                });
+                isAutoBalancing = false;
+
+            } else {
+                togglePaymentPlan(false);
+            }
+
+            document.getElementById('deleteBtn').classList.remove('hidden');
+            document.getElementById('packageModal').classList.remove('hidden');
+        }
+
+        function resetModal() {
+            document.getElementById('pkg_id').value = '';
+            document.getElementById('pkg_name').value = '';
+            document.getElementById('pkg_price').value = '';
+            document.getElementById('pkg_description').value = '';
+
+            document.getElementById('pkg_currency').value = 'USD'; // Default
+            updateCurrencySymbol();
+
+            document.getElementById('pkg_availability_type').value = 'unlimited';
+            toggleCapacityInput();
+            document.getElementById('pkg_capacity').value = '';
+
+            // min_per_booking and max_per_booking removed
+
+            toggleDeadline(false);
+            document.getElementById('pkg_deadline').value = '';
+
+            togglePaymentPlan(false);
+            document.getElementById('allow_partial').checked = false;
+            document.getElementById('enable_auto_billing').checked = false;
+            setInstallments(1); // Default
+            // Reset auto-balance mode (will be set when payment plan is enabled)
+            autoBalanceEnabled = true;
+        }
+
+        function togglePaymentPlan(enable) {
+            hasPaymentPlan = enable;
+            const container = document.getElementById('payment-plan-container');
+            const btnYes = document.getElementById('btn-pp-yes');
+            const btnNo = document.getElementById('btn-pp-no');
+
+            if (enable) {
+                container.classList.remove('hidden');
+                btnYes.classList.remove('bg-white', 'text-gray-700');
+                btnYes.classList.add('bg-wetravel-cyan', 'text-white');
+                btnNo.classList.remove('bg-wetravel-cyan', 'text-white');
+                btnNo.classList.add('bg-white', 'text-gray-700');
+                recalculatePlan(); // Ensure numbers are fresh
+                // Initialize auto-balance mode when payment plan is enabled
+                toggleAutoBalance(true);
+            } else {
+                container.classList.add('hidden');
+                btnYes.classList.remove('bg-wetravel-cyan', 'text-white');
+                btnYes.classList.add('bg-white', 'text-gray-700');
+                btnNo.classList.remove('bg-white', 'text-gray-700');
+                btnNo.classList.add('bg-wetravel-cyan', 'text-white');
+            }
+        }
+
+        function toggleDeadline(enable) {
+            hasDeadline = enable;
+            const container = document.getElementById('deadline-input-container');
+            const btnYes = document.getElementById('btn-deadline-yes');
+            const btnNo = document.getElementById('btn-deadline-no');
+
+            if (enable) {
+                container.classList.remove('hidden');
+                btnYes.classList.remove('bg-white', 'text-gray-700');
+                btnYes.classList.add('bg-wetravel-cyan', 'text-white');
+                btnNo.classList.remove('bg-wetravel-cyan', 'text-white');
+                btnNo.classList.add('bg-white', 'text-gray-700');
+            } else {
+                container.classList.add('hidden');
+                btnYes.classList.remove('bg-wetravel-cyan', 'text-white');
+                btnYes.classList.add('bg-white', 'text-gray-700');
+                btnNo.classList.remove('bg-white', 'text-gray-700');
+                btnNo.classList.add('bg-wetravel-cyan', 'text-white');
+            }
+        }
+
+        function toggleCapacityInput() {
+            const type = document.getElementById('pkg_availability_type').value;
+            const inputContainer = document.getElementById('capacity-input-container');
+            if (type === 'limited') {
+                inputContainer.classList.remove('hidden');
+            } else {
+                inputContainer.classList.add('hidden');
+            }
+        }
+
+        function updateCurrencySymbol() {
+            const currencyKey = document.getElementById('pkg_currency').value;
+            const symbols = { 'USD': '$', 'CNY': '¥', 'CAD': 'C$' };
+            const symbol = symbols[currencyKey] || '$';
+
+            document.querySelectorAll('.currency-symbol').forEach(el => el.innerText = symbol);
+        }
+
+        function setInstallments(num, recalc = true) {
+            numberOfInstallments = num;
+
+            // UI State for Grid Buttons
+            document.querySelectorAll('.inst-btn').forEach(btn => {
+                btn.classList.remove('bg-wetravel-cyan', 'text-white', 'border-wetravel-cyan');
+                btn.classList.add('bg-white', 'text-black', 'border-gray-300');
+            });
+            const activeBtn = document.getElementById(`inst-btn-${num}`);
+            if (activeBtn) {
+                activeBtn.classList.remove('bg-white', 'text-black', 'border-gray-300');
+                activeBtn.classList.add('bg-wetravel-cyan', 'text-white', 'border-wetravel-cyan');
+            }
+
+            // Render Rows
+            renderScheduleRows();
+
+            if (recalc) {
+                recalculatePlan();
+            }
+        }
+
+        function renderScheduleRows() {
+            const rowsContainer = document.getElementById('schedule-rows');
+            rowsContainer.innerHTML = '';
+
+            // Row 1: Deposit
+            const depRow = document.createElement('div');
+            depRow.className = 'grid grid-cols-12 gap-0 text-sm py-2 px-2 items-center bg-gray-50 bg-opacity-50 schedule-row';
+            depRow.innerHTML = `
+            <div class="col-span-4 font-medium text-gray-900">Deposit</div>
+            <div class="col-span-4 text-gray-500 text-xs">Due at booking</div>
+            <div class="col-span-4 pl-4">
+                    <input type="text" inputmode="numeric" pattern="[0-9]*\.?[0-9]*" class="amount-input block w-full rounded-md border-0 py-1 text-gray-900 text-right ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-xs" placeholder="0.00">
+            </div>
+        `;
+            rowsContainer.appendChild(depRow);
+            
+            // Add event listener to deposit amount input for auto-balance
+            const depositInput = depRow.querySelector('.amount-input');
+            if (depositInput) {
+                // Disable mouse wheel and middle click
+                depositInput.addEventListener('wheel', function(e) {
+                    e.preventDefault();
+                });
+                depositInput.addEventListener('mousedown', function(e) {
+                    if (e.button === 1) { // Middle mouse button
+                        e.preventDefault();
+                    }
+                });
+                // Ensure only numbers and decimal point can be entered
+                depositInput.addEventListener('input', function(e) {
+                    this.value = this.value.replace(/[^0-9.]/g, '');
+                    // Ensure only one decimal point
+                    const parts = this.value.split('.');
+                    if (parts.length > 2) {
+                        this.value = parts[0] + '.' + parts.slice(1).join('');
+                    }
+                    if (!isAutoBalancing && autoBalanceEnabled) {
+                        autoBalanceAmounts(0); // 0 = deposit row index
+                    } else if (!autoBalanceEnabled) {
+                        validateTotal(); // Show validation in manual mode
+                    }
+                });
+                depositInput.addEventListener('paste', function(e) {
+                    const paste = (e.clipboardData || window.clipboardData).getData('text');
+                    const filteredPaste = paste.replace(/[^0-9.]/g, '');
+                    const parts = filteredPaste.split('.');
+                    const finalPaste = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : filteredPaste;
+                    document.execCommand('insertText', false, finalPaste);
+                    e.preventDefault();
+                });
+                depositInput.addEventListener('blur', function() {
+                    if (!isAutoBalancing && autoBalanceEnabled) {
+                        autoBalanceAmounts(0);
+                    } else if (!autoBalanceEnabled) {
+                        validateTotal();
+                    }
+                });
+            }
+
+            // Installment Rows
+            for (let i = 1; i <= numberOfInstallments; i++) {
+                const row = document.createElement('div');
+                row.className = 'grid grid-cols-12 gap-0 text-sm py-2 px-2 items-center border-t border-gray-100 schedule-row';
+
+                let label = `${i}st Payment`;
+                if (i === 2) label = `2nd Payment`;
+                else if (i === 3) label = `3rd Payment`;
+                else if (i > 3) label = `${i}th Payment`;
+
+                // Check if it's final
+                if (i === numberOfInstallments) label = `Final Payment`;
+
+                row.innerHTML = `
+                <div class="col-span-4 font-medium text-gray-900">${label}</div>
+                <div class="col-span-4 pr-2">
+                    <input type="date" class="date-input block w-full rounded-md border-0 h-8 py-0 text-gray-900 ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-xs">
+                </div>
+                <div class="col-span-4 pl-4">
+                        <input type="text" inputmode="numeric" pattern="[0-9]*\.?[0-9]*" class="amount-input block w-full rounded-md border-0 h-8 py-0 text-gray-900 text-right ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-xs" placeholder="0.00">
+                </div>
+             `;
+                rowsContainer.appendChild(row);
+                
+                // Add event listener to installment amount input for auto-balance
+                const installmentInput = row.querySelector('.amount-input');
+                if (installmentInput) {
+                    // Disable mouse wheel and middle click
+                    installmentInput.addEventListener('wheel', function(e) {
+                        e.preventDefault();
+                    });
+                    installmentInput.addEventListener('mousedown', function(e) {
+                        if (e.button === 1) { // Middle mouse button
+                            e.preventDefault();
+                        }
+                    });
+                    // Ensure only numbers and decimal point can be entered
+                    installmentInput.addEventListener('input', function(e) {
+                        this.value = this.value.replace(/[^0-9.]/g, '');
+                        // Ensure only one decimal point
+                        const parts = this.value.split('.');
+                        if (parts.length > 2) {
+                            this.value = parts[0] + '.' + parts.slice(1).join('');
+                        }
+                        if (!isAutoBalancing && autoBalanceEnabled) {
+                            autoBalanceAmounts(i); // i = installment row index (1-based)
+                        } else if (!autoBalanceEnabled) {
+                            validateTotal(); // Show validation in manual mode
+                        }
+                    });
+                    installmentInput.addEventListener('paste', function(e) {
+                        const paste = (e.clipboardData || window.clipboardData).getData('text');
+                        const filteredPaste = paste.replace(/[^0-9.]/g, '');
+                        const parts = filteredPaste.split('.');
+                        const finalPaste = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : filteredPaste;
+                        document.execCommand('insertText', false, finalPaste);
+                        e.preventDefault();
+                    });
+                    installmentInput.addEventListener('blur', function() {
+                        if (!isAutoBalancing && autoBalanceEnabled) {
+                            autoBalanceAmounts(i);
+                        } else if (!autoBalanceEnabled) {
+                            validateTotal();
+                        }
+                    });
+                }
+            }
+        }
+
+        function recalculatePlan() {
+            if (!hasPaymentPlan) return;
+
+            const fullPrice = parseFloat(document.getElementById('pkg_price').value) || 0;
+            if (fullPrice === 0) return;
+
+            // Simple default logic: 
+            // 1. Suggest 20% Deposit
+            // 2. Split rest equally among installments
+
+            const depositAmount = parseFloat((fullPrice * 0.20).toFixed(2));
+            const remaining = fullPrice - depositAmount;
+            const installmentAmount = parseFloat((remaining / numberOfInstallments).toFixed(2));
+
+            // Adjust last installment to handle rounding
+            const totalCalculated = depositAmount + (installmentAmount * numberOfInstallments);
+            const diff = parseFloat((fullPrice - totalCalculated).toFixed(2));
+            const finalInstallmentAmount = installmentAmount + diff;
+
+            // Update Inputs
+            isAutoBalancing = true; // Prevent triggering auto-balance during recalculation
+            const rows = document.querySelectorAll('.schedule-row');
+
+            // Deposit
+            if (rows[0]) rows[0].querySelector('.amount-input').value = depositAmount;
+
+            // Installments
+            for (let i = 1; i <= numberOfInstallments; i++) {
+                if (rows[i]) {
+                    // Set amount
+                    if (i === numberOfInstallments) {
+                        rows[i].querySelector('.amount-input').value = finalInstallmentAmount.toFixed(2);
+                    } else {
+                        rows[i].querySelector('.amount-input').value = installmentAmount.toFixed(2);
+                    }
+
+                    // Set default dates if empty? 
+                    // Maybe set 1 month apart starting 1 month from now?
+                    // Let's leave dates empty for user to pick to avoid annoyance
+                }
+            }
+            isAutoBalancing = false;
+        }
+
+        /**
+         * Auto-balance payment amounts when user modifies deposit or any installment
+         * @param {number} modifiedRowIndex - Index of the row that was modified (0 = deposit, 1+ = installments)
+         */
+        function autoBalanceAmounts(modifiedRowIndex) {
+            if (!hasPaymentPlan || isAutoBalancing) return;
+            
+            const fullPrice = parseFloat(document.getElementById('pkg_price').value) || 0;
+            if (fullPrice === 0) return;
+
+            const rows = document.querySelectorAll('.schedule-row');
+            if (rows.length === 0) return;
+
+            isAutoBalancing = true;
+
+            // Get the modified amount (the new value that user just entered)
+            const modifiedAmount = parseFloat(rows[modifiedRowIndex].querySelector('.amount-input').value) || 0;
+
+            // If the modified row is deposit (index 0)
+            if (modifiedRowIndex === 0) {
+                // Calculate remaining amount after deposit
+                const remaining = fullPrice - modifiedAmount;
+                
+                // Distribute remaining amount equally among all installments
+                const installmentCount = numberOfInstallments;
+                if (installmentCount > 0 && remaining >= 0) {
+                    const perInstallment = parseFloat((remaining / installmentCount).toFixed(2));
+                    const totalDistributed = perInstallment * installmentCount;
+                    const diff = parseFloat((remaining - totalDistributed).toFixed(2));
+                    
+                    // Update all installment amounts
+                    for (let i = 1; i <= installmentCount; i++) {
+                        if (rows[i]) {
+                            if (i === installmentCount) {
+                                // Last installment gets the remainder to handle rounding
+                                rows[i].querySelector('.amount-input').value = (perInstallment + diff).toFixed(2);
+                            } else {
+                                rows[i].querySelector('.amount-input').value = perInstallment.toFixed(2);
+                            }
+                        }
+                    }
+                }
+            } else {
+                // If an installment was modified
+                // Get deposit amount
+                const depositAmount = parseFloat(rows[0].querySelector('.amount-input').value) || 0;
+                
+                // Calculate remaining amount: total - deposit - modified installment
+                // We ignore other installments' current values and recalculate them
+                const remaining = fullPrice - depositAmount - modifiedAmount;
+                
+                // Get list of other installments (excluding the modified one)
+                const otherInstallments = [];
+                for (let i = 1; i < rows.length; i++) {
+                    if (i !== modifiedRowIndex) {
+                        otherInstallments.push(i);
+                    }
+                }
+
+                if (otherInstallments.length > 0 && remaining >= 0) {
+                    // Distribute remaining amount equally among other installments
+                    const perInstallment = parseFloat((remaining / otherInstallments.length).toFixed(2));
+                    const totalDistributed = perInstallment * otherInstallments.length;
+                    const diff = parseFloat((remaining - totalDistributed).toFixed(2));
+                    
+                    // Update other installment amounts
+                    otherInstallments.forEach((rowIndex, idx) => {
+                        if (rows[rowIndex]) {
+                            if (idx === otherInstallments.length - 1) {
+                                // Last installment gets the remainder to handle rounding
+                                rows[rowIndex].querySelector('.amount-input').value = (perInstallment + diff).toFixed(2);
+                            } else {
+                                rows[rowIndex].querySelector('.amount-input').value = perInstallment.toFixed(2);
+                            }
+                        }
+                    });
+                } else if (otherInstallments.length === 0) {
+                    // If only one installment exists and it was modified, adjust deposit
+                    const newDeposit = fullPrice - modifiedAmount;
+                    if (rows[0] && newDeposit >= 0) {
+                        rows[0].querySelector('.amount-input').value = newDeposit.toFixed(2);
+                    }
+                }
+            }
+
+            isAutoBalancing = false;
+        }
+
+        /**
+         * Toggle auto-balance mode
+         * @param {boolean} enabled - true for auto-balance, false for manual input
+         */
+        function toggleAutoBalance(enabled) {
+            autoBalanceEnabled = enabled;
+            const btnYes = document.getElementById('btn-auto-yes');
+            const btnNo = document.getElementById('btn-auto-no');
+            const manualActions = document.getElementById('manual-mode-actions');
+            
+            if (enabled) {
+                btnYes.classList.add('bg-wetravel-cyan', 'text-white');
+                btnYes.classList.remove('bg-white', 'text-gray-700');
+                btnNo.classList.add('bg-white', 'text-gray-700');
+                btnNo.classList.remove('bg-wetravel-cyan', 'text-white');
+                manualActions.classList.add('hidden');
+            } else {
+                btnYes.classList.add('bg-white', 'text-gray-700');
+                btnYes.classList.remove('bg-wetravel-cyan', 'text-white');
+                btnNo.classList.add('bg-wetravel-cyan', 'text-white');
+                btnNo.classList.remove('bg-white', 'text-gray-700');
+                manualActions.classList.remove('hidden');
+                validateTotal(); // Show initial validation
+            }
+        }
+
+        /**
+         * Validate that total of all amounts equals package price
+         */
+        function validateTotal() {
+            if (!hasPaymentPlan) return;
+
+            const fullPrice = parseFloat(document.getElementById('pkg_price').value) || 0;
+            if (fullPrice === 0) {
+                document.getElementById('total-validation-message').textContent = '';
+                return;
+            }
+
+            const rows = document.querySelectorAll('.schedule-row');
+            let total = 0;
+            for (let i = 0; i < rows.length; i++) {
+                const amount = parseFloat(rows[i].querySelector('.amount-input').value) || 0;
+                total += amount;
+            }
+
+            const diff = Math.abs(fullPrice - total);
+            const messageEl = document.getElementById('total-validation-message');
+            
+            if (diff < 0.01) {
+                // Totals match (within rounding error)
+                messageEl.textContent = '✓ Total matches';
+                messageEl.className = 'text-sm font-medium text-green-600';
+            } else {
+                const diffText = diff.toFixed(2);
+                if (total > fullPrice) {
+                    messageEl.textContent = `Total exceeds by $${diffText}`;
+                    messageEl.className = 'text-sm font-medium text-red-600';
+                } else {
+                    messageEl.textContent = `Total is $${diffText} short`;
+                    messageEl.className = 'text-sm font-medium text-orange-600';
+                }
+            }
+        }
+
+        async function savePackage() {
+            const name = document.getElementById('pkg_name').value;
+            const price = parseFloat(document.getElementById('pkg_price').value);
+            if (!name || isNaN(price)) {
+                await customAlert('Package name and price are required.', 'Validation Error');
+                return;
+            }
+
+            const pkgData = {
+                id: document.getElementById('pkg_id').value ? parseInt(document.getElementById('pkg_id').value) : null,
+                name: name,
+                price: price,
+                currency: document.getElementById('pkg_currency').value,
+                description: document.getElementById('pkg_description').value,
+
+                // Availability
+                capacity: document.getElementById('pkg_availability_type').value === 'limited' ?
+                    parseInt(document.getElementById('pkg_capacity').value) : null,
+
+                // Participants per booking removed - customers can add any number of packages
+
+                // Deadline
+                booking_deadline: hasDeadline ? document.getElementById('pkg_deadline').value : null,
+
+                // Payment Plan
+                payment_plan_config: null
+            };
+
+            if (hasPaymentPlan) {
+                const rows = document.querySelectorAll('.schedule-row');
+
+                // Deposit Row
+                const depositAmt = parseFloat(rows[0].querySelector('.amount-input').value) || 0;
+
+                // Installments
+                const installments = [];
+                for (let i = 1; i < rows.length; i++) {
+                    installments.push({
+                        date: rows[i].querySelector('.date-input').value,
+                        amount: parseFloat(rows[i].querySelector('.amount-input').value) || 0
+                    });
+                }
+
+                pkgData.payment_plan_config = {
+                    enabled: true,
+                    deposit_amount: depositAmt,
+                    allow_partial: document.getElementById('allow_partial').checked,
+                    enable_auto_billing: document.getElementById('enable_auto_billing').checked,
+                    installments: installments
+                };
+            } else {
+                pkgData.payment_plan_config = {
+                    enabled: false,
+                    deposit_amount: price // Full price as "deposit" conceptually or just N/A
+                    // When disabled, it implies standard full payment
+                };
+            }
+
+            if (currentEditIndex === -1) {
+                packages.push(pkgData);
+            } else {
+                // Preserve ID if overwriting
+                if (packages[currentEditIndex].id) {
+                    pkgData.id = packages[currentEditIndex].id;
+                }
+                packages[currentEditIndex] = pkgData;
+            }
+
+            renderPackages();
+            closePackageModal();
+        }
+
+        function renderPackages() {
+            hiddenInput.value = JSON.stringify(packages);
+            listContainer.innerHTML = '';
+            listContainer.appendChild(emptyState);
+
+            if (packages.length === 0) {
+                emptyState.classList.remove('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+                packages.forEach((pkg, index) => {
+                    const el = document.createElement('div');
+                    el.className = "bg-white border border-gray-200 rounded-lg shadow-sm p-4 flex justify-between items-start transition-shadow hover:shadow-md";
+
+                    let detailTags = [];
+                    if (pkg.capacity) detailTags.push(`${pkg.capacity} spots`);
+                    else detailTags.push(`Unlimited spots`);
+
+                    if (pkg.payment_plan_config?.enabled) {
+                        const count = pkg.payment_plan_config.installments.length;
+                        detailTags.push(`Payment Plan (${count} installments)`);
+                    } else {
+                        detailTags.push(`Full Payment`);
+                    }
+
+                    if (pkg.booking_deadline) {
+                        detailTags.push(`Deadline: ${pkg.booking_deadline}`);
+                    }
+
+                    if (pkg.currency && pkg.currency !== 'USD') {
+                        detailTags.push(pkg.currency);
+                    }
+
+                    const tagsHtml = detailTags.map(t => `<span class="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-medium">${t}</span>`).join('');
+
+                    el.innerHTML = `
+                    <div class="flex-1">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-lg font-bold text-gray-900">${pkg.name}</h4>
+                            <span class="text-xl font-bold text-wetravel-cyan">${pkg.currency === 'USD' ? '$' : (pkg.currency === 'CNY' ? '¥' : 'C$')}${pkg.price.toFixed(2)}</span>
+                        </div>
+                        <p class="mt-1 text-sm text-gray-600 line-clamp-2">${pkg.description || '<span class="italic text-gray-400">No description provided</span>'}</p>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            ${tagsHtml}
+                        </div>
+                    </div>
+                    <div class="ml-4 flex items-center gap-2">
+                         <button type="button" onclick="editPackage(${index})" class="p-2 text-gray-400 hover:text-wetravel-cyan hover:bg-cyan-50 rounded-full transition-colors">
+                            <span class="sr-only">Edit</span>
+                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                        </button>
+                    </div>
+                `;
+                    listContainer.appendChild(el);
+                });
+            }
+        }
+
+        async function deleteCurrentPackage() {
+            if (currentEditIndex > -1) {
+                const confirmed = await customConfirm('Are you sure you want to delete this package? This action cannot be undone.', 'Delete Package', 'danger');
+                if (confirmed) {
+                    packages.splice(currentEditIndex, 1);
+                    renderPackages();
+                    closePackageModal();
+                }
+            }
+        }
+
+        function closePackageModal() {
+            document.getElementById('packageModal').classList.add('hidden');
+        }
+    </script>
+    {% endblock %}

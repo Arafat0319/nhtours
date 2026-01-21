@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}Nexus Horizons | Asia Family Tours{% endblock %}
+
+{% block description %}Plan your family trip to Asia with Nexus Horizons - Family-friendly tours with practical tips and customizable itineraries.{% endblock %}
+
+{% block og_title %}Nexus Horizons | Asia Family Tours{% endblock %}
+
+{% block content %}
+{# Hero背景区域 #}
+<div class="w-full h-[70vh]" style="background:url({{ url_for('static', filename='images/backgrounds/asia-family-top.Ci7IHC3K.png') }}) center / cover no-repeat;">
+	<div class="flex h-full w-full items-center pr-10">
+		<div class="hidden md:grid w-full grid-cols-1 justify-items-end">
+			<a class="border-2 border-white w-[80px] h-[80px] bg-no-repeat bg-center bg-top bg-size-[50px] rounded-full bg-amber-800/80 transition-colors hover:bg-amber-800/90"
+				href="{{ url_for('main.asia_index') }}" style="background-image:url({{ url_for('static', filename='images/icons/asia-tower.Dubk1hOS.png') }})"></a>
+			<a class="mt-20 border-2 border-white w-[80px] h-[80px] bg-no-repeat bg-center bg-top bg-size-[30px] rounded-full bg-indigo-800/40 transition-colors hover:bg-indigo-800/50"
+				href="{{ url_for('main.north_america_index') }}" style="background-image:url({{ url_for('static', filename='images/icons/na-tower.2RQScOSr.png') }})"></a>
+		</div>
+	</div>
+</div>
+
+<div class="w-full h-[16px] bg-indigo-800"></div>
+
+{# 主要内容区域 #}
+<div class="max-w-6xl mx-auto py-8 px-8 pb-8 md:px-0">
+	{# Breadcrumb导航 #}
+	<nav>
+		<ol class="flex flex-wrap items-center space-x-2 text-lg font-medium text-amber-800">
+			<li class="flex items-center">
+				<a class="hover:underline" href="{{ url_for('main.index') }}">Home</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<a class="hover:underline" href="{{ url_for('main.asia_index') }}">Asia</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<span class="text-indigo-800 font-medium cursor-default">Family</span>
+			</li>
+		</ol>
+	</nav>
+
+	<br/><br/>
+
+	<h1>Plan Family Trip to Asia</h1>
+	<h1>(China Edition)</h1>
+	<div class="text-center">
+		<img class="inline-block w-[120px] mt-4 mb-6" src="{{ url_for('static', filename='images/icons/one-oran-cloud.Cc5rO4mf.svg') }}"/>
+	</div>
+	<p class="content overview">
+		China is wonderfully family-friendly—rich in history, vibrant cultures, striking landscapes, and kid-approved culinary adventures. Below are practical tips on cities, sample itineraries, budgets, hotels, and more, with a focus on China.
+	</p>
+
+	<h2>How long to go</h2>
+	<p class="content overview">
+		<span class="font-medium">12–14 days (recommended): </span> The sweet spot for a first family trip to China. You can see the top cultural and natural highlights at a comfortable pace and still enjoy hands-on activities with the kids—without travel fatigue.
+		<br/><br/>
+		<span class="font-medium">3 weeks or longer (go deeper): </span> If time allows, add off-the-beaten-path regions to experience more diverse landscapes and local cultures with your children.
+		<br/><br/>
+		<span class="font-medium">7–9 days (minimum highlights): </span> Short on vacation time? Focus on the essentials in Beijing, Xi'an, and Shanghai to cover China's marquee sights efficiently.
+	</p>
+	<p class="content overview">
+		Beyond standard itineraries, our travel specialists will recommend off-the-beaten-path or on-trend routes and arrange dedicated guiding services tailored to your itinerary and group. We also provide a 24/7 emergency hotline and local emergency medical coverage throughout the trip for added peace of mind.
+		<br/><br/>
+		Please download the <span class="font-medium">Trip Planning Questionnaire</span> and email it to <a class="font-medium" href="mailto:info@nhtours.com">info@nhtours.com</a>. We will contact you within <span class="font-medium">two business days</span>.
+	</p>
+	<a download class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-amber-800" href="{{ url_for('static', filename='files/Trip Planning Questionnaire To ASIA.docx') }}">
+		⬇ Download Trip Planning Questionnaire
+	</a>
+
+	<h1>Photo Gallery</h1>
+	<div class="text-center">
+		<img class="inline-block w-[120px] mt-4 mb-6" src="{{ url_for('static', filename='images/icons/one-oran-cloud.Cc5rO4mf.svg') }}"/>
+	</div>
+	<br/><br/>
+
+	{# 照片画廊 #}
+	<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-10">
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 1" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/Screenshot 2025-09-03 at 5.42.14 PM.gRUgXIN_.png') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 2" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/Screenshot 2025-09-03 at 5.44.28 PM.BvK-OWcK.png') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 3" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/Screenshot 2025-09-03 at 5.44.40 PM.B5Qu79hg.png') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 4" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/Screenshot 2025-09-03 at 5.44.54 PM.BtZWVx5E.png') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 5" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/Screenshot 2025-09-03 at 5.45.00 PM.CKDN3Cba.png') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 6" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/Screenshot 2025-09-03 at 5.45.10 PM.CWc_rIwy.png') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 7" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/Screenshot 2025-09-03 at 5.45.19 PM.4cMJt7XC.png') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 8" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/Screenshot 2025-09-03 at 5.45.27 PM.DWqmhuBq.png') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 9" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/Screenshot 2025-09-03 at 5.45.36 PM.CtTFJBmC.png') }}"/>
+				</div>
+			</div>
+		</div>
+	</div>
+	<br/><br/>
+</div>
+{% endblock %}
+

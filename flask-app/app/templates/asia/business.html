@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Nexus Horizons | Asia Business Tours{% endblock %}
+
+{% block description %}Nexus Horizons Asia Business Tours - End-to-end logistics and corporate intelligence for business travel to Asia.{% endblock %}
+
+{% block og_title %}Nexus Horizons | Asia Business Tours{% endblock %}
+
+{% block content %}
+{# Hero背景区域 #}
+<div class="w-full h-[70vh]" style="background:url({{ url_for('static', filename='images/backgrounds/asia-business-top.BebvV4Pv.png') }}) center / cover no-repeat;">
+	<div class="flex h-full w-full items-center pr-10">
+		<div class="hidden md:grid w-full grid-cols-1 justify-items-end">
+			<a class="border-2 border-white w-[80px] h-[80px] bg-no-repeat bg-center bg-top bg-size-[50px] rounded-full bg-amber-800/80 transition-colors hover:bg-amber-800/90"
+				href="{{ url_for('main.asia_index') }}" style="background-image:url({{ url_for('static', filename='images/icons/asia-tower.Dubk1hOS.png') }})"></a>
+			<a class="mt-20 border-2 border-white w-[80px] h-[80px] bg-no-repeat bg-center bg-top bg-size-[30px] rounded-full bg-indigo-800/40 transition-colors hover:bg-indigo-800/50"
+				href="{{ url_for('main.north_america_index') }}" style="background-image:url({{ url_for('static', filename='images/icons/na-tower.2RQScOSr.png') }})"></a>
+		</div>
+	</div>
+</div>
+
+<div class="w-full h-[16px] bg-indigo-800"></div>
+
+{# 主要内容区域 #}
+<div class="max-w-6xl mx-auto py-8 px-8 pb-8 md:px-0">
+	{# Breadcrumb导航 #}
+	<nav>
+		<ol class="flex flex-wrap items-center space-x-2 text-lg font-medium text-amber-800">
+			<li class="flex items-center">
+				<a class="hover:underline" href="{{ url_for('main.index') }}">Home</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<a class="hover:underline" href="{{ url_for('main.asia_index') }}">Asia</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<span class="text-indigo-800 font-medium cursor-default">Business</span>
+			</li>
+		</ol>
+	</nav>
+
+	<br/><br/>
+
+	<h1>Business Trip to Asia</h1>
+	<div class="text-center">
+		<img class="inline-block w-[120px] mt-4 mb-6" src="{{ url_for('static', filename='images/icons/one-oran-cloud.Cc5rO4mf.svg') }}"/>
+	</div>
+	<p class="content overview">
+		We handle end-to-end logistics—visa guidance and invitation letters, flight routing, priority transfers, hotels with corporate rates, private coaches/high-speed rail, bilingual on-site staff, and 24/7 support—so your team can stay focused on outcomes.
+		<br/><br/>
+		Beyond logistics, we maintain an extensive network of corporate intelligence and direct contacts across Asia. Based on your industry priorities, we can arrange targeted company and campus visits—universities and research labs, advanced manufacturing, apparel and consumer brands, and AI/technology firms—with full outreach, scheduling, protocol, and briefing support.
+		<br/><br/>
+		We also curate engaging city experiences for your team—team-building and cultural activities, executive dining and market tours—and provide tailored recommendations for shopping, food and beverage, and must-see neighborhoods. <span class="font-medium">Contact us with your goals, destinations, dates, team size, and budget, and we'll craft a high-impact agenda for your company.</span>
+	</p>
+	<br/><br/>
+</div>
+{% endblock %}
+

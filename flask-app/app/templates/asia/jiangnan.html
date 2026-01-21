@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+
+{% block title %}Nexus Horizons | Asia | Elegance of Jiangnan 人間蘇杭{% endblock %}
+
+{% block description %}Nexus Horizons is a leading provider of unique educational and personalized tours throughout Asia and North America.{% endblock %}
+
+{% block og_title %}Nexus Horizons | Asia | Elegance of Jiangnan 人間蘇杭{% endblock %}
+
+{% block content %}
+{# Hero背景区域 #}
+<div class="w-full h-[70vh]" style="background:url({{ url_for('static', filename='images/backgrounds/jiang-hero.CNm5z6jg.jpg') }}) center / cover no-repeat;">
+	<div class="flex h-full w-full items-center pr-10">
+		<div class="hidden md:grid w-full grid-cols-1 justify-items-end">
+			<a class="border-2 border-white w-[80px] h-[80px] bg-no-repeat bg-center bg-top bg-size-[50px] rounded-full bg-amber-800/80 transition-colors hover:bg-amber-800/90"
+				href="{{ url_for('main.asia_index') }}" style="background-image:url({{ url_for('static', filename='images/icons/asia-tower.Dubk1hOS.png') }})"></a>
+			<a class="mt-20 border-2 border-white w-[80px] h-[80px] bg-no-repeat bg-center bg-top bg-size-[30px] rounded-full bg-indigo-800/40 transition-colors hover:bg-indigo-800/50"
+				href="{{ url_for('main.north_america_index') }}" style="background-image:url({{ url_for('static', filename='images/icons/na-tower.2RQScOSr.png') }})"></a>
+		</div>
+	</div>
+</div>
+
+<div class="w-full h-[16px] bg-indigo-800"></div>
+
+{# 主要内容区域 #}
+<div class="max-w-6xl mx-auto py-8 px-8 pb-8 md:px-0">
+	{# Breadcrumb导航 #}
+	<nav>
+		<ol class="flex flex-wrap items-center space-x-2 text-lg font-medium text-amber-800">
+			<li class="flex items-center">
+				<a class="hover:underline" href="{{ url_for('main.index') }}">Home</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<a class="hover:underline" href="{{ url_for('main.asia_index') }}">Asia</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<a class="hover:underline" href="{{ url_for('main.asia_educational') }}">Educational</a>
+			</li>
+			<li class="flex items-center">
+				<span class="mx-2 text-gray-400">
+					<svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
+						stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
+						xmlns="http://www.w3.org/2000/svg">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</span>
+				<span class="text-indigo-800 font-medium cursor-default">Elegance of Jiangnan</span>
+			</li>
+		</ol>
+	</nav>
+	<br/><br/>
+
+	<h1>Elegance of Jiangnan<br/><span class="text-4xl">人間蘇杭</span></h1>
+	<h3>
+		HANGZHOU & SUZHOU (5-DAY ADD-ON Program)
+	</h3>
+	<div class="text-center">
+		<img class="inline-block w-[120px] mt-4 mb-6" src="{{ url_for('static', filename='images/icons/one-oran-cloud.Cc5rO4mf.svg') }}"/>
+	</div>
+	<div class="md:grid md:mt-20 grid-cols-[2fr_1fr_1fr] gap-8">
+		<div>
+			<h2>Program Overview</h2>
+			<p class="content overview nopad">
+				For the Chinese, the places that best embody traditional aesthetics and culture are Suzhou and Hangzhou. For centuries, poets and scholars have described this region as a "heaven on earth." Since the 12th century, Hangzhou has been among the world's largest and most prosperous cities, praised by Marco Polo in the 13th century as "the most beautiful and magnificent city in the world." Though five days may pass quickly, the journey reveals cultural depth and refinement unmatched by other cities.
+			</p>
+		</div>
+		<div class="md:border-l md:pl-4 border-black">
+			<h2>Suggested Time</h2>
+			<p class="content overview nopad">
+				March — June<br/>
+				Sep — Dec<br/>
+			</p>
+		</div>
+		<div class="md:border-l md:pl-4 border-black">
+			<div>
+				<h2>Group Size (6:1 Ratio)</h2>
+				<p class="content overview nopad">
+					12 students<br/>
+					2 Chaperons
+				</p>
+			</div>
+			<div class="md:border-t md:pt-4 border-black">
+				<h2>Suggested Ages</h2>
+				<p class="content overview nopad">
+					12 — 22
+				</p>
+			</div>
+		</div>
+	</div>
+	<br/><br/>
+
+	<h2>Program Highlights</h2>
+	<div class="md:grid grid-cols-[3fr_1fr] gap-2">
+		<div class="bg-zinc-100 p-8 bg-position-[8em_50%] bg-no-repeat"
+			style="background-image:url({{ url_for('static', filename='images/icons/cloud-white.Dm1RdigD.svg') }})">
+			<span class="block font-medium uppercase tracking-wide text-xl">Classical Elegance</span>
+			<p class="content overview nopad nom">Explore Suzhou's UNESCO-listed gardens, ancient canals, and silk heritage, showcasing China's refined traditional aesthetics.</p>
+			<span class="block mt-4 font-medium uppercase tracking-wide text-xl">West Lake Beauty</span>
+			<p class="content overview nopad nom">Cruise Hangzhou's West Lake, a "heaven on earth" celebrated by poets, with reflections of temples, bridges, and pagodas.</p>
+			<span class="block mt-4 font-medium uppercase tracking-wide text-xl">Living Traditions</span>
+			<p class="content overview nopad nom">Experience tea-picking in Longjing plantations, practice calligraphy, and join hands-on cultural workshops.</p>
+			<span class="block mt-4 font-medium uppercase tracking-wide text-xl">History & Modern Life</span>
+			<p class="content overview nopad nom">Visit Lingyin Temple, walk Qinghefang Ancient Street, and see how timeless traditions thrive in vibrant modern cities.</p>
+		</div>
+		<div class="h-[400px] md:h-auto bg-no-repeat bg-top bg-cover"
+			style="background-image:url({{ url_for('static', filename='images/content/jiang-highlight.BaMRDPnU.jpg') }})"></div>
+		<div></div>
+		<div><span class="text-sm text-zinc-500 italic">Day 2, West Lake</span></div>
+	</div>
+	<br/><br/>
+
+	<h2>Itinerary</h2>
+	<table class="content">
+		<thead>
+			<th class="text-center">Day</th>
+			<th>Highlights</th>
+		</thead>
+		<tbody>
+			<tr class="">
+				<td class="text-center"><span class="font-medium">1-2<br/>Suzhou</span></td>
+				<td>
+					<span class="font-medium">Arrival & Suzhou's Classical Charm</span><br/>
+					We arrive in Suzhou, known as the "Venice of the East," and begin with a guided walk through the Humble Administrator's Garden, a masterpiece of classical Chinese landscape design. Students explore the city's ancient canals with a boat ride, visiting Pingjiang Road for local snacks and crafts. The next day includes a tour of a silk factory to learn the complete process from silkworm to fabric, and a hands-on calligraphy session where students practice traditional brushwork. Evening activities feature a relaxed stroll along the lantern-lit canals.
+				</td>
+			</tr>
+			<tr class="alt">
+				<td class="text-center"><span class="font-medium">3-4<br/>Hangzhou</span></td>
+				<td>
+					<span class="font-medium">Hangzhou's West Lake & Tea Culture</span><br/>
+					Traveling to Hangzhou, students begin with a boat ride on West Lake, stopping at iconic sites like the Three Pools Mirroring the Moon. In the afternoon, we visit the China National Tea Museum to learn the art of tea-making, followed by a walk through lush Longjing Tea Plantations where students can try picking tea leaves themselves. Day 4 includes a visit to Lingyin Temple, one of China's largest Buddhist temples, and exploring Qinghefang Ancient Street, lined with traditional shops, crafts, and street performances.
+				</td>
+			</tr>
+			<tr class="">
+				<td class="text-center"><span class="font-medium">5<br/>Hangzhou</span></td>
+				<td>
+					<span class="font-medium">Farewell & Reflection</span><br/>
+					Our final morning is spent at Six Harmonies Pagoda, offering panoramic views of the Qiantang River. Students reflect on their experiences during a closing group discussion before transferring to the airport for the journey home, leaving with a richer understanding of Chinese art, history, and culture.
+				</td>
+			</tr>
+		</tbody>
+	</table>
+	<br/><br/>
+
+	<img class="md:hidden mb-8 w-full" src="{{ url_for('static', filename='images/content/jiang-map.zLBVjj-i.png') }}"/>
+	<div class="map-section md:grid grid-cols-2 items-center bg-no-repeat bg-size-[100%] md:bg-size-[80%] md:h-[800px]"
+		style="background-image:url({{ url_for('static', filename='images/content/jiang-map.zLBVjj-i.png') }})">
+		<div></div>
+		<div>
+			<h2>Options</h2>
+			<ul class="content text-xl font-light">
+				<li><b>Company Visit</b><br/> Gain first-hand experience at China's leading technology companies in sectors such as the internet, artificial intelligence, and logistics. Learn how AI is transforming everyday life and shaping the future.</li>
+				<li><b>Satellite cities explore</b><br/> Around Suzhou and Hangzhou, nearby cities such as Jiaxing, Ningbo, Wuxi, and Yangzhou are also well worth a visit if time allows. With China's extensive high-speed rail network, travel between these satellite cities takes about an hour, making it a fast, safe, and convenient way to explore more of the region.</li>
+			</ul>
+		</div>
+	</div>
+	<br/><br/>
+
+	<h1>Photo Gallery</h1>
+	<div class="text-center">
+		<img class="inline-block w-[120px] mt-4 mb-6" src="{{ url_for('static', filename='images/icons/one-oran-cloud.Cc5rO4mf.svg') }}"/>
+	</div>
+	<br/><br/>
+
+	<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-10">
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 1" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/0c4b5bf7-89e7-4c72-8b5e-d3521e02fcaf.C9voKfk6.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 2" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/4086683c-21bf-490e-9cb3-4fbe2b889cf3.CuLFjUuJ.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 3" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/4ed6fd08-637d-4ad5-a2fa-ad90d9050aeb.B1_ciG_v.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 4" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/769cfedb-26f8-459d-a93e-28732e6c3e75.D7YRkdi6.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 5" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/769ee9f8-1fc8-4382-a32b-86865e52ff39.U3SCUM4h.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 6" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/85a3eea3-6c0a-4ebc-98e0-2cce60439508.CjRQGZqU.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 7" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/8e3ebd14-0099-43f7-8eac-678eea21e6fe.BOLYvwaG.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 8" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/96910a1b-8995-4e33-b105-e348b1543468.BDTQbMFU.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 9" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/9d8a30ce-85c7-4c32-a782-442cf95305d1.MZlcNRV5.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 10" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/b5b10fca-50ff-40df-983f-bedfda909ede.2UEgRfzw.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 11" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/c762971f-da2a-42fa-8f9b-7fda2940f490.DOgV9RIW.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+		<div>
+			<div class="overflow-hidden rounded-xs rounded-full">
+				<div class="aspect-[3/2]">
+					<img alt="Photo 12" class="w-full h-full object-cover"
+						src="{{ url_for('static', filename='images/content/edd2091a-b044-41fd-855b-d8743a7b731b.5kWy7bHA.jpeg') }}"/>
+				</div>
+			</div>
+		</div>
+	</div>
+	<br/><br/>
+
+	<p class="content">
+		<span class="font-medium text-2xl">Other complimentary benefits (please <a href="{{ url_for('main.contact') }}">contact us</a> for more details)</span>
+	</p>
+	<ul class="content italic ml-4">
+		<li>Mandarin learning materials for all language-learning students</li>
+		<li>All participants will receive a goody bag with a gift and snacks</li>
+		<li>A memorable gift at the end of the trip</li>
+	</ul>
+	<br/><br/>
+</div>
+{% endblock %}
+
+

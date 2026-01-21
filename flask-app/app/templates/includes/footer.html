@@ -1,0 +1,93 @@
+{# Footer组件 #}
+<div class="w-full h-[16px] bg-amber-800"></div>
+<footer class="w-full bg-indigo-800 bg-no-repeat pt-20 bg-size-[800px] bg-position-[40%_105%] md:h-[400px] md:bg-size-[70%] md:bg-position-[180%_200px]"
+	style="background-image:url({{ url_for('static', filename='images/icons/oran-cloud.BdPjguT3.svg') }})">
+	<div class="relative md:flex md:p-0 pb-[100px] max-w-6xl mx-auto items-start justify-between content-start">
+		<div class="hidden md:block absolute border-l-2 border-white h-[150px] w-[2px] left-[225px] top-[0px]"></div>
+		
+		{# Logo #}
+		<div class="text-center md:text-left md:pt-4 md:pl-10">
+			<img class="inline-block w-[110px]" src="{{ url_for('static', filename='images/icons/logo-1-white.8v3TBt6_.svg') }}" />
+		</div>
+		
+		{# 链接网格 #}
+		<div class="grid grid-cols-2 pl-10 md:p-0 md:grid-cols-3 gap-10 mt-8 md:mt-0 md:text-sm">
+			{# About Us列 #}
+			<p>
+				<a class="block uppercase mb-2 font-medium text-xl text-white tracking-wide" href="{{ url_for('main.index') }}">About Us</a>
+				<a class="block text-zinc-300" href="{{ url_for('main.index') }}">Our Team</a>
+				<a class="block text-zinc-300" href="{{ url_for('main.index') }}">More than travel</a>
+				<a class="block text-zinc-300" href="{{ url_for('main.terms') }}">Terms and conditions</a>
+				<a class="block text-zinc-300" href="{{ url_for('main.privacy') }}">Privacy Policy</a>
+			</p>
+			
+			{# Engagement列 #}
+			<p>
+				<a class="block uppercase mb-2 font-medium text-xl text-white tracking-wide" href="{{ url_for('main.index') }}">Engagement</a>
+				<a class="block text-zinc-300" href="{{ url_for('main.mindx') }}">MindX Program</a>
+				<a class="block text-zinc-300" href="{{ url_for('main.index') }}">Connect in Person</a>
+				<a class="block text-zinc-300" href="{{ url_for('main.index') }}">HN Alumni</a>
+				<a class="block text-zinc-300" href="{{ url_for('main.index') }}">Charity</a>
+				<a class="block text-zinc-300" href="{{ url_for('main.index') }}">Sustainability</a>
+			</p>
+			
+			{# Contact Info列 #}
+			<p>
+				<a class="block uppercase mb-2 font-medium text-xl text-white tracking-wide" href="{{ url_for('main.index') }}">Contact Info</a>
+				<span class="block text-zinc-200">
+					3009 Hawkesdale Dr<br />
+					Unit 660<br />
+					Las Vegas, NV<br />
+					89134
+				</span>
+				<span class="block text-zinc-200 mt-2">
+					<span class="font-medium">Tel:</span> 1.360.550.8965 (USA)<br />
+					<span class="font-medium">Tel:</span> 1.778.882.8565 (CAN)<br />
+					<a class="block text-amber-800 underline font-medium mt-2" href="mailto:info@nhtours.com">info@nhtours.com</a>
+				</span>
+			</p>
+		</div>
+		
+		{# 社交媒体图标 #}
+		<div class="flex justify-center md:justify-left space-x-5 mt-8 md:mt-4">
+			{# Instagram #}
+			<a class="text-white" href="{{ url_for('main.index') }}">
+				<svg class="feather feather-instagram" fill="none" height="28" stroke="currentColor"
+					stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="28"
+					xmlns="http://www.w3.org/2000/svg">
+					<rect height="20" rx="5" ry="5" width="20" x="2" y="2"></rect>
+					<path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+					<line x1="17.5" x2="17.51" y1="6.5" y2="6.5"></line>
+				</svg>
+			</a>
+			
+			{# Facebook #}
+			<a class="text-white" href="{{ url_for('main.index') }}">
+				<svg class="feather feather-facebook" fill="none" height="28" stroke="currentColor"
+					stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="28"
+					xmlns="http://www.w3.org/2000/svg">
+					<path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"></path>
+				</svg>
+			</a>
+			
+			{# YouTube #}
+			<a class="text-white" href="{{ url_for('main.index') }}">
+				<svg class="feather feather-youtube" fill="none" height="28" stroke="currentColor"
+					stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="28"
+					xmlns="http://www.w3.org/2000/svg">
+					<path
+						d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z">
+					</path>
+					<polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"></polygon>
+				</svg>
+			</a>
+		</div>
+	</div>
+	
+	{# 版权信息 #}
+	<div class="hidden md:block text-zinc-300 text-sm text-center md:mt-3">
+		©2025 Nexus Horizons. All rights reserved.
+	</div>
+</footer>
+
+
