@@ -2,6 +2,16 @@
 
 
 {% block head_extra %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<style>
+    /* Flatpickr: 项目内日期选择器统一样式（与 trip basics 一致） */
+    .flatpickr-calendar { font-size: 16px !important; }
+    .flatpickr-day { min-width: 38px; height: 38px; line-height: 38px; font-size: 14px; }
+    .flatpickr-month { height: 40px; }
+    .flatpickr-current-month { font-size: 115%; }
+    .flatpickr-weekdays { font-size: 13px; }
+</style>
 <style>
     /* Global: Hide spin buttons for number inputs */
     input[type=number]::-webkit-inner-spin-button,

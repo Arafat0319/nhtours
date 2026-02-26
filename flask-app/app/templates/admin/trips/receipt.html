@@ -67,7 +67,7 @@
                             {% for bp in booking.booking_packages %}
                             <div class="flex justify-between">
                                 <span class="font-medium text-gray-900">{{ bp.package.name }} x{{ bp.quantity }}</span>
-                                <span class="text-gray-900">${{ "%.2f"|format(bp.package.price * bp.quantity) }}</span>
+                                <span class="text-gray-900">${{ (bp.package.price * bp.quantity)|format_price }}</span>
                             </div>
                             {% endfor %}
                         </div>
@@ -102,7 +102,7 @@
                         <p class="text-xs font-medium text-gray-700 mb-1">Add-ons:</p>
                         <ul class="text-sm text-gray-600 space-y-1">
                             {% for addon in participant.addons %}
-                            <li>{{ addon.name }} x{{ addon.quantity }} - ${{ "%.2f"|format(addon.total) }}</li>
+                            <li>{{ addon.name }} x{{ addon.quantity }} - ${{ (addon.total)|format_price }}</li>
                             {% endfor %}
                         </ul>
                     </div>
@@ -121,7 +121,7 @@
                     {% for bp in booking.booking_packages %}
                     <div class="flex justify-between">
                         <span class="text-gray-600">{{ bp.package.name }} x{{ bp.quantity }}:</span>
-                        <span class="text-gray-900">${{ "%.2f"|format(bp.package.price * bp.quantity) }}</span>
+                        <span class="text-gray-900">${{ (bp.package.price * bp.quantity)|format_price }}</span>
                     </div>
                     {% endfor %}
                 {% else %}
@@ -151,21 +151,21 @@
                 {% if addons_total.value > 0 %}
                 <div class="flex justify-between">
                     <span class="text-gray-600">Add-ons:</span>
-                    <span class="text-gray-900">${{ "%.2f"|format(addons_total.value) }}</span>
+                    <span class="text-gray-900">${{ (addons_total.value)|format_price }}</span>
                 </div>
                 {% endif %}
                 <div class="flex justify-between pt-2 border-t border-gray-300">
                     <span class="font-semibold text-gray-900">Total Expected:</span>
-                    <span class="font-semibold text-gray-900">${{ "%.2f"|format(expected_amount) }}</span>
+                    <span class="font-semibold text-gray-900">${{ (expected_amount)|format_price }}</span>
                 </div>
                 <div class="flex justify-between">
                     <span class="text-gray-600">Amount Paid:</span>
-                    <span class="text-gray-900">${{ "%.2f"|format(booking.amount_paid or 0) }}</span>
+                    <span class="text-gray-900">${{ (booking.amount_paid or 0)|format_price }}</span>
                 </div>
                 <div class="flex justify-between pt-2 border-t border-gray-300">
                     <span class="font-semibold text-gray-900">Amount Pending:</span>
                     <span class="font-semibold {% if (expected_amount - (booking.amount_paid or 0)) > 0 %}text-red-600{% else %}text-green-600{% endif %}">
-                        ${{ "%.2f"|format(expected_amount - (booking.amount_paid or 0)) }}
+                        ${{ (expected_amount - (booking.amount_paid or 0))|format_price }}
                     </span>
                 </div>
             </div>

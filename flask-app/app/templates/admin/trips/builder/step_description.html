@@ -83,6 +83,7 @@
 
     <!-- Actions -->
     <div class="mt-8 flex items-center justify-end gap-x-6 border-t border-gray-200 pt-6">
+        <span id="autosave-indicator" class="text-xs text-gray-400 mr-auto"></span>
         <a href="{{ url_for('admin.trip_builder', id=trip.id, step='basics') }}"
             class="text-sm font-semibold leading-6 text-gray-900">Back</a>
         <button type="submit"
@@ -164,26 +165,80 @@
     });
 
     // 4. Form Submission
+    function getItems(type) {
+        const container = document.getElementById(type + '_list');
+        const items = [];
+        (container?.querySelectorAll('div.group') || []).forEach(div => {
+            const title = div.querySelector('.item-title')?.value?.trim() || '';
+            const desc = div.querySelector('.item-desc')?.value?.trim() || '';
+            if (title) {
+                items.push({ title: title, description: desc });
+            }
+        });
+        return JSON.stringify(items);
+    }
+
     document.getElementById('descriptionForm').onsubmit = function () {
-        // Sync Quill
         document.querySelector('textarea[name=description]').value = quill.root.innerHTML;
-
-        // Sync Lists
-        function getItems(type) {
-            const container = document.getElementById(type + '_list');
-            const items = [];
-            container.querySelectorAll('div.group').forEach(div => {
-                const title = div.querySelector('.item-title').value.trim();
-                const desc = div.querySelector('.item-desc').value.trim();
-                if (title) { // Only save if title exists
-                    items.push({ title: title, description: desc });
-                }
-            });
-            return JSON.stringify(items);
-        }
-
         document.querySelector('input[name=trip_includes]').value = getItems('includes');
         document.querySelector('input[name=trip_excludes]').value = getItems('excludes');
     };
+
+    // 5. Autosave (debounced, prevents data loss)
+    const tripId = {{ trip.id|tojson }};
+    const autosaveUrl = "{{ url_for('admin.trip_builder', id=trip.id, step='description') }}";
+    let autosaveTimer = null;
+    let autosavePending = false;
+
+    function doAutosave() {
+        if (autosavePending) return;
+        autosavePending = true;
+        const formData = new FormData();
+        formData.append('description', quill.root.innerHTML);
+        formData.append('trip_includes', getItems('includes'));
+        formData.append('trip_excludes', getItems('excludes'));
+        formData.append('csrf_token', document.querySelector('input[name=csrf_token]').value);
+
+        fetch(autosaveUrl, {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-Autosave': '1' }
+        })
+        .then(r => r.json())
+        .then(data => {
+            autosavePending = false;
+            if (data.success) {
+                const el = document.getElementById('autosave-indicator');
+                if (el) { el.textContent = 'Saved'; el.classList.remove('text-amber-600'); el.classList.add('text-green-600'); }
+            }
+        })
+        .catch(() => { autosavePending = false; });
+    }
+
+    function scheduleAutosave() {
+        if (autosaveTimer) clearTimeout(autosaveTimer);
+        const el = document.getElementById('autosave-indicator');
+        if (el) { el.textContent = 'Saving...'; el.classList.remove('text-green-600'); el.classList.add('text-amber-600'); }
+        autosaveTimer = setTimeout(doAutosave, 1500);
+    }
+
+    quill.on('text-change', scheduleAutosave);
+    document.getElementById('includes_list').addEventListener('input', scheduleAutosave);
+    document.getElementById('includes_list').addEventListener('change', scheduleAutosave);
+    document.getElementById('excludes_list').addEventListener('input', scheduleAutosave);
+    document.getElementById('excludes_list').addEventListener('change', scheduleAutosave);
+
+    // Trigger autosave when adding/deleting items (addItem adds new elements, delete removes)
+    const origAddItem = addItem;
+    addItem = function(type, title, funcDesc) {
+        origAddItem(type, title, funcDesc);
+        scheduleAutosave();
+    };
+    document.getElementById('includes_list').addEventListener('click', function(e) {
+        if (e.target.closest('.delete-btn')) scheduleAutosave();
+    });
+    document.getElementById('excludes_list').addEventListener('click', function(e) {
+        if (e.target.closest('.delete-btn')) scheduleAutosave();
+    });
 </script>
 {% endblock %}

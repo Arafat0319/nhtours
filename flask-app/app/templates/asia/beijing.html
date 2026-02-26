@@ -104,9 +104,9 @@
 
 	<h2>Program Highlights</h2>
 	<div class="md:grid grid-cols-[3fr_1fr] gap-2">
-		<div class="bg-zinc-100 p-8 bg-position-[8em_50%] bg-no-repeat"
-			style="background-image:url({{ url_for('static', filename='images/icons/cloud-white.Dm1RdigD.svg') }})">
-			<span class="block font-medium uppercase tracking-wide text-xl">HISTORY & CULTURE</span>
+		{% from 'includes/program_highlights_left.html' import program_highlights_left %}
+		{% call program_highlights_left() %}
+				<span class="block font-medium uppercase tracking-wide text-xl">HISTORY & CULTURE</span>
 			<p class="content overview nopad nom">Experience China's rich history and dynamic present through world-class landmarks and cultural sites that showcase the depth of its civilization.</p>
 			<span class="block mt-4 font-medium uppercase tracking-wide text-xl">MANDARIN IN ACTION</span>
 			<p class="content overview nopad nom">Build and improve Mandarin skills through classes and family interactions, also making new friends in real-life settings.</p>
@@ -114,9 +114,9 @@
 			<p class="content overview nopad nom">Hand-on cultural activities, fun and interactive learning, make your own souvenir for your friend and family.</p>
 			<span class="block mt-4 font-medium uppercase tracking-wide text-xl">TASTE OF CHINA</span>
 			<p class="content overview nopad nom">Students will get to enjoy the authentic Chinese foods and snacks they've seen online—finally tasting the flavors they've been eager to try.</p>
-		</div>
+		{% endcall %}
 		<div class="h-[400px] md:h-auto bg-no-repeat bg-top bg-cover"
-			style="background-image:url({{ url_for('static', filename='images/content/beijing-highlight.BmSjADOk.jpg') }})"></div>
+			style="background-image:url({{ url_for('static', filename='images/content/asia/beijing/beijing-highlight.BmSjADOk.jpg') }})"></div>
 		<div></div>
 		<div>
 			<span class="text-sm text-zinc-500 italic">Day 9, Cultural activity: make you own warrior</span>
@@ -163,9 +163,9 @@
 	</table>
 	<br/><br/>
 
-	<img class="md:hidden mb-8 w-full" src="{{ url_for('static', filename='images/content/beijing-map.D1UJ9yRy.png') }}"/>
+	<img class="md:hidden mb-8 w-full" src="{{ url_for('static', filename='images/content/asia/beijing/beijing-map.D1UJ9yRy.png') }}"/>
 	<div class="map-section md:grid grid-cols-2 items-center bg-no-repeat bg-size-[100%] md:bg-size-[80%] md:h-[800px]"
-		style="background-image:url({{ url_for('static', filename='images/content/beijing-map.D1UJ9yRy.png') }})">
+		style="background-image:url({{ url_for('static', filename='images/content/asia/beijing/beijing-map.D1UJ9yRy.png') }})">
 		<div></div>
 		<div>
 			<h2>Options</h2>
@@ -189,7 +189,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 1" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/0e0ee4e0-2fbc-4ca9-ae4c-ee32cb460352.CyhBnkZY.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/0e0ee4e0-2fbc-4ca9-ae4c-ee32cb460352.CyhBnkZY.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -197,7 +197,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 2" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/1685f317-2a1f-4c8f-86b5-92a918d70185.CLX3sm9C.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/1685f317-2a1f-4c8f-86b5-92a918d70185.CLX3sm9C.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -205,7 +205,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 3" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/18631753-c1aa-47d6-8973-5878c7916308.ukpnXl3f.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/18631753-c1aa-47d6-8973-5878c7916308.ukpnXl3f.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -213,7 +213,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 4" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/18b425ce-87c1-465c-96da-0429f3a6dff3.CbFEj38V.png') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/18b425ce-87c1-465c-96da-0429f3a6dff3.CbFEj38V.png') }}"/>
 				</div>
 			</div>
 		</div>
@@ -221,7 +221,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 5" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/1bbb625f-6e2d-49bf-b40b-0364d91c0fb0.ujNID_W_.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/1bbb625f-6e2d-49bf-b40b-0364d91c0fb0.ujNID_W_.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -229,7 +229,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 6" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/3481eed3-f61f-4a2b-87f6-5b708d9d1a28.Bit9I2FI.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/3481eed3-f61f-4a2b-87f6-5b708d9d1a28.Bit9I2FI.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -237,7 +237,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 7" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/39d453fb-7527-4560-8751-0529a1be8995.BMpsoSxz.png') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/39d453fb-7527-4560-8751-0529a1be8995.BMpsoSxz.png') }}"/>
 				</div>
 			</div>
 		</div>
@@ -245,7 +245,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 8" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/555.B_efXpaN.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/555.B_efXpaN.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -253,7 +253,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 9" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/5e87bb9d-4e70-4782-9621-620a7420e240.DTB_HQug.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/5e87bb9d-4e70-4782-9621-620a7420e240.DTB_HQug.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -261,7 +261,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 10" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/5f2d7cda-b8e4-4c8d-98b0-f36aac629cbd.BIm6aesN.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/5f2d7cda-b8e4-4c8d-98b0-f36aac629cbd.BIm6aesN.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -269,7 +269,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 11" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/637d3745-f17c-49be-851a-3191819ed389.BYfQk-5n.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/637d3745-f17c-49be-851a-3191819ed389.BYfQk-5n.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -277,7 +277,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 12" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/65fb5adf-b7e1-4c14-bbb8-7a95811721d1.BjWxc0e8.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/65fb5adf-b7e1-4c14-bbb8-7a95811721d1.BjWxc0e8.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -285,7 +285,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 13" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/676fb4f8-69bd-430f-bd90-02cb486e7a65.t1CF5cLk.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/676fb4f8-69bd-430f-bd90-02cb486e7a65.t1CF5cLk.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -293,7 +293,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 14" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/6991cad2-f03f-41fe-b117-00d0e6af7f14.BiTvYcwC.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/6991cad2-f03f-41fe-b117-00d0e6af7f14.BiTvYcwC.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -301,7 +301,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 15" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/6d82a30c-3b7a-4a0d-b2a5-30423e639d49.DJ0dZ6_8.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/6d82a30c-3b7a-4a0d-b2a5-30423e639d49.DJ0dZ6_8.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -309,7 +309,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 16" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/72293eab-13ac-44d2-a4a6-163ef6c5b437.Oxlbaj1a.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/72293eab-13ac-44d2-a4a6-163ef6c5b437.Oxlbaj1a.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -317,7 +317,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 17" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/751a3a34-2abb-4eb9-bf11-59a896b7400d.DeFIipSg.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/751a3a34-2abb-4eb9-bf11-59a896b7400d.DeFIipSg.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -325,7 +325,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 18" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/7945e858-4c96-464c-80f4-15a4469aafdb.Cf3Tg5tf.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/7945e858-4c96-464c-80f4-15a4469aafdb.Cf3Tg5tf.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -333,7 +333,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 19" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/847a6eb2-c940-4003-bb3b-e2471f070690.LlHfMVLX.png') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/847a6eb2-c940-4003-bb3b-e2471f070690.LlHfMVLX.png') }}"/>
 				</div>
 			</div>
 		</div>
@@ -341,7 +341,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 20" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/8abc6774-bcc2-4afc-8256-37b19f6ef9a8.DkGlgHfy.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/8abc6774-bcc2-4afc-8256-37b19f6ef9a8.DkGlgHfy.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -349,7 +349,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 21" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/8de62f72-5096-4cb4-802c-f78825d00dc9.D_jBQ0ou.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/8de62f72-5096-4cb4-802c-f78825d00dc9.D_jBQ0ou.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -357,7 +357,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 22" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/93297d89-97a1-4173-94e2-7b3a75ecf56d.BdYbWUsK.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/93297d89-97a1-4173-94e2-7b3a75ecf56d.BdYbWUsK.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -365,7 +365,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 23" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/a4ffdf28-ec1c-4942-ba0f-4e45e8f0b4fd.DxobhIGl.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/a4ffdf28-ec1c-4942-ba0f-4e45e8f0b4fd.DxobhIGl.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -373,7 +373,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 24" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/ad588143-b1ea-41fa-ac59-afc0b8fb4b6a.B8prRCZt.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/ad588143-b1ea-41fa-ac59-afc0b8fb4b6a.B8prRCZt.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -381,7 +381,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 25" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/b4a537e9-edd5-4631-92c0-f61ea09356fd.Cx5OSDgI.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/b4a537e9-edd5-4631-92c0-f61ea09356fd.Cx5OSDgI.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -389,7 +389,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 26" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/d5a4ae2b-7657-4605-baaa-875afffa208c.Dw6RxsNL.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/d5a4ae2b-7657-4605-baaa-875afffa208c.Dw6RxsNL.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -397,7 +397,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 27" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/e101115c-6cdf-4a32-b64c-e41c57722c08.CZD7EKgn.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/e101115c-6cdf-4a32-b64c-e41c57722c08.CZD7EKgn.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -405,7 +405,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 28" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/ec09ddb4-3827-4983-bd2b-4438e18d4830.CHTGwyrC.png') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/ec09ddb4-3827-4983-bd2b-4438e18d4830.CHTGwyrC.png') }}"/>
 				</div>
 			</div>
 		</div>
@@ -413,7 +413,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 29" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/ec51a443-9e64-4156-97a8-d9f59e9a5649.CC9vLwdh.png') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/ec51a443-9e64-4156-97a8-d9f59e9a5649.CC9vLwdh.png') }}"/>
 				</div>
 			</div>
 		</div>
@@ -421,7 +421,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 30" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/f95177d0-962d-4d5c-8ee2-a14da8544e5c.CQH7v7-K.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/beijing/f95177d0-962d-4d5c-8ee2-a14da8544e5c.CQH7v7-K.jpeg') }}"/>
 				</div>
 			</div>
 		</div>

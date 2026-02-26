@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+
+{% block title %}Installment Payment | Nexus Horizons{% endblock %}
+
+{% block body_class %}installment-modal-page{% endblock %}
+
+{% block nav %}{% include 'includes/nav_booking.html' %}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/booking-modal.css') }}">
+<style>
+    body.installment-modal-page #pageNav { display: none !important; }
+    html.installment-modal-page, body.installment-modal-page { overflow: hidden !important; width: 100% !important; max-width: 100% !important; }
+    /* 与原版一致：圆图压住卡片上缘，一半在框外一半在框内（负边距上移，圆 103px 约一半露出） */
+    body.installment-modal-page #booking-modal header .rounded-full.overflow-hidden.object-cover {
+        position: relative !important;
+        left: auto !important;
+        top: auto !important;
+        transform: none !important;
+        margin-top: -77px !important;
+    }
+    /* 与报名页弹窗一致：字体与抗锯齿 */
+    #booking-modal,
+    #booking-modal * {
+        font-family: var(--font-sans, "Source Sans Pro"), sans-serif !important;
+        font-feature-settings: normal;
+    }
+    #booking-modal {
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+    /* 仅分期页：支付区域下方留白 */
+    body.installment-modal-page #booking-modal .payment-element-wrapper {
+        position: relative;
+        min-height: 120px;
+        margin-bottom: 2rem !important;
+    }
+    #payment-element, #payment-element .StripeElement, #payment-element .StripeElement--focus { border: none !important; box-shadow: none !important; outline: none !important; }
+    /* 与原版一致：Stripe 加载时显示 “Loading payment form…” + 旋转动画，挂载完成后隐藏 */
+    #booking-modal .payment-loading-placeholder {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        color: #6b7280;
+        font-size: 0.875rem;
+        background: #fff;
+        border-radius: 0.5rem;
+        border: 1px solid #d1d5db;
+    }
+    #booking-modal .payment-loading-placeholder[aria-hidden="true"],
+    #booking-modal .payment-loading-placeholder.hidden { display: none !important; }
+    #booking-modal .payment-loading-spinner {
+        width: 20px;
+        height: 20px;
+        border: 2px solid #e5e7eb;
+        border-top-color: #3b82f6;
+        border-radius: 50%;
+        animation: installment-payment-spin 0.7s linear infinite;
+    }
+    @keyframes installment-payment-spin { to { transform: rotate(360deg); } }
+    /* 与报名弹窗 #nextBtn 完全一致：绿底白字 + 粗体 + 全大写 + 字间距（原版来自 .btn-neon-green 的 typography） */
+    body.installment-modal-page #booking-modal #place-order-btn,
+    body.installment-modal-page #booking-modal button#place-order-btn {
+        background-color: #16a34a !important;
+        color: #fff !important;
+        border-color: #16a34a !important;
+        height: 40px !important;
+        min-height: 40px !important;
+        font-size: 14px !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 1px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        box-shadow: none !important;
+        filter: none !important;
+    }
+    body.installment-modal-page #booking-modal #place-order-btn:hover,
+    body.installment-modal-page #booking-modal button#place-order-btn:hover {
+        background-color: #15803d !important;
+        color: #fff !important;
+        border-color: #15803d !important;
+        opacity: 0.9 !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 12px rgba(21, 128, 61, 0.35) !important;
+        filter: none !important;
+    }
+    body.installment-modal-page #booking-modal #place-order-btn,
+    body.installment-modal-page #booking-modal button#place-order-btn {
+        transition: background-color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease !important;
+    }
+    /* 与报名付款弹窗一致：大屏下强制左右两列（左 PAYMENT，右 Your Booking），不依赖 Tailwind lg */
+    @media (min-width: 1024px) {
+        #booking-modal #booking-modal-scroll { flex-direction: row !important; }
+        #booking-modal #booking-modal-left-col { width: 0 !important; min-width: 0 !important; flex: 1 1 0% !important; }
+        #booking-modal #booking-modal-left-inner { max-width: 535px !important; }
+        #booking-modal #booking-modal-right { width: 335px !important; min-width: 335px !important; flex-shrink: 0 !important; }
+    }
+    /* 与原版完全一致：按钮栏边距、按钮宽度与 hover（同 .booking-btn-bar-spaced / #nextBtn） */
+    body.installment-modal-page #booking-modal #booking-modal-btn-bar {
+        flex-shrink: 0 !important;
+        background: #fff !important;
+        box-shadow: 0 -1px 0 0 rgba(0,0,0,0.06) !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+        margin-top: 0 !important;
+        padding: 2.5rem 1rem 2rem 1rem !important;
+    }
+    @media (min-width: 1024px) {
+        body.installment-modal-page #booking-modal #booking-modal-btn-bar {
+            padding-left: 2rem !important;
+            padding-right: 2rem !important;
+        }
+    }
+    @media (max-width: 1023px) {
+        body.installment-modal-page #booking-modal .booking-modal-footer {
+            padding: 1rem !important;
+            padding-bottom: max(1rem, env(safe-area-inset-bottom, 0)) !important;
+        }
+    }
+    body.installment-modal-page #booking-modal #place-order-btn {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        border-width: 1px !important;
+        border-radius: 0.25rem !important;
+    }
+    /* 移动端：viewport 可滚动，避免 PAYMENT 占满屏、Your Booking 被裁掉 */
+    @media (max-width: 1023px) {
+        body.installment-modal-page #booking-modal #booking-modal-scroll-viewport {
+            max-height: 100vh !important;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            -webkit-overflow-scrolling: touch;
+            pointer-events: auto !important;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+{# 首页背景：与 index.html 一致 #}
+<div class="w-full h-[70vh]" style="background:url({{ url_for('static', filename='images/backgrounds/tibet_background.jpg') }}) center / cover no-repeat;">
+	<div class="h-full max-w-[40rem] mx-auto">
+		<div class="md:flex h-full gap-8 items-center text-center justify-between">
+			<a class="hero-asia-btn inline-block text-center py-4 w-[60%] mt-[200px] md:border-2 md:border-white md:m-0 md:p-0 md:w-[180px] md:h-[180px] bg-no-repeat bg-center md:bg-top bg-size-[100%] md:bg-size-[100px] rounded-full bg-amber-800/80 md:items-center md:justify-center text-zinc-100 text-4xl md:flex uppercase tracking-widest transition-colors hover:bg-amber-800/90 hover:text-white"
+				href="{{ url_for('main.asia_index') }}"
+				style="background-image:url({{ url_for('static', filename='images/icons/asia-tower.Dubk1hOS.png') }});">Asia</a>
+			<a class="hero-na-btn inline-block text-center py-4 w-[60%] mt-8 md:border-2 md:border-white md:m-0 md:w-[180px] md:h-[180px] bg-no-repeat md:bg-top md:bg-center bg-size-[100%] md:bg-size-[60px] rounded-full bg-indigo-800/80 md:items-center md:justify-center text-zinc-100 text-3xl md:flex uppercase md:tracking-widest md:leading-12 transition-colors hover:bg-indigo-800 hover:text-white"
+				href="{{ url_for('main.north_america_index') }}"
+				style="background-image:url({{ url_for('static', filename='images/icons/na-tower.2RQScOSr.png') }});">North <br class="hidden md:block" /> America</a>
+		</div>
+	</div>
+</div>
+<div class="w-full h-[16px] bg-indigo-800"></div>
+<div class="max-w-6xl mx-auto py-8 px-8 md:px-0">
+	<nav><ol class="flex flex-wrap items-center space-x-2 text-lg font-medium text-amber-800"><li class="flex items-center"><span class="text-indigo-800 font-medium cursor-default">Home</span></li></ol></nav>
+	<h1>Say <span class="text-amber-800">Yes</span> to Adventure</h1>
+	<div class="text-center"><img class="inline-block w-[120px] opacity-70 mt-4 mb-6" src="{{ url_for('static', filename='images/icons/cloud-grey.DH_8-r-7.png') }}" /></div>
+	<p class="content overview">Travel with Nexus Horizons is more than a trip—it's a journey of growth and self-discovery. We connect young explorers with vibrant global experiences and the timeless depth of Asian heritage. Inspired by Wukong, a beloved Asian symbol of courage, creativity, and resilience—we bridge cultures and languages across continents, opening horizons that inspire confidence, joy, and meaningful connections.</p>
+	<p class="content overview">For our founder, life has been a journey of facing challenges with the spirit of Sun Wukong: daring to innovate, standing strong through adversity, and moving forward with optimism. Sometimes, one must also walk as a lone brave explorer—undaunted and determined. This same spirit is at the heart of NH Tours, where every participant is encouraged to embrace courage, creativity, and resilience as they step into the future.</p>
+	<hr /> <br />
+	<h1>Our Mission</h1>
+	<div class="text-center"><img class="inline-block w-[120px] opacity-70 mt-4 mb-6" src="{{ url_for('static', filename='images/icons/cloud-grey.DH_8-r-7.png') }}" /></div>
+	<p class="content overview">Like the spirit of Wukong — bold, responsible, and tireless in guiding his master to the far shore — we see every journey as more than reaching a destination. It is about the stories, discoveries, and beauty along the way. Nexus Horizons is committed to being a bridge between cultures, making communication smoother and more meaningful. We design travel experiences that are energetic and inspiring, while ensuring organizers have the peace of mind and freedom to enjoy the journey themselves.</p>
+	<br /><hr /><br />
+	<h1>Spirit of Wukong</h1>
+	<div class="text-center"><img class="inline-block w-[120px] opacity-70 mt-4 mb-6" src="{{ url_for('static', filename='images/icons/wkclod-grey.U_stlqLH.png') }}" /></div>
+	<p class="content overview">At <span class="font-medium">Nexus Horizons</span>, we draw inspiration from Wukong—adventurous, resourceful, and endlessly creative. His journey reminds us that success is not only about reaching the destination, but also about the courage, wisdom, and imagination shown along the way. These values shape who we are and how we serve every group:</p>
+	<div class="max-w-4xl mx-auto px-4 py-12">
+		<ul class="space-y-6">
+			<li class="flex items-start"><div class="flex-shrink-0 w-12 h-12 flex items-center justify-center"><img alt="Responsible icon" class="w-12 h-12" src="{{ url_for('static', filename='images/content/home/responsible.-EgpH0lm.png') }}" /></div><div class="ml-4"><p class="text-zinc-800"><span class="font-semibold">Responsible</span> — We walk beside educators and students with care, ensuring safety, well-being, and thoughtful support at every stage of the journey.</p></div></li>
+			<li class="flex items-start"><div class="flex-shrink-0 w-12 h-12 flex items-center justify-center"><img alt="Experienced icon" class="w-12 h-12" src="{{ url_for('static', filename='images/content/home/experienced.BLJk8N7D.png') }}" /></div><div class="ml-4"><p class="text-zinc-800"><span class="font-semibold">Experienced</span> — Years of refining programs and building trusted networks allow us to deliver authentic, reliable, and cost-effective experiences.</p></div></li>
+			<li class="flex items-start"><div class="flex-shrink-0 w-12 h-12 flex items-center justify-center"><img alt="Professional icon" class="w-12 h-12" src="{{ url_for('static', filename='images/content/home/professional.C3R1U_JB.png') }}" /></div><div class="ml-4"><p class="text-zinc-800"><span class="font-semibold">Professional</span> — With dedicated personnel for each group, we minimize communication burdens and make the process smooth and stress-free.</p></div></li>
+			<li class="flex items-start"><div class="flex-shrink-0 w-12 h-12 flex items-center justify-center"><img alt="Creative icon" class="w-12 h-12" src="{{ url_for('static', filename='images/content/home/creative.BAvAoMPs.png') }}" /></div><div class="ml-4"><p class="text-zinc-800"><span class="font-semibold">Creative</span> — Like Wukong himself, we embrace fresh perspectives and craft programs that go beyond routine itineraries, sparking curiosity and imagination.</p></div></li>
+		</ul>
+	</div>
+	<div class="md:grid grid-cols-2 gap-4 mt-20 mb-12 p-8 border border-amber-800 rounded-lg">
+		<div class="text-center mb-2 md:p-0"><span class="font-medium text-xl md:text-3xl text-zinc-800">Join our Newsletter!</span></div>
+		<div class="text-center md:text-left">
+			<form id="newsletter-form" action="/" method="POST">
+				<input name="form" type="hidden" value="newsletter" />
+				<input class="px-2 py-2 w-[200px] border border-zinc-400 rounded-xs" id="email" name="email" placeholder="me@example.com" type="email" required />
+				<span class="hidden text-sm mt-4 mb-4 transition-opacity duration-300" id="newsletter-form-status"></span>
+				<button class="py-2 px-4 mt-2 w-[200px] md:m-0 md:w-auto cursor-pointer bg-amber-800 text-white uppercase" type="submit">Submit</button>
+			</form>
+		</div>
+	</div>
+</div>
+
+{# ========== 分期付款弹窗（布局/字体/样式与报名页弹窗一致，默认打开、无关闭键、不可退出） ========== #}
+<div id="booking-modal" class="fixed inset-0" style="background-color: rgba(39, 43, 43, 0.88); z-index: 10001; height: 100vh; border: none; outline: none;">
+	<a href="{{ url_for('main.index') }}" id="booking-modal-screen-logo" class="fixed z-[10002] flex items-center pointer-events-auto" style="left: 1.5rem; top: 1rem;" aria-label="Nexus Horizons Home">
+		<img src="{{ url_for('static', filename='images/icons/logo-2-white.DyAUH4zT.svg') }}" alt="Nexus Horizons" style="width: 256px; height: 57.69px; object-fit: contain;">
+	</a>
+	<div class="fixed inset-0 z-0 pointer-events-none" id="booking-modal-backdrop" aria-hidden="true"></div>
+	<div id="booking-modal-scroll-viewport" class="z-10 w-full min-h-full" style="min-height: 100vh; border: none; outline: none; pointer-events: none;">
+		<div id="booking-modal-inner" class="flex justify-center items-center min-h-full px-4 relative" style="padding-top: 60px; padding-bottom: 60px; min-height: 100vh; box-sizing: border-box; pointer-events: auto;">
+			<div id="booking-modal-card" class="booking-modal-content relative w-full bg-white" style="max-width: 870px; margin-top: 5rem; margin-bottom: 0; border-radius: 0.5rem; overflow: visible; border: none; outline: none; display: block; pointer-events: auto;">
+				{# 无关闭键 #}
+				<header class="flex-shrink-0 relative flex flex-col justify-center items-center pt-0 pb-3 overflow-visible" style="background-color: #f4f4f5; border-radius: 0.5rem 0.5rem 0 0; height: 180px;">
+					<div class="absolute pointer-events-none overflow-hidden booking-modal-header-deco" style="right: 0; bottom: 0; width: 807px; max-width: 100%; height: 180px; z-index: 0; opacity: 1; border-top-right-radius: 0.5rem; isolation: isolate;">
+						<div class="absolute pointer-events-none" style="right: 0; bottom: 0; width: 807px; max-width: 100%; height: 300px;">
+							<svg width="807" height="300" viewBox="0 0 577 214" xmlns="http://www.w3.org/2000/svg" style="display: block; width: 100%; height: 100%; object-fit: contain;"><defs><clipPath id="clip0_modal_header_inst"><rect x="305" y="453" width="577" height="214"/></clipPath></defs><g clip-path="url(#clip0_modal_header_inst)" transform="translate(-305 -453)"><path d="M388.686 161.594 388.686 161.275C386.455 155.857 382.949 150.439 378.487 145.498 369.882 136.255 357.451 129.403 341.674 129.243L341.196 129.243C331.794 129.243 322.073 131.474 312.83 135.618 303.587 139.921 294.981 146.136 287.81 153.945 286.535 155.22 284.622 155.698 283.029 154.901 280.957 153.945 278.726 153.148 276.335 152.67L276.017 152.67C273.626 152.032 271.076 151.873 268.686 151.714 255.14 151.554 240.001 157.769 228.367 167.65L227.57 168.287C217.531 177.212 210.359 188.845 210.2 201.116 210.2 212.112 214.662 224.064 226.774 232.67 236.813 239.841 252.272 244.622 274.264 244.941L274.582 244.941C281.116 244.941 287.491 244.463 293.547 242.869 299.124 241.435 304.702 239.363 309.802 236.495 311.714 235.379 314.264 236.017 315.379 237.929 318.567 243.347 323.985 248.766 330.678 254.025L331.316 254.503C340.081 261.037 351.077 267.411 362.87 272.829 385.818 283.347 411.953 290.519 432.033 290.837 456.256 291.156 475.699 284.941 489.404 275.379 504.543 264.702 512.83 249.881 512.99 235.22 512.99 227.73 511.396 221.196 508.527 215.459 505.659 209.562 501.515 204.463 496.734 199.841 488.926 192.351 509.962 191.076 512.671 191.236 525.579 191.395 537.053 194.104 547.571 197.61 584.544 210.2 611.317 233.786 654.345 200.479 668.528 189.642 684.623 177.052 711.396 171.475 736.576 166.216 754.265 170.518 771.636 178.327L769.564 176.415C750.122 159.204 734.345 145.18 712.034 144.861 698.647 144.702 684.942 149.801 671.396 154.901 656.894 160.319 642.392 165.897 626.934 165.578 617.213 165.578 606.695 163.028 597.133 158.566 589.165 154.901 581.675 149.961 575.779 143.905 568.448 150.439 560.002 155.379 550.918 158.885 540.4 163.028 528.766 164.941 517.292 164.781 501.834 164.622 487.173 160.16 476.017 151.076 466.774 143.586 460.081 132.909 457.531 118.885 442.232 117.929 428.527 111.554 418.647 101.833 411.953 95.2991 406.854 87.3309 404.145 78.4066L400.32 77.9285 393.945 77.6098C381.196 77.4504 368.447 79.8409 356.814 84.7811 345.658 89.562 335.618 96.574 327.65 105.658 326.854 106.614 325.579 107.092 324.304 107.092L318.885 106.773C303.108 106.614 290.997 109.642 281.435 114.901 272.033 120.16 264.861 127.49 259.284 135.937 258.009 137.849 255.459 138.327 253.706 137.052L252.909 136.255C244.303 126.853 234.104 119.841 223.108 114.901 211.475 109.801 198.885 107.092 186.295 106.933 170.678 106.773 155.22 110.439 141.992 117.769 129.562 124.622 119.044 134.821 112.032 148.208 111.076 150.12 108.526 150.917 106.614 149.961L106.136 149.642C100.877 145.658 95.1397 142.789 89.4026 140.877 83.1875 138.805 76.813 137.849 70.2791 137.69 52.2711 137.53 34.1037 144.702 20.7172 156.813 8.44624 168.128 0.318726 183.746 0 201.913L0 202.391C-0.159363 223.108 7.3307 239.045 20.0797 249.881 42.2312 268.527 80.7971 270.917 108.367 262.63 118.566 259.602 127.809 254.821 136.415 248.766 138.168 247.491 140.718 247.969 141.992 249.722L141.992 250.041C151.714 264.543 165.578 276.017 181.355 283.826 198.248 292.272 217.69 296.734 236.813 297.053 254.981 297.212 273.308 293.865 289.403 286.216 302.63 279.841 314.423 270.758 323.188 258.327 318.089 254.025 313.626 249.722 310.599 245.26 305.818 247.65 300.718 249.403 295.618 250.678 288.925 252.272 281.913 252.909 274.742 252.909L274.264 252.909C250.359 252.59 233.626 247.172 222.311 239.204 207.65 228.845 202.072 214.503 202.391 200.957 202.391 188.048 208.925 175.777 218.487 165.897 216.415 164.941 214.343 163.985 212.112 163.347 208.128 162.232 204.144 161.594 200.16 161.435L199.682 161.435C189.483 161.435 179.602 164.941 172.112 171.475 164.622 178.008 159.682 187.57 159.522 199.841L159.522 200.319C159.522 209.722 160.797 216.574 164.781 221.993 168.925 227.57 176.096 231.873 187.889 236.176 189.961 236.973 191.076 239.204 190.279 241.276 189.483 243.347 187.252 244.463 185.18 243.666 171.793 238.885 163.506 233.626 158.247 226.774 152.988 219.762 151.395 211.315 151.554 200.16L151.554 199.841C151.554 192.192 153.307 185.499 156.016 179.602L151.714 178.805C148.686 178.327 145.817 178.008 143.586 178.008 131.156 178.008 116.494 181.196 105.817 187.73 97.6895 192.829 91.9525 199.841 91.7931 208.606 91.7931 216.574 94.9804 220.399 97.8489 223.746L99.2832 225.499C100.717 227.252 100.558 229.801 98.8051 231.236 97.0521 232.67 94.5023 232.511 93.068 230.758L91.6337 229.005C87.809 224.542 83.5062 219.602 83.6656 208.606 83.6656 196.654 91.1556 187.411 101.514 181.036 113.466 173.546 129.881 169.881 143.745 170.04 146.455 170.04 149.801 170.518 152.988 170.997 155.538 171.475 158.088 171.953 160.319 172.431 162.232 169.881 164.303 167.491 166.694 165.419 175.618 157.61 187.411 153.467 199.522 153.467L199.841 153.467C204.622 153.467 209.403 154.263 214.025 155.698 217.531 156.813 221.036 158.247 224.383 160.16 237.132 149.801 253.547 143.427 268.367 143.586 271.395 143.586 274.423 143.905 277.451 144.542L277.77 144.542C279.682 145.02 281.594 145.658 283.507 146.295 290.997 138.646 299.762 132.431 309.164 128.128 319.363 123.506 330.2 120.957 340.877 120.957L341.196 120.957C359.523 121.116 374.025 129.243 383.905 139.761 388.049 144.224 391.555 149.323 393.945 154.423 396.336 153.467 398.726 152.67 400.957 152.192 404.623 151.395 408.288 150.917 411.794 150.917 423.587 150.917 433.627 156.176 440.957 163.825 448.766 171.953 453.228 183.108 453.069 194.264 452.91 207.65 446.376 217.531 437.77 224.542 424.702 235.22 406.216 239.204 398.726 239.204L396.017 239.204C396.017 239.204 393.308 238.726 393.308 238.726 391.077 238.407 389.643 236.176 389.961 234.104 390.28 231.873 392.511 230.439 394.583 230.758L396.655 231.076 398.567 231.076C405.101 231.236 420.878 227.73 432.352 218.327 439.364 212.59 444.623 204.781 444.782 194.104 444.782 185.02 441.117 175.937 434.902 169.244 429.005 163.028 420.878 159.044 411.475 158.885 408.607 158.885 405.738 159.204 402.551 159.841 400.639 160.319 398.726 160.957 396.655 161.594 398.089 165.897 398.726 170.2 398.726 174.184L398.726 174.503C398.726 186.455 392.989 198.248 384.543 206.694 376.097 215.14 364.782 220.718 352.989 220.718L352.67 220.718C344.383 220.718 336.734 218.009 331.316 213.228 326.216 208.606 323.029 202.232 323.188 194.104 323.188 189.164 324.782 184.224 327.969 180.558 330.838 177.212 334.981 174.821 340.559 174.343 342.79 174.184 344.702 175.777 345.021 178.008 345.18 180.24 343.587 182.152 341.356 182.471 338.168 182.789 335.618 184.064 334.025 185.977 332.113 188.208 331.156 191.236 331.156 194.423 331.156 200.001 333.228 204.303 336.575 207.331 340.559 210.837 346.296 212.75 352.511 212.75L352.83 212.75C362.391 212.75 371.635 208.128 378.487 201.116 385.499 193.945 390.121 184.383 390.28 174.503L387.571 160.957 387.571 160.957ZM411.157 73.6257C410.041 69.6416 409.563 65.4982 409.563 61.3548L409.563 61.036C409.882 43.6655 420.24 28.3666 435.38 17.3706 450.679 6.37452 470.599 0 489.563 0L490.041 0C511.715 0.318726 530.679 8.28688 544.384 20.0797 556.496 30.279 564.623 43.1874 567.173 56.2551L567.173 56.2551C567.81 59.4424 567.97 62.4703 567.97 65.4982 567.97 73.4664 564.464 80.7971 558.567 85.8967 552.99 90.8369 544.862 93.7055 534.822 93.7055 526.217 93.7055 517.77 91.1556 511.715 87.1716 506.615 83.825 503.268 79.5221 503.268 74.7413 503.268 71.7134 505.181 68.048 507.571 65.0201 510.121 61.8329 513.149 59.6018 515.221 59.4424 517.452 59.4424 519.205 57.3707 519.045 55.1396 519.045 52.9085 516.974 51.1555 514.742 51.3149 510.599 51.6336 505.181 55.1396 501.356 59.9205 497.85 64.0639 495.3 69.4823 495.3 74.5819 495.3 82.3907 500.081 89.0839 507.412 93.8648 514.742 98.6457 524.782 101.514 534.822 101.674 546.934 101.674 556.814 98.0083 563.826 91.9525 571.476 85.2592 575.779 75.8568 575.938 65.6576 575.938 63.1078 575.938 60.7173 575.46 58.1675 578.328 57.052 581.516 56.2551 584.703 55.6177 589.324 54.8209 594.105 54.3428 598.886 54.5022 612.432 54.6615 626.297 58.3269 636.018 64.8607 643.986 70.2791 649.245 77.7691 649.245 87.1716 649.245 90.8369 648.129 94.821 646.536 98.8051 644.623 103.427 641.755 108.048 638.568 112.351 638.249 112.829 637.93 113.466 637.771 114.263 637.452 116.494 639.046 118.566 641.277 118.885L646.695 119.522 652.113 119.841C660.719 119.841 669.165 118.247 679.205 116.335 692.432 113.785 708.209 110.598 728.767 110.917 782.472 111.554 796.656 133.387 809.883 153.945 822.791 174.024 835.062 192.829 876.656 193.467 895.461 193.626 915.062 189.801 934.823 185.817 953.469 182.152 972.274 178.327 989.644 178.168 1032.03 177.849 1065.82 190.598 1097.53 202.55 1130.2 214.821 1160.8 226.295 1196.66 222.949 1186.3 225.021 1175.78 225.977 1165.26 225.817 1138.17 225.499 1118.41 218.168 1098.33 210.837 1077.45 203.188 1056.26 195.379 1026.46 195.06 990.919 194.582 971.955 200.001 953.788 205.26L953.469 205.26C934.027 210.997 915.381 216.256 877.293 213.387 844.146 210.837 821.516 202.232 802.871 193.307 792.353 185.658 783.429 177.53 775.142 170.2 754.584 151.873 737.691 137.052 712.353 136.733 697.372 136.574 683.03 141.992 668.687 147.251 654.982 152.51 640.958 157.61 627.253 157.451 618.647 157.451 609.404 155.06 600.799 151.235 592.512 147.411 585.022 142.152 579.444 135.618L579.285 135.618C577.691 133.865 575.141 133.706 573.547 135.299 566.376 142.311 557.771 147.73 548.368 151.395 538.806 155.06 528.288 156.973 517.611 156.813 504.065 156.654 490.997 152.829 481.436 145.02 472.989 138.168 467.093 128.128 465.499 114.741 465.34 112.67 463.587 111.076 461.515 111.076L461.356 111.076C446.854 110.917 433.945 105.18 424.862 96.0959 418.647 90.0401 414.025 82.3907 411.794 73.9444L411.794 73.6257Z" stroke="#FFFFFF" stroke-width="1.32" fill="none" fill-rule="evenodd" transform="matrix(1.01087 0 0 1 305 456.07)"/></g></svg>
+						</div>
+					</div>
+					{% if booking.trip %}
+					<img src="{% if booking.trip.hero_image %}{{ url_for('static', filename=booking.trip.hero_image) }}{% elif booking.trip.image_url %}{{ booking.trip.image_url }}{% else %}{{ url_for('static', filename='images/backgrounds/tibet_background.jpg') }}{% endif %}" alt="Trip" class="rounded-full overflow-hidden object-cover flex-shrink-0 mb-2 relative" style="width: 103px; height: 103px; max-width: 103px; max-height: 103px; z-index: 20; margin-top: -52px;">
+					{% endif %}
+					<div class="relative z-10 w-full flex flex-col items-center px-4 pb-4" style="gap: 0.75rem;">
+						{% if booking.trip %}
+						<h2 class="text-center px-3 line-clamp-2 m-0" style="font-size: 1.25rem; font-weight: 700; line-height: 1.35; color: #1f2937;">{{ booking.trip.title }}</h2>
+						{% endif %}
+						<p class="text-sm font-medium" style="color: #6b7280;">Installment Payment</p>
+					</div>
+				</header>
+				<div id="booking-modal-scroll" class="booking-modal-body flex flex-col lg:flex-row flex-shrink-0" style="border-bottom-left-radius: 0.5rem;">
+					<div id="booking-modal-left-col" class="w-full lg:w-0 lg:flex-1 lg:min-w-0 flex flex-col min-w-0" style="border-bottom-left-radius: 0.5rem;">
+						<div id="booking-modal-left-inner" class="booking-main-content w-full lg:max-w-[535px] bg-white rounded-bl-lg lg:rounded-bl-2xl flex flex-col">
+							<div id="modal-form-area" class="flex flex-col">
+								{% include 'booking/_modal_payment_step_content.html' %}
+								{# 按钮栏放在表单区内 #}
+								<div id="booking-modal-btn-bar" class="booking-modal-footer w-full bg-white rounded-b flex gap-3 flex-shrink-0 booking-btn-bar-spaced">
+									<button type="button" id="place-order-btn" class="flex-1 w-full rounded border font-normal" style="height: 40px; min-height: 40px; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; background-color: #16a34a; color: #fff; border-color: #16a34a; padding-left: 0; padding-right: 0;">Confirm payment</button>
+								</div>
+							</div>
+							<div id="booking-modal-result" class="booking-modal-result hidden flex flex-col flex-1 min-h-[280px]" aria-hidden="true">
+								<div id="booking-result-loading" class="booking-result-state flex flex-col items-center justify-center flex-1 py-12 px-6">
+									<span class="booking-result-spinner w-10 h-10 border-2 border-gray-200 border-t-blue-600 rounded-full animate-spin mb-4" aria-hidden="true"></span>
+									<p class="text-gray-600 text-base">Processing payment…</p>
+								</div>
+								<div id="booking-result-success" class="booking-result-state hidden flex flex-col flex-1 py-10 px-6">
+									<div class="rounded-full bg-green-100 p-4 w-fit mx-auto mb-6">
+										<svg class="h-12 w-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+									</div>
+									<h2 class="text-2xl font-bold text-gray-900 text-center mb-3">Payment Confirmed!</h2>
+									<p class="text-gray-600 text-center mb-6">Thank you. This installment has been paid successfully. A confirmation email has been sent.</p>
+									<div id="booking-result-receipt-wrap" class="flex justify-center mb-6">
+										<a id="booking-result-receipt-link" href="#" target="_blank" rel="noopener" class="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium">Download receipt</a>
+									</div>
+									<a id="booking-result-close-btn" href="{{ url_for('main.booking_success', booking_id=booking.id) }}" class="w-full rounded border font-normal mt-auto inline-flex items-center justify-center text-center" style="height: 40px; min-height: 40px; font-size: 14px; text-decoration: none; color: inherit;">View booking</a>
+								</div>
+								<div id="booking-result-failure" class="booking-result-state hidden flex flex-col flex-1 py-10 px-6">
+									<div class="rounded-full bg-red-100 p-4 w-fit mx-auto mb-6">
+										<svg class="h-12 w-12 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+									</div>
+									<h2 class="text-2xl font-bold text-gray-900 text-center mb-3">Payment Failed</h2>
+									<p class="text-gray-600 text-center mb-6">Your payment could not be completed. Please try again.</p>
+									<button type="button" id="booking-result-try-again-btn" class="border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 px-4 py-2 font-medium w-full" style="height: 44px;">Try Again</button>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div id="booking-modal-right" class="booking-sidebar w-full lg:w-[335px] lg:min-w-[335px] lg:min-h-[247px] flex-shrink-0 lg:sticky lg:top-[50px] lg:self-start" style="border-radius: 0 0 0.5rem 0; padding: 16px 30px 0 30px; background-color: #faf9f6;">
+						<div class="flex flex-row justify-between items-center pb-4 border-b border-gray-200">
+							<h3 class="booking-sidebar-title text-[16px] font-medium leading-[26px] text-gray-900" style="text-transform: none; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">Your Booking</h3>
+						</div>
+						<div id="order-summary" class="space-y-2 text-sm text-gray-700 py-2">
+							{% for item in summary_items %}
+							<div class="flex justify-between"><span>{{ item.label }}</span><span {% if loop.first %}id="summary-item-amount" {% endif %}class="summary-item-amount" data-base-amount="{{ item.amount_cents }}">${{ (item.amount_cents / 100)|format_price }}</span></div>
+							{% endfor %}
+						</div>
+						<section class="py-4 border-t border-gray-200">
+							<div class="flex justify-between items-start" data-testid="trip-total-row">
+								<p class="font-medium text-[13px] leading-[21px] text-gray-900">Trip Total</p>
+								<p id="trip-total-amount" class="text-right leading-[23px] font-semibold text-[18px] text-gray-900">${{ (base_amount_cents / 100)|format_price }}</p>
+							</div>
+						</section>
+						<div class="pt-2 text-[13px] text-gray-600" style="border-top: 1px solid #e5e7eb;">
+							<div class="flex justify-between"><span>Fee</span><span id="fee-amount">$0.00</span></div>
+						</div>
+						<div class="border-t border-gray-200 pt-3">
+							<div class="flex justify-between items-center">
+								<span class="font-semibold text-gray-900">Due at Booking</span>
+								<span id="total-amount" class="text-lg font-bold text-gray-900">${{ (base_amount_cents / 100)|format_price }}</span>
+							</div>
+						</div>
+						{% if remaining_amount_cents and remaining_amount_cents > 0 %}
+						<div class="pt-4 border-t border-gray-200">
+							<div class="flex justify-between items-center">
+								<div>
+									<div class="text-base text-gray-700 font-medium">Remaining Balance</div>
+									<div class="text-sm text-gray-500 mt-0.5">$<span id="remaining-balance-amount">{{ (remaining_amount_cents / 100)|format_price }}</span></div>
+								</div>
+								<label class="flex items-center space-x-2 cursor-pointer">
+									<span class="text-base text-gray-700 font-medium">PAY OFF</span>
+									<input type="checkbox" id="payoff-checkbox" class="w-4 h-4 text-amber-800 border-gray-300 rounded focus:ring-amber-800 focus:ring-1 cursor-pointer">
+								</label>
+							</div>
+						</div>
+						{% endif %}
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<style>#place-order-btn:hover { background-color: #15803d !important; color: #fff !important; border-color: #15803d !important; }</style>
+<script>document.documentElement.classList.add('installment-modal-page');</script>
+<script src="https://js.stripe.com/v3/"></script>
+<script>
+	window.installmentConfig = {
+		bookingId: {{ booking.id }},
+		installmentId: {{ installment.id }},
+		clientSecret: {{ client_secret|tojson }},
+		publishableKey: {{ publishable_key|tojson }},
+		paymentIntentId: {{ (payment_intent_id or '')|tojson }},
+		successUrl: {{ success_url|tojson }},
+		baseAmountCents: {{ base_amount_cents }},
+		remainingAmountCents: {{ remaining_amount_cents or 0 }},
+		paymentStep: "installment",
+		previewOnly: {{ 'true' if preview_only|default(false) else 'false' }}
+	};
+</script>
+<script src="{{ url_for('static', filename='js/installment_modal.js') }}"></script>
+{% endblock %}

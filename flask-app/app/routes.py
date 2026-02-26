@@ -6,6 +6,8 @@ Flask路由定义
 from flask import Blueprint, render_template, request, jsonify, redirect, abort, url_for, flash, current_app
 from flask_login import current_user
 import json
+import re
+from pathlib import Path
 import stripe
 from app.utils import (
     handle_newsletter_submission,
@@ -185,6 +187,19 @@ def north_america_vancouver():
     """温哥华旅游路由"""
     return render_template('north-america/vancouver.html')
 
+@bp.route('/north-america/canada')
+def north_america_canada():
+    """Canada Environmental & Educational Program"""
+    gallery_dir = Path(current_app.static_folder) / 'images' / 'content' / 'north-america' / 'canada'
+    gallery_nums = []
+    if gallery_dir.exists():
+        for f in gallery_dir.glob('canada-gallery-*.jpg'):
+            m = re.match(r'canada-gallery-(\d+)\.jpg', f.name, re.I)
+            if m:
+                gallery_nums.append(int(m.group(1)))
+    gallery_nums.sort()
+    return render_template('north-america/canada.html', gallery_images=gallery_nums)
+
 @bp.route('/trips/<slug>', methods=['GET', 'POST'])
 def trip_detail(slug):
     """
@@ -232,22 +247,35 @@ def trip_detail(slug):
 
     package_spots_available = {}
     for package in packages:
-        if not package.capacity:
+        if package.capacity is None:
             continue
         booked = BookingPackage.query.filter(
             BookingPackage.package_id == package.id,
             BookingPackage.status.in_(["pending", "deposit_paid", "fully_paid"]),
         ).count()
         package_spots_available[package.id] = max(package.capacity - booked, 0)
-        
+
+    # Registration date check: customers can only book on or after registration_date (None = no restriction)
+    today = date.today()
+    registration_open = (trip.registration_date is None) or (today >= trip.registration_date)
+
     form = BookingForm()
-    
+
     # 处理 AJAX 提交（多步骤表单）
     if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return handle_booking_submission(request, trip)
     
     # 处理传统表单提交（向后兼容）
     if form.validate_on_submit():
+        if not registration_open:
+            flash(f'Registration opens on {trip.registration_date.strftime("%B %d, %Y")}', 'error')
+            return render_template('booking/trip_booking.html',
+                trip=trip, form=form, itinerary_items=itinerary_items,
+                buyer_info_fields=buyer_info_fields, packages=packages, addons=addons,
+                custom_questions=custom_questions, package_spots_available=package_spots_available,
+                publishable_key=current_app.config.get('STRIPE_PUBLISHABLE_KEY'),
+                registration_open=registration_open, registration_date=trip.registration_date,
+                use_experimental_modal=True)
         # 使用 buyer_email 作为主要邮箱（优先于兼容字段 email）
         buyer_email = form.buyer_email.data or form.email.data
         
@@ -354,7 +382,78 @@ def trip_detail(slug):
                          addons=addons,
                          custom_questions=custom_questions,
                          package_spots_available=package_spots_available,
-                         publishable_key=current_app.config.get('STRIPE_PUBLISHABLE_KEY'))
+                         publishable_key=current_app.config.get('STRIPE_PUBLISHABLE_KEY'),
+                         registration_open=registration_open,
+                         registration_date=trip.registration_date,
+                         use_experimental_modal=True)
+
+
+def _trip_detail_context(trip):
+    """为行程详情页 / 设计预览页 准备共用上下文（不包含 form 提交处理）。"""
+    itinerary_items = trip.itinerary_items.order_by('day_number').all() if trip.itinerary_items else []
+    buyer_info_fields = trip.buyer_info_fields.order_by('display_order').all() if trip.buyer_info_fields else []
+    if not buyer_info_fields:
+        from app.models import BuyerInfoField
+        default_fields = [
+            {'field_name': 'First Name', 'field_type': 'text', 'is_required': True, 'display_order': 0},
+            {'field_name': 'Last Name', 'field_type': 'text', 'is_required': True, 'display_order': 1},
+            {'field_name': 'Email', 'field_type': 'email', 'is_required': True, 'display_order': 2},
+            {'field_name': 'Phone', 'field_type': 'phone', 'is_required': True, 'display_order': 3}
+        ]
+        for df in default_fields:
+            new_field = BuyerInfoField(
+                trip_id=trip.id,
+                field_name=df['field_name'],
+                field_type=df['field_type'],
+                is_required=df['is_required'],
+                display_order=df['display_order']
+            )
+            db.session.add(new_field)
+        db.session.commit()
+        buyer_info_fields = trip.buyer_info_fields.order_by('display_order').all()
+    packages = trip.packages.filter_by(status='available').all() if trip.packages else []
+    addons = trip.add_ons.all() if trip.add_ons else []
+    custom_questions = trip.questions.all() if trip.questions else []
+    package_spots_available = {}
+    for pkg in packages:
+        if pkg.capacity is not None:
+            booked = BookingPackage.query.filter(
+                BookingPackage.package_id == pkg.id,
+                BookingPackage.status.in_(["pending", "deposit_paid", "fully_paid"]),
+            ).count()
+            package_spots_available[pkg.id] = max(pkg.capacity - booked, 0)
+    today = date.today()
+    registration_open = (trip.registration_date is None) or (today >= trip.registration_date)
+    return {
+        'trip': trip,
+        'form': BookingForm(),
+        'itinerary_items': itinerary_items,
+        'buyer_info_fields': buyer_info_fields,
+        'packages': packages,
+        'addons': addons,
+        'custom_questions': custom_questions,
+        'package_spots_available': package_spots_available,
+        'publishable_key': current_app.config.get('STRIPE_PUBLISHABLE_KEY'),
+        'registration_open': registration_open,
+        'registration_date': trip.registration_date,
+    }
+
+
+@bp.route('/trips/<slug>/design-preview', methods=['GET', 'POST'])
+def trip_detail_design_preview(slug):
+    """
+    付款模块「设计预览」实验页：与 /trips/<slug> 使用相同数据，但渲染实验模板。
+    用于安全地尝试新设计，不影响正式页。GET 显示页面，POST 为 AJAX 报名提交（与正式页同一逻辑）。
+    访问示例：http://127.0.0.1:5000/trips/SH/design-preview
+    """
+    trip = Trip.query.filter_by(slug=slug).first_or_404()
+    if trip.status != 'published' and not current_user.is_authenticated:
+        abort(404)
+    if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return handle_booking_submission(request, trip)
+    ctx = _trip_detail_context(trip)
+    ctx['use_experimental_modal'] = True  # 弹窗内步骤使用 _modal_steps_experimental.html，便于替换为设计稿
+    return render_template('booking/trip_booking_experimental.html', **ctx)
 
 
 def handle_booking_submission(request, trip):
@@ -364,6 +463,14 @@ def handle_booking_submission(request, trip):
     将完整的报名数据存储在Payment Intent的metadata中
     """
     try:
+        # Registration date check: reject if before registration opens
+        today = date.today()
+        if trip.registration_date and today < trip.registration_date:
+            return jsonify({
+                'success': False,
+                'error': f'Registration opens on {trip.registration_date.strftime("%B %d, %Y")}'
+            }), 400
+
         # 获取 JSON 数据
         if request.is_json:
             data = request.get_json()
@@ -649,6 +756,11 @@ def handle_booking_submission(request, trip):
             f"pi={getattr(payment_intent, 'id', None)}, amount={base_amount_cents}"
         )
         
+        # 3DS 完成后回到行程页并在弹窗内显示结果（不再跳转独立 success 页）
+        trip_page_url = url_for('main.trip_detail', slug=trip.slug, _external=True)
+        pi_id = getattr(payment_intent, 'id', None) or ''
+        success_url = f'{trip_page_url}?modal=1&payment_intent_id={pi_id}'
+
         return jsonify({
             'success': True,
             'payment_intent_id': getattr(payment_intent, 'id', None),
@@ -656,11 +768,7 @@ def handle_booking_submission(request, trip):
             'payment_plan': payment_method,
             'base_amount_cents': base_amount_cents,
             'publishable_key': current_app.config.get('STRIPE_PUBLISHABLE_KEY'),
-            'success_url': url_for(
-                'main.payment_pending',
-                payment_intent_id=getattr(payment_intent, 'id', None),
-                _external=True
-            ),
+            'success_url': success_url,
         })
         
     except json.JSONDecodeError:
@@ -1301,6 +1409,124 @@ def api_payment_intent():
     })
 
 
+@bp.route('/api/booking/<int:booking_id>/summary')
+def api_booking_summary(booking_id):
+    """付款成功后在弹窗内展示 Your Booking 金额用；返回 trip_total、fee、due_at_booking、order_summary_lines（无需登录，与 receipt 一致）"""
+    booking = Booking.query.get(booking_id)
+    if not booking:
+        return jsonify({'error': 'not_found'}), 404
+    trip = Trip.query.get(booking.trip_id) if booking.trip_id else None
+    if not trip:
+        return jsonify({'error': 'not_found'}), 404
+
+    # 订单明细行：套餐名 x 数量、附加项名 x 数量（金额为单价×数量）
+    lines = []
+    trip_total = 0.0
+    for bp in booking.booking_packages:
+        if not bp.package:
+            continue
+        price = float(bp.package.price or 0)
+        qty = int(bp.quantity or 1)
+        line_total = price * qty
+        trip_total += line_total
+        name = bp.package.name or 'Package'
+        lines.append({'label': name + ' x' + str(qty), 'amount': round(line_total, 2)})
+
+    for participant in booking.participants:
+        for addon_rel in participant.addons:
+            if not addon_rel.addon:
+                continue
+            price = float(addon_rel.addon.price or 0)
+            qty = int(addon_rel.quantity or 0)
+            if qty <= 0:
+                continue
+            line_total = price * qty
+            trip_total += line_total
+            lines.append({'label': addon_rel.addon.name + ' x' + str(qty), 'amount': round(line_total, 2)})
+
+    discount = float(booking.discount_amount or 0)
+    subtotal_after_discount = max(0.0, round(trip_total - discount, 2))
+
+    payment = Payment.query.filter(
+        Payment.booking_id == booking_id,
+        Payment.stripe_payment_intent_id.isnot(None)
+    ).order_by(Payment.created_at.desc()).first()
+
+    if payment and payment.final_amount_cents is not None:
+        fee_dollars = (payment.fee_cents or 0) / 100.0
+        due_at_booking = payment.final_amount_cents / 100.0
+        trip_total_display = (payment.base_amount_cents / 100.0) if payment.base_amount_cents is not None else round(trip_total, 2)
+    else:
+        fee_dollars = 0.0
+        due_at_booking = subtotal_after_discount
+        trip_total_display = round(trip_total, 2)
+
+    return jsonify({
+        'trip_total': round(trip_total_display, 2),
+        'fee': round(fee_dollars, 2),
+        'due_at_booking': round(due_at_booking, 2),
+        'order_summary_lines': lines,
+        'discount_amount': round(discount, 2),
+    })
+
+
+@bp.route('/booking/<int:booking_id>/receipt')
+def booking_receipt(booking_id):
+    """客户查看/下载收据（仅允许查看自己的订单，通过 booking_id 访问；无登录时仅凭链接）"""
+    booking = Booking.query.get(booking_id)
+    if not booking:
+        abort(404)
+    trip = Trip.query.get(booking.trip_id) if booking.trip_id else None
+    if not trip:
+        abort(404)
+
+    # 计算应付金额（与 admin generate_receipt 一致）
+    expected_amount = 0.0
+    has_packages = False
+    for bp in booking.booking_packages:
+        if bp.package:
+            package_price = float(bp.package.price) if bp.package.price is not None else 0.0
+            quantity = int(bp.quantity) if bp.quantity is not None else 1
+            expected_amount += package_price * quantity
+            has_packages = True
+    for participant in booking.participants:
+        for booking_addon in participant.addons:
+            if booking_addon.addon:
+                addon_price = float(booking_addon.addon.price) if booking_addon.addon.price is not None else 0.0
+                quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 0
+                expected_amount += addon_price * quantity
+    discount_amount = float(booking.discount_amount) if booking.discount_amount else 0.0
+    expected_amount = max(0.0, expected_amount - discount_amount)
+    if not has_packages:
+        expected_amount = float(booking.amount_paid) if booking.amount_paid is not None else 0.0
+
+    participants_info = []
+    for participant in booking.participants:
+        addons_info = []
+        for booking_addon in participant.addons:
+            if booking_addon.addon:
+                addons_info.append({
+                    'name': booking_addon.addon.name,
+                    'quantity': booking_addon.quantity,
+                    'price': booking_addon.addon.price,
+                    'total': float(booking_addon.addon.price or 0) * int(booking_addon.quantity or 0)
+                })
+        participants_info.append({
+            'name': participant.name,
+            'email': participant.email,
+            'phone': participant.phone,
+            'addons': addons_info
+        })
+
+    return render_template(
+        'booking/receipt.html',
+        trip=trip,
+        booking=booking,
+        expected_amount=expected_amount,
+        participants_info=participants_info
+    )
+
+
 @bp.route('/booking/success')
 def booking_success():
     booking_id = request.args.get('booking_id', type=int)
@@ -1334,12 +1560,18 @@ def payment_pending():
     booking_id = request.args.get('booking_id', type=int)
     payment_intent_id = request.args.get('payment_intent_id')
     booking = Booking.query.get(booking_id) if booking_id else None
+    # 新流程无 booking_id 时 success_url 为 None；提供首页作为备用链接（体验优化）
+    success_url = (
+        url_for('main.booking_success', booking_id=booking_id, _external=True)
+        if booking_id
+        else url_for('main.index', _external=True)
+    )
     return render_template(
         'booking/payment_pending.html',
         booking=booking,
         booking_id=booking_id,
         payment_intent_id=payment_intent_id,
-        success_url=url_for('main.booking_success', booking_id=booking_id) if booking_id else None
+        success_url=success_url
     )
 
 
@@ -1374,9 +1606,10 @@ def api_payment_status():
                     # 仍在处理中，返回 pending
                     return jsonify({'status': 'pending', 'payment_intent_id': payment_intent_id}), 200
             elif pending_booking.status == 'pending':
-                # 直接查询Stripe API检查Payment Intent状态
+                # 直接查询Stripe API检查Payment Intent状态（Stripe SDK 返回对象用 getattr 取 status）
                 intent = retrieve_payment_intent(payment_intent_id)
-                if intent and intent.get('status') == 'succeeded':
+                intent_status = getattr(intent, 'status', None) if intent else None
+                if intent and intent_status == 'succeeded':
                     # 再次检查 Payment 记录是否已被 webhook 创建（防止竞态条件）
                     payment = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
                     if not payment:
@@ -1400,10 +1633,10 @@ def api_payment_status():
                             payment = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
                     else:
                         current_app.logger.info(f"Payment for {payment_intent_id} already exists (created by webhook)")
-                elif intent and intent.get('status') in {'requires_payment_method', 'canceled', 'requires_action'}:
+                elif intent and intent_status in {'requires_payment_method', 'canceled', 'requires_action'}:
                     # 支付失败或需要操作
                     return jsonify({
-                        'status': 'failed' if intent.get('status') in {'requires_payment_method', 'canceled'} else 'requires_action',
+                        'status': 'failed' if intent_status in {'requires_payment_method', 'canceled'} else 'requires_action',
                         'payment_intent_id': payment_intent_id,
                     }), 200
                 else:
@@ -1424,17 +1657,18 @@ def api_payment_status():
                 }), 200
         return jsonify({'status': 'pending', 'payment_intent_id': payment_intent_id}), 200
 
-    # 如果Payment状态是pending，再次检查Stripe状态
+    # 如果Payment状态是pending，再次检查Stripe状态（Stripe SDK 返回对象用 getattr 取 status）
     if payment.status == 'pending' and payment.stripe_payment_intent_id:
         intent = retrieve_payment_intent(payment.stripe_payment_intent_id)
-        if intent and intent.get('status') == 'succeeded':
+        intent_status = getattr(intent, 'status', None) if intent else None
+        if intent and intent_status == 'succeeded':
             try:
                 handle_booking_payment_intent_succeeded(intent)
                 handle_payment_intent_succeeded(intent)
             except Exception as e:
                 db.session.rollback()
                 current_app.logger.warning(f"Error handling payment (may already be processed): {str(e)}")
-        elif intent and intent.get('status') in {'requires_payment_method', 'canceled'}:
+        elif intent and intent_status in {'requires_payment_method', 'canceled'}:
             payment.status = 'failed'
             db.session.commit()
 
@@ -1771,8 +2005,14 @@ def pay_installment(installment_id):
         db.session.add(payment)
         db.session.commit()
 
+    pi_id = getattr(payment_intent, 'id', None)
+    success_url_same_page = (
+        url_for('main.pay_installment', installment_id=installment.id, _external=True)
+        + '?token=' + (token or '')
+        + ('&payment_intent_id=' + pi_id if pi_id else '')
+    )
     return render_template(
-        'booking/installment_payment.html',
+        'booking/installment_modal_page.html',
         booking=booking,
         installment=installment,
         all_installments=all_installments,
@@ -1780,18 +2020,99 @@ def pay_installment(installment_id):
         summary_items=summary_items,
         publishable_key=current_app.config.get('STRIPE_PUBLISHABLE_KEY'),
         client_secret=getattr(payment_intent, 'client_secret', None),
-        payment_intent_id=getattr(payment_intent, 'id', None),
-        success_url=url_for(
-            'main.payment_pending',
-            booking_id=booking.id,
-            payment_intent_id=getattr(payment_intent, 'id', None),
-            _external=True
-        ),
+        payment_intent_id=pi_id,
+        success_url=success_url_same_page,
         payment_plan='installment',
         payment_mode='installment',
         payment_step='installment',
         remaining_amount_cents=remaining_amount_cents,
         payoff_url=url_for('main.pay_installment_payoff', installment_id=installment.id, token=token) if remaining_amount_cents > 0 else None,
+    )
+
+
+@bp.route('/test/installment-modal')
+def test_installment_modal():
+    """
+    测试页：预览分期付款弹窗布局与样式。
+    若已配置 Stripe 密钥则创建测试 PaymentIntent，显示真实卡表单；否则仅布局预览（无卡表单项）。
+    """
+    from datetime import date, timedelta
+    from types import SimpleNamespace
+    from app.payments import create_payment_intent
+
+    mock_booking = SimpleNamespace(
+        id=999,
+        buyer_first_name="Test",
+        buyer_last_name="User",
+        buyer_email="test@example.com",
+        trip=SimpleNamespace(
+            title="Amazing Tibet Adventure",
+            image_url=url_for('static', filename='images/backgrounds/tibet_background.jpg'),
+        ),
+    )
+    mock_installment = SimpleNamespace(
+        id=888,
+        installment_number=1,
+        amount=450.00,
+        due_date=date.today() + timedelta(days=30),
+        status='pending',
+    )
+    mock_all_installments = [
+        SimpleNamespace(id=100, installment_number=0, amount=500.00, due_date=date.today(), status='paid'),
+        mock_installment,
+        SimpleNamespace(id=457, installment_number=2, amount=450.00, due_date=date.today() + timedelta(days=60), status='pending'),
+    ]
+    base_amount_cents = 45000
+    summary_items = [{'label': 'Installment #1', 'amount_cents': base_amount_cents}]
+    remaining_amount_cents = 90000
+
+    publishable_key = current_app.config.get('STRIPE_PUBLISHABLE_KEY')
+    secret_key = current_app.config.get('STRIPE_SECRET_KEY')
+    client_secret = None
+    payment_intent_id = None
+    preview_only = True
+
+    if publishable_key and secret_key:
+        try:
+            payment_intent = create_payment_intent(
+                amount=450.00,
+                currency='usd',
+                metadata={
+                    'test_mode': 'true',
+                    'payment_flow': 'test_installment_modal',
+                    'payment_plan': 'installment',
+                    'payment_step': 'installment',
+                },
+            )
+            if payment_intent:
+                client_secret = getattr(payment_intent, 'client_secret', None)
+                payment_intent_id = getattr(payment_intent, 'id', None)
+                if client_secret:
+                    preview_only = False
+        except Exception as e:
+            current_app.logger.warning('test_installment_modal: could not create PaymentIntent: %s', e)
+
+    success_url_preview = url_for('main.test_installment_modal', _external=True)
+    if payment_intent_id:
+        success_url_preview += '?payment_intent_id=' + payment_intent_id
+
+    return render_template(
+        'booking/installment_modal_page.html',
+        booking=mock_booking,
+        installment=mock_installment,
+        all_installments=mock_all_installments,
+        base_amount_cents=base_amount_cents,
+        summary_items=summary_items,
+        publishable_key=publishable_key,
+        client_secret=client_secret,
+        payment_intent_id=payment_intent_id or '',
+        success_url=success_url_preview,
+        payment_plan='installment',
+        payment_mode='installment',
+        payment_step='installment',
+        remaining_amount_cents=remaining_amount_cents,
+        payoff_url=None,
+        preview_only=preview_only,
     )
 
 
@@ -1934,9 +2255,13 @@ def test_installment_payment_preview():
     # 记录最终状态
     current_app.logger.info(f"Test preview - Final state: publishable_key={'set' if publishable_key else 'missing'}, client_secret={'set' if client_secret else 'missing'}, payment_intent_id={payment_intent_id}")
     
-    # 即使 PaymentIntent 创建失败，也渲染页面以便查看样式（但会显示错误信息）
+    # 使用与正式分期页相同的弹窗模板，便于预览效果
+    success_url_preview = (
+        url_for('main.test_installment_payment_preview', _external=True)
+        + ('?payment_intent_id=' + payment_intent_id if payment_intent_id else '')
+    )
     return render_template(
-        'booking/installment_payment.html',
+        'booking/installment_modal_page.html',
         booking=mock_booking,
         installment=mock_installment,
         all_installments=mock_all_installments,
@@ -1945,7 +2270,7 @@ def test_installment_payment_preview():
         publishable_key=publishable_key,
         client_secret=client_secret,
         payment_intent_id=payment_intent_id,
-        success_url=url_for('main.index', _external=True),
+        success_url=success_url_preview,
         payment_plan='installment',
         payment_mode=payment_mode,
         payment_step=payment_step,
@@ -2397,12 +2722,51 @@ def _create_booking_from_metadata(payment_intent_id):
     participants_data = booking_data.get('participants', [])
     participants_list = []
     for participant_data in participants_data:
-        participant_name = f"{participant_data.get('first_name', '')} {participant_data.get('last_name', '')}".strip()
+        first_name = participant_data.get('first_name', '')
+        middle_name = participant_data.get('middle_name', '')
+        last_name = participant_data.get('last_name', '')
+        participant_name = ' '.join(filter(None, [first_name, middle_name, last_name])).strip()
+        if not participant_name:
+            participant_name = f"{first_name} {last_name}".strip()
+        
+        # 解析 DOB
+        dob_val = None
+        dob_str = participant_data.get('dob') or ''
+        if dob_str:
+            try:
+                from datetime import datetime
+                dob_val = datetime.strptime(dob_str, '%Y-%m-%d').date()
+            except (ValueError, TypeError):
+                pass
+        
+        # 合并 question_answers：custom_answers（规范化）+ dietary + medical
+        raw_answers = participant_data.get('custom_answers') or {}
+        question_answers = {}
+        for k, v in raw_answers.items():
+            if isinstance(v, dict):
+                if 'details' in v:  # yesno_text 类型
+                    question_answers[k] = {'value': v.get('value', 'no'), 'details': v.get('details', '')}
+                else:
+                    question_answers[k] = v.get('value', '')
+            else:
+                question_answers[k] = v
+        for key in ('dietary_restrictions_or_allergies', 'medical_conditions'):
+            val = participant_data.get(key)
+            if isinstance(val, dict):
+                question_answers[key] = {'value': val.get('value', 'no'), 'details': val.get('details', '')}
+        
         participant = BookingParticipant(
             booking_id=booking.id,
             name=participant_name,
             email=participant_data.get('email'),
-            phone=participant_data.get('phone')
+            phone=participant_data.get('phone'),
+            first_name=first_name or None,
+            middle_name=middle_name or None,
+            last_name=last_name or None,
+            gender=participant_data.get('gender') or None,
+            dob=dob_val,
+            registration_type=participant_data.get('registration_type') or None,
+            question_answers=question_answers if question_answers else None,
         )
         db.session.add(participant)
         participants_list.append(participant)

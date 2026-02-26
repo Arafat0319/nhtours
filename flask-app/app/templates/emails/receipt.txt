@@ -15,18 +15,18 @@ Email: {{ customer_email }}
 
 Line Items:
 {% for item in line_items -%}
-- {{ item.label }}: ${{ "%.2f"|format(item.amount) }}
+- {{ item.label }}: ${{ (item.amount)|format_price }}
 {% endfor %}
 
 {% if discount_amount is defined and discount_amount > 0 -%}
-Subtotal: ${{ "%.2f"|format(base_amount + discount_amount) }}
-Discount{% if discount_code %} ({{ discount_code }}){% endif %}: -${{ "%.2f"|format(discount_amount) }}
-Amount After Discount: ${{ "%.2f"|format(base_amount) }}
+Subtotal: ${{ (base_amount + discount_amount)|format_price }}
+Discount{% if discount_code %} ({{ discount_code }}){% endif %}: -${{ (discount_amount)|format_price }}
+Amount After Discount: ${{ (base_amount)|format_price }}
 {% else -%}
-Base Amount: ${{ "%.2f"|format(base_amount) }}
+Base Amount: ${{ (base_amount)|format_price }}
 {% endif -%}
-Card Fee: ${{ "%.2f"|format(fee_amount) }}
-Total: ${{ "%.2f"|format(total_amount) }}
+Card Fee: ${{ (fee_amount)|format_price }}
+Total: ${{ (total_amount)|format_price }}
 
 Thank you for your payment.
 Questions? Contact info@nhtours.com

@@ -1,0 +1,32 @@
+# 仅部署：push 到 main 后自动部署到服务器（无 CI，本地自测）
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            # 部署目录（若不同请在本文件中改为你的路径）
+            cd /var/www/nhtours
+            git fetch origin main
+            git reset --hard origin/main
+            [ -d venv ] && . venv/bin/activate || true
+            if [ -f flask-app/requirements.txt ]; then
+              pip install -q -r flask-app/requirements.txt gunicorn
+            else
+              pip install -q -r requirements.txt gunicorn
+            fi
+            sudo systemctl restart nhtours || true
+            echo "Deploy done."

@@ -104,17 +104,17 @@
 
 	<h2>Program Highlights</h2>
 	<div class="md:grid grid-cols-[3fr_1fr] gap-2">
-		<div class="bg-zinc-100 p-8 bg-position-[8em_50%] bg-no-repeat"
-			style="background-image:url({{ url_for('static', filename='images/icons/cloud-white.Dm1RdigD.svg') }})">
-			<span class="block font-medium uppercase tracking-wide text-xl">CULTURAL DIVERSITY</span>
+		{% from 'includes/program_highlights_left.html' import program_highlights_left %}
+		{% call program_highlights_left() %}
+				<span class="block font-medium uppercase tracking-wide text-xl">CULTURAL DIVERSITY</span>
 			<p class="content overview nopad nom">Experience the living traditions of the Bai, Naxi, and Tibetan peoples through village visits, family exchanges, and hands-on activities.</p>
 			<span class="block mt-4 font-medium uppercase tracking-wide text-xl">ICONIC LANDSCAPES</span>
 			<p class="content overview nopad nom">Cycle by Erhai Lake, hike Tiger Leaping Gorge, and take in the breathtaking views of Jade Dragon Snow Mountain and the Tibetan highlands.</p>
 			<span class="block mt-4 font-medium uppercase tracking-wide text-xl">HERITAGE & DISCOVERY</span>
 			<p class="content overview nopad nom">Walk the Ancient Tea Horse Road, explore old towns and monasteries, and uncover stories that connect history with today's way of life.</p>
-		</div>
+		{% endcall %}
 		<div class="h-[400px] md:h-auto bg-no-repeat bg-top bg-cover"
-			style="background-image:url({{ url_for('static', filename='images/content/yunnan-highlight.pZMel06M.png') }})"></div>
+			style="background-image:url({{ url_for('static', filename='images/content/asia/yunnan/yunnan-highlight.pZMel06M.png') }})"></div>
 		<div></div>
 		<div><span class="text-sm text-zinc-500 italic">Day 2, Dali old town</span></div>
 	</div>
@@ -152,9 +152,9 @@
 	</table>
 	<br/><br/>
 
-	<img class="md:hidden mb-8 w-full" src="{{ url_for('static', filename='images/content/yunnan-map.BGRyistd.png') }}"/>
+	<img class="md:hidden mb-8 w-full" src="{{ url_for('static', filename='images/content/asia/yunnan/yunnan-map.BGRyistd.png') }}"/>
 	<div class="map-section md:grid grid-cols-2 items-center bg-no-repeat bg-size-[100%] md:bg-size-[80%] md:h-[800px]"
-		style="background-image:url({{ url_for('static', filename='images/content/yunnan-map.BGRyistd.png') }})">
+		style="background-image:url({{ url_for('static', filename='images/content/asia/yunnan/yunnan-map.BGRyistd.png') }})">
 		<div></div>
 		<div>
 			<h2>Options</h2>
@@ -177,7 +177,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 1" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/0933fd2f-090c-409e-b452-8d9b28f0bd48.D7mGwoJW.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/yunnan/0933fd2f-090c-409e-b452-8d9b28f0bd48.D7mGwoJW.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -185,7 +185,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 2" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/0e3e32d0-f213-49dd-b9d1-23f6e2a73c43.f-xswa4b.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/yunnan/0e3e32d0-f213-49dd-b9d1-23f6e2a73c43.f-xswa4b.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -193,7 +193,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 3" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/2024f6b5-3ab6-45ec-adb5-03e62936d33f.fEnvgneP.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/yunnan/2024f6b5-3ab6-45ec-adb5-03e62936d33f.fEnvgneP.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -201,7 +201,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 4" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/23e27960-880a-477b-a035-3bb891f0daec.DMZ17Ojf.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/yunnan/23e27960-880a-477b-a035-3bb891f0daec.DMZ17Ojf.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -209,7 +209,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 5" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/2476fae4-63f2-4fb7-a1dd-9bd027cd6860.BKmuoRAT.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/yunnan/2476fae4-63f2-4fb7-a1dd-9bd027cd6860.BKmuoRAT.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -217,7 +217,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 6" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/581cda58-a79b-4a06-98e3-a20eaf97e969.DYIucKFh.png') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/yunnan/581cda58-a79b-4a06-98e3-a20eaf97e969.DYIucKFh.png') }}"/>
 				</div>
 			</div>
 		</div>
@@ -225,7 +225,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 7" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/73db8122-ef87-4a58-a2ef-e132ed051326.nPEqzujX.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/yunnan/73db8122-ef87-4a58-a2ef-e132ed051326.nPEqzujX.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -233,7 +233,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 8" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/ba5e0e72-51dc-4bd7-b6d8-dc78d7889fdf.CjgXdh0H.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/yunnan/ba5e0e72-51dc-4bd7-b6d8-dc78d7889fdf.CjgXdh0H.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -241,7 +241,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 9" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/d0bd85cd-4279-452f-a6c6-06df693790de.BFv7lB4j.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/yunnan/d0bd85cd-4279-452f-a6c6-06df693790de.BFv7lB4j.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -249,7 +249,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 10" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/dff326c1-d0af-4ac2-9a3c-5fa17ab0967d.C8Oc0Q3L.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/yunnan/dff326c1-d0af-4ac2-9a3c-5fa17ab0967d.C8Oc0Q3L.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -257,7 +257,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 11" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/e8f31db5-d7ca-418a-92b4-331c999563df.DiE3QYef.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/yunnan/e8f31db5-d7ca-418a-92b4-331c999563df.DiE3QYef.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -265,7 +265,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 12" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/f1e9dd7e-5930-40a6-a8c1-ca451aecf1b7.B5LAzmiV.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/yunnan/f1e9dd7e-5930-40a6-a8c1-ca451aecf1b7.B5LAzmiV.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -273,7 +273,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 13" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/Jade_Dragon_Snow_Mountain_Yunnan_China (1).DP_jlFeX.jpg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/yunnan/Jade_Dragon_Snow_Mountain_Yunnan_China (1).DP_jlFeX.jpg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -281,7 +281,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 14" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/JADe.Boz7kCyq.jpg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/yunnan/JADe.Boz7kCyq.jpg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -289,7 +289,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 15" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/the_highland_regions_lijiang_jade_dragon_snow_mountain_02.nWoBMK9O.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/asia/yunnan/the_highland_regions_lijiang_jade_dragon_snow_mountain_02.nWoBMK9O.jpeg') }}"/>
 				</div>
 			</div>
 		</div>

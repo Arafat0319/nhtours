@@ -56,8 +56,9 @@
 
 	<h2>Cities, Sites & Highlights</h2>
 	<div class="md:grid grid-cols-[3fr_1fr] gap-2">
-		<div class="bg-zinc-100 p-8 bg-position-[8em_50%] bg-no-repeat" style="background-image:url({{ url_for('static', filename='images/icons/cloud-white.svg') }})">
-			<span class="block font-medium uppercase tracking-wide text-xl">Beijing</span>
+		{% from 'includes/program_highlights_left.html' import program_highlights_left %}
+		{% call program_highlights_left() %}
+				<span class="block font-medium uppercase tracking-wide text-xl">Beijing</span>
 			<p class="content overview nopad nom">Forbidden City; Summer Palace; Temple of Heaven; National Museum of China.</p>
 			
 			<span class="block mt-4 font-medium uppercase tracking-wide text-xl">Xi'an</span>
@@ -71,8 +72,8 @@
 			
 			<span class="block mt-4 font-medium uppercase tracking-wide text-xl">Jingdezhen</span>
 			<p class="content overview nopad nom">China Ceramics Museum;</p>
-		</div>
-		<div class="h-[400px] md:h-auto bg-no-repeat bg-top bg-cover" style="background-image:url({{ url_for('static', filename='images/content/_astro_QuanZhouBrochure.uH7THISE.png') }})">		</div>
+		{% endcall %}
+		<div class="h-[400px] md:h-auto bg-no-repeat bg-top bg-cover" style="background-image:url({{ url_for('static', filename='images/content/shared/_astro_QuanZhouBrochure.uH7THISE.png') }})">		</div>
 	</div>
 </div>
 {% endblock %}

@@ -79,7 +79,7 @@
                     {% for item in line_items %}
                     <tr>
                         <td>{{ item.label }}</td>
-                        <td style="text-align:right;">${{ "%.2f"|format(item.amount) }}</td>
+                        <td style="text-align:right;">${{ (item.amount)|format_price }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -87,29 +87,29 @@
                     {% if discount_amount is defined and discount_amount > 0 %}
                     <tr>
                         <td>Subtotal</td>
-                        <td style="text-align:right;">${{ "%.2f"|format(base_amount + discount_amount) }}</td>
+                        <td style="text-align:right;">${{ (base_amount + discount_amount)|format_price }}</td>
                     </tr>
                     <tr style="color: #10b981;">
                         <td>Discount{% if discount_code %} ({{ discount_code }}){% endif %}</td>
-                        <td style="text-align:right;">-${{ "%.2f"|format(discount_amount) }}</td>
+                        <td style="text-align:right;">-${{ (discount_amount)|format_price }}</td>
                     </tr>
                     <tr>
                         <td>Amount After Discount</td>
-                        <td style="text-align:right;">${{ "%.2f"|format(base_amount) }}</td>
+                        <td style="text-align:right;">${{ (base_amount)|format_price }}</td>
                     </tr>
                     {% else %}
                     <tr>
                         <td>Base Amount</td>
-                        <td style="text-align:right;">${{ "%.2f"|format(base_amount) }}</td>
+                        <td style="text-align:right;">${{ (base_amount)|format_price }}</td>
                     </tr>
                     {% endif %}
                     <tr>
                         <td>Card Fee</td>
-                        <td style="text-align:right;">${{ "%.2f"|format(fee_amount) }}</td>
+                        <td style="text-align:right;">${{ (fee_amount)|format_price }}</td>
                     </tr>
                     <tr class="total">
                         <td>Total</td>
-                        <td style="text-align:right;">${{ "%.2f"|format(total_amount) }}</td>
+                        <td style="text-align:right;">${{ (total_amount)|format_price }}</td>
                     </tr>
                 </tfoot>
             </table>

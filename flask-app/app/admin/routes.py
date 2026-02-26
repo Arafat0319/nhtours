@@ -1,5 +1,6 @@
 from datetime import date, datetime
 import json
+import os
 from flask import render_template, redirect, url_for, flash, request, jsonify, current_app, send_file
 from flask_login import login_user, logout_user, current_user, login_required
 from sqlalchemy.orm import joinedload
@@ -9,7 +10,7 @@ from app.admin import bp
 from app.admin.forms import LoginForm, TripForm, CityForm, ClientForm, TripBasicsForm, TripDescriptionForm, TripPackagesForm, TripAddonsForm, TripParticipantForm, TripCouponForm, EditBookingForm
 from app.models import User, Trip, City, Client, Lead, TripPackage, TripAddOn, CustomQuestion, DiscountCode, Booking, BookingParticipant, BookingAddOn, BookingPackage, Payment, Message, InstallmentPayment
 from app.payments import create_checkout_session
-from app.utils import save_image, send_email_via_ses, generate_installment_token
+from app.utils import save_image, send_email_via_ses, generate_installment_token, generate_export_token, verify_export_token
 
 
 def get_trip_counts():
@@ -508,13 +509,60 @@ def trip_builder(id, step):
     
     if step == 'basics':
         form = TripBasicsForm(obj=trip)
+        # Autosave: text fields only (no image), prevents data loss on navigate
+        if request.method == 'POST' and request.headers.get('X-Autosave') == '1':
+            trip.title = request.form.get('title') or trip.title or ''
+            trip.slug = request.form.get('slug') or trip.slug or ''
+            trip.destination_text = request.form.get('destination_text') or trip.destination_text or ''
+            for f in ('start_date', 'end_date', 'registration_date'):
+                v = request.form.get(f)
+                if v:
+                    try:
+                        setattr(trip, f, datetime.strptime(v, '%Y-%m-%d').date() if isinstance(v, str) else v)
+                    except (ValueError, TypeError):
+                        pass
+            try:
+                cap = request.form.get('capacity')
+                trip.capacity = int(cap) if cap not in (None, '') else trip.capacity
+            except (ValueError, TypeError):
+                pass
+            try:
+                min_cap = request.form.get('min_capacity')
+                trip.min_capacity = int(min_cap) if min_cap not in (None, '') else trip.min_capacity
+            except (ValueError, TypeError):
+                pass
+            if request.form.get('color'):
+                trip.color = request.form.get('color')
+            db.session.commit()
+            return jsonify({'success': True})
+
         if form.validate_on_submit():
+            # Handle explicit remove (优先于上传)
+            if request.form.get('remove_hero_image') == '1' and trip.hero_image:
+                old_path = os.path.join(current_app.static_folder, trip.hero_image)
+                if os.path.isfile(old_path):
+                    try:
+                        os.remove(old_path)
+                    except OSError:
+                        pass
+                trip.hero_image = None
             # Handle Image Upload
-            # 只有当 form.hero_image.data 是文件对象（有 filename 属性）时才处理上传
-            if form.hero_image.data and hasattr(form.hero_image.data, 'filename') and form.hero_image.data.filename:
-                image_path = save_image(form.hero_image.data, folder='trip_images')
-                if image_path:
-                    trip.hero_image = image_path
+            elif form.hero_image.data and hasattr(form.hero_image.data, 'filename') and form.hero_image.data.filename:
+                try:
+                    image_path = save_image(form.hero_image.data, folder='trip_images')
+                    if image_path:
+                        # 新图保存成功后再删除旧图，避免 save_image 失败时丢失原图
+                        if trip.hero_image and trip.hero_image != image_path:
+                            old_path = os.path.join(current_app.static_folder, trip.hero_image)
+                            if os.path.isfile(old_path):
+                                try:
+                                    os.remove(old_path)
+                                except OSError:
+                                    pass  # 删除失败则忽略
+                        trip.hero_image = image_path
+                except ValueError as e:
+                    flash(str(e), 'error')
+                    return render_template('admin/trips/builder/step_basics.html', title='Trip Basics', trip=trip, form=form, current_step='basics', min_date=date.today().isoformat(), trip_counts=trip_counts)
             
             # Manual Populate to avoid overwriting image with FileStorage or issues
             trip.title = form.title.data
@@ -522,6 +570,7 @@ def trip_builder(id, step):
             trip.destination_text = form.destination_text.data
             trip.start_date = form.start_date.data
             trip.end_date = form.end_date.data
+            trip.registration_date = form.registration_date.data
             trip.capacity = form.capacity.data
             trip.min_capacity = form.min_capacity.data
             trip.color = form.color.data
@@ -529,6 +578,10 @@ def trip_builder(id, step):
             db.session.commit()
             # Check if trip is complete and update status
             check_trip_completion(trip)
+            # 仅删除封面时留在本页，其他提交跳转到下一步
+            if request.form.get('remove_hero_image') == '1':
+                flash('Cover photo removed.', 'success')
+                return redirect(url_for('admin.trip_builder', id=trip.id, step='basics'))
             return redirect(url_for('admin.trip_builder', id=trip.id, step='description'))
         return render_template('admin/trips/builder/step_basics.html', title='Trip Basics', trip=trip, form=form, current_step='basics', min_date=date.today().isoformat(), trip_counts=trip_counts)
     
@@ -540,6 +593,20 @@ def trip_builder(id, step):
                 form.trip_includes.data = json.dumps(trip.trip_includes)
             if trip.trip_excludes:
                 form.trip_excludes.data = json.dumps(trip.trip_excludes)
+
+        # Autosave: XHR request with X-Autosave header, save without full validation
+        if request.method == 'POST' and request.headers.get('X-Autosave') == '1':
+            desc = request.form.get('description', '')
+            includes_raw = request.form.get('trip_includes', '[]')
+            excludes_raw = request.form.get('trip_excludes', '[]')
+            try:
+                trip.description = desc
+                trip.trip_includes = json.loads(includes_raw) if includes_raw else []
+                trip.trip_excludes = json.loads(excludes_raw) if excludes_raw else []
+                db.session.commit()
+                return jsonify({'success': True})
+            except ValueError:
+                return jsonify({'success': False, 'error': 'Invalid JSON'}), 400
 
         if form.validate_on_submit():
             trip.description = form.description.data
@@ -579,6 +646,21 @@ def trip_builder(id, step):
         if form.validate_on_submit():
             try:
                 packages_data = json.loads(form.packages_json.data) if form.packages_json.data else []
+                # Validate payment plan amounts: deposit + installments must equal price
+                for pkg_data in packages_data:
+                    ppc = pkg_data.get('payment_plan_config') or {}
+                    if not ppc.get('enabled'):
+                        continue
+                    price = float(pkg_data.get('price', 0) or 0)
+                    deposit = float(ppc.get('deposit_amount', 0) or 0)
+                    installments = ppc.get('installments') or []
+                    inst_total = sum(float(i.get('amount', 0) or 0) for i in installments)
+                    plan_total = deposit + inst_total
+                    if abs(price - plan_total) > 0.01:
+                        name = pkg_data.get('name', 'Package')
+                        flash(f"Package '{name}': payment plan total does not match price.", 'error')
+                        return render_template('admin/trips/builder/step_packages.html', title='Packages', trip=trip, form=form, current_step='packages', trip_counts=trip_counts)
+
                 current_packages = {p.id: p for p in trip.packages}
                 processed_ids = []
 
@@ -601,7 +683,8 @@ def trip_builder(id, step):
                         pkg.name = pkg_data.get('name')
                         pkg.description = pkg_data.get('description')
                         pkg.price = float(pkg_data.get('price', 0))
-                        pkg.capacity = int(pkg_data.get('capacity')) if pkg_data.get('capacity') else None
+                        cap = pkg_data.get('capacity')
+                        pkg.capacity = int(cap) if (cap is not None and cap != '') else None
                         pkg.payment_plan_config = pkg_data.get('payment_plan_config')
                         pkg.currency = pkg_data.get('currency', 'USD')
                         
@@ -616,7 +699,7 @@ def trip_builder(id, step):
                             name=pkg_data.get('name'),
                             description=pkg_data.get('description'),
                             price=float(pkg_data.get('price', 0)),
-                            capacity=int(pkg_data.get('capacity')) if pkg_data.get('capacity') else None,
+                            capacity=int(pkg_data.get('capacity')) if (pkg_data.get('capacity') is not None and pkg_data.get('capacity') != '') else None,
                             payment_plan_config=pkg_data.get('payment_plan_config'),
                             currency=pkg_data.get('currency', 'USD'),
                             
@@ -2120,10 +2203,31 @@ def export_bookings(id):
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment
     from datetime import datetime
+    import os
     
     trip = Trip.query.get_or_404(id)
     bookings = trip.bookings.all()
-    custom_questions = trip.questions.all() if trip.questions else []
+    
+    # 优先使用预配置 Power Query 的模板（若存在）：替换 URL 后直接返回
+    template_path = os.path.join(
+        current_app.static_folder or '', 'templates', 'participants_template.xlsx'
+    )
+    base_url = current_app.config.get('EXCEL_REFRESH_BASE_URL')
+    if base_url:
+        html_url = base_url + url_for('admin.export_bookings_csv', token=generate_export_token(trip.id), format='html', _external=False)
+    else:
+        html_url = url_for('admin.export_bookings_csv', token=generate_export_token(trip.id), format='html', _external=True)
+    try:
+        from app.utils_excel_connection import prepare_template_with_url
+        xlsx_bytes = prepare_template_with_url(template_path, html_url)
+        if xlsx_bytes:
+            return Response(
+                xlsx_bytes,
+                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={"Content-Disposition": f"attachment;filename=bookings_trip_{id}_{datetime.now().strftime('%Y%m%d')}.xlsx"}
+            )
+    except Exception:
+        pass
     
     # Create Excel workbook
     wb = Workbook()
@@ -2135,106 +2239,25 @@ def export_bookings(id):
     yahei_font = Font(name='Microsoft YaHei', size=11)
     yahei_bold_font = Font(name='Microsoft YaHei', size=11, bold=True)
     
-    # ===== Sheet 1: Participants (参与者信息) =====
+    # ===== Sheet 1: Participants (参与者信息) - 与 HTML 刷新接口列结构一致 =====
     ws_participants = wb.create_sheet("Participants")
-    
-    # Build header row
-    headers = ['No', 'First Name', 'Last Name', 'Email']
-    
-    # Add custom questions from trip builder (in order)
-    for question in custom_questions:
-        headers.append(question.label)
-    
-    # Add system fields
-    headers.extend(['Buyer', 'Package', 'Add-ons', 'Payment Status', 'Booking Date'])
+    participants_headers, participants_rows = _get_participants_export_data(trip)
     
     # Write header row with bold formatting (except first column)
-    for col_idx, header in enumerate(headers, start=1):
+    for col_idx, header in enumerate(participants_headers, start=1):
         cell = ws_participants.cell(row=1, column=col_idx, value=header)
-        if col_idx > 1:  # Bold all columns except "No"
+        if col_idx > 1:
             cell.font = yahei_bold_font
         else:
             cell.font = yahei_font
         cell.alignment = Alignment(horizontal='left', vertical='center')
     
-    # Write participant data
-    row_num = 2
-    for booking in bookings:
-        # Get package names for this booking
-        package_names = []
-        for bp in booking.booking_packages:
-            if bp.package:
-                package_names.append(f"{bp.package.name} x{bp.quantity}")
-        package_str = ', '.join(package_names) if package_names else '-'
-        
-        # Get add-ons summary (从两个来源获取)
-        addons_map = {}
-        seen_addon_ids = set()
-        
-        # 方法1：通过 participant.addons 获取
-        for participant in booking.participants:
-            for booking_addon in participant.addons:
-                if booking_addon.addon and booking_addon.id not in seen_addon_ids:
-                    addon_name = booking_addon.addon.name
-                    if addon_name in addons_map:
-                        addons_map[addon_name] += booking_addon.quantity
-                    else:
-                        addons_map[addon_name] = booking_addon.quantity
-                    seen_addon_ids.add(booking_addon.id)
-        
-        # 方法2：通过 booking.addons 获取
-        for booking_addon in booking.addons:
-            if booking_addon.addon and booking_addon.id not in seen_addon_ids:
-                addon_name = booking_addon.addon.name
-                if addon_name in addons_map:
-                    addons_map[addon_name] += booking_addon.quantity
-                else:
-                    addons_map[addon_name] = booking_addon.quantity
-                seen_addon_ids.add(booking_addon.id)
-        
-        addons_str = ', '.join([f"{name} x{qty}" if qty > 1 else name for name, qty in addons_map.items()]) if addons_map else '-'
-        
-        # Format payment status
-        status_display = booking.status.replace('_', ' ').title()
-        
-        # Format booking date (DD MMM YYYY format like example, e.g., "26 DEC 2011")
-        booking_date_str = booking.created_at.strftime('%d %b %Y').upper()
-        
-        # Write each participant as a row
-        for participant in booking.participants:
-            # Parse name into first_name and last_name
-            name_parts = (participant.name or '').strip().split(None, 1)
-            first_name = name_parts[0] if len(name_parts) > 0 else ''
-            last_name = name_parts[1] if len(name_parts) > 1 else ''
-            
-            # Build row data
-            row_data = [
-                row_num - 1,  # No
-                first_name,
-                last_name,
-                participant.email or '-'
-            ]
-            
-            # Add custom question answers (not stored yet, show '-')
-            for question in custom_questions:
-                row_data.append('-')  # TODO: Get from question_answers when available
-            
-            # Add system fields
-            row_data.extend([
-                booking.client.name,  # Buyer
-                package_str,  # Package
-                addons_str,  # Add-ons
-                status_display,  # Payment Status
-                booking_date_str  # Booking Date
-            ])
-            
-            # Write row
-            for col_idx, value in enumerate(row_data, start=1):
-                cell = ws_participants.cell(row=row_num, column=col_idx, value=value)
-                cell.font = yahei_font
-                cell.alignment = Alignment(horizontal='left', vertical='center')
-            
-            row_num += 1
+    # Write participant data（始终预填，确保下载即有数据；内置连接刷新不生效时用户可手动「自网站」）
+    for row_idx, row_data in enumerate(participants_rows, start=2):
+        for col_idx, value in enumerate(row_data, start=1):
+            cell = ws_participants.cell(row=row_idx, column=col_idx, value=value)
+            cell.font = yahei_font
+            cell.alignment = Alignment(horizontal='left', vertical='center')
     
     # Auto-adjust column widths for Participants sheet
     for col in ws_participants.columns:
@@ -2409,12 +2432,153 @@ def export_bookings(id):
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
-    
+    xlsx_bytes = output.getvalue()
+
+    # 注入 Web 连接，使下载的 Excel 自动连到后台。本地时需设 EXCEL_REFRESH_BASE_URL 否则 localhost 无法刷新
+    base_url = current_app.config.get('EXCEL_REFRESH_BASE_URL')
+    if base_url:
+        path = url_for('admin.export_bookings_csv', token=generate_export_token(trip.id), format='html', _external=False)
+        html_url = base_url + path
+    else:
+        html_url = url_for('admin.export_bookings_csv', token=generate_export_token(trip.id), format='html', _external=True)
+    try:
+        from app.utils_excel_connection import inject_web_connection
+        xlsx_bytes = inject_web_connection(xlsx_bytes, html_url)
+    except Exception:
+        pass  # 注入失败时返回原始 xlsx
+
     return Response(
-        output,
+        xlsx_bytes,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment;filename=bookings_trip_{id}_{datetime.now().strftime('%Y%m%d')}.xlsx"}
     )
+
+
+@bp.route('/trips/<int:id>/bookings/export/data-source-url')
+@login_required
+def get_export_data_source_url(id):
+    """获取 Excel 数据源 URL，用于调试或手动「自网站」添加连接"""
+    trip = Trip.query.get_or_404(id)
+    token = generate_export_token(trip.id)
+    base_url = current_app.config.get('EXCEL_REFRESH_BASE_URL')
+    if base_url:
+        path = url_for('admin.export_bookings_csv', token=token, format='html', _external=False)
+        url = base_url + path
+    else:
+        url = url_for('admin.export_bookings_csv', token=token, format='html', _external=True)
+    return jsonify({'success': True, 'url': url})
+
+
+def _get_participants_export_data(trip):
+    """提取参与者导出数据，供 CSV 和 HTML 共用"""
+    bookings = trip.bookings.all()
+    custom_questions = list(trip.questions.order_by(CustomQuestion.id).all()) if trip.questions else []
+    headers = ['No', 'First Name', 'Middle Name', 'Last Name', 'Gender', 'Date of Birth', 'Registration Type',
+               'Dietary restrictions or allergies', 'Medical conditions']
+    for q in custom_questions:
+        headers.append(q.label)
+    headers.extend(['Email', 'Buyer', 'Package', 'Add-ons', 'Payment Status', 'Booking Date'])
+
+    rows = []
+    row_num = 1
+    for booking in bookings:
+        package_names = [f"{bp.package.name} x{bp.quantity}" for bp in booking.booking_packages if bp.package]
+        package_str = ', '.join(package_names) if package_names else '-'
+        addons_map = {}
+        for p in booking.participants:
+            for ba in p.addons:
+                if ba.addon:
+                    addons_map[ba.addon.name] = addons_map.get(ba.addon.name, 0) + ba.quantity
+        for ba in booking.addons:
+            if ba.addon:
+                addons_map[ba.addon.name] = addons_map.get(ba.addon.name, 0) + ba.quantity
+        addons_str = ', '.join([f"{n} x{q}" if q > 1 else n for n, q in addons_map.items()]) if addons_map else '-'
+        status_display = booking.status.replace('_', ' ').title()
+        booking_date_str = booking.created_at.strftime('%d %b %Y').upper() if booking.created_at else '-'
+        buyer_name = booking.client.name if booking.client else '-'
+
+        for participant in booking.participants:
+            first_name = getattr(participant, 'first_name', None) or ((participant.name or '').split(None, 1)[0] if participant.name else '')
+            middle_name = getattr(participant, 'middle_name', None) or ''
+            last_name = getattr(participant, 'last_name', None) or ((participant.name or '').split(None, 2)[-1] if len((participant.name or '').split()) > 1 else '')
+            gender = getattr(participant, 'gender', None) or ''
+            dob_str = participant.dob.strftime('%Y-%m-%d') if getattr(participant, 'dob', None) else ''
+            reg_type = getattr(participant, 'registration_type', None) or ''
+            qa = (participant.question_answers or {}) if hasattr(participant, 'question_answers') else {}
+            dietary = qa.get('dietary_restrictions_or_allergies') or {}
+            medical = qa.get('medical_conditions') or {}
+            dietary_str = (dietary.get('details', '') or '') if dietary.get('value') == 'yes' else 'No'
+            medical_str = (medical.get('details', '') or '') if medical.get('value') == 'yes' else 'No'
+            row = [row_num, first_name, middle_name, last_name, gender, dob_str, reg_type, dietary_str, medical_str]
+            for q in custom_questions:
+                ans = qa.get(str(q.id), qa.get(q.id))
+                row.append(ans.get('details', ans.get('value', '-')) if isinstance(ans, dict) else (ans or '-'))
+            row.extend([participant.email or '-', buyer_name, package_str, addons_str, status_display, booking_date_str])
+            rows.append(row)
+            row_num += 1
+    return headers, rows
+
+
+@bp.route('/trips/bookings/export/csv')
+def export_bookings_csv():
+    """导出 Participants 为 CSV 或 HTML。需通过 token 认证，无需登录。
+    format=html 时返回 HTML 表格（id=participants），供 Excel Web Query 自动刷新使用。"""
+    import csv
+    import io
+    from flask import Response
+    token = request.args.get('token')
+    trip_id = verify_export_token(token)
+    if not trip_id:
+        return jsonify({'error': 'Invalid or expired token'}), 403
+
+    trip = Trip.query.get(trip_id)
+    if not trip:
+        return jsonify({'error': 'Trip not found'}), 404
+
+    headers, rows = _get_participants_export_data(trip)
+
+    if request.args.get('format') == 'html':
+        # HTML 表格供 Excel Web Query 抓取
+        from html import escape as html_escape
+        html_parts = ['<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>']
+        html_parts.append('<table id="participants"><thead><tr>')
+        for h in headers:
+            html_parts.append(f'<th>{html_escape(str(h))}</th>')
+        html_parts.append('</tr></thead><tbody>')
+        for row in rows:
+            html_parts.append('<tr>')
+            for cell in row:
+                html_parts.append(f'<td>{html_escape(str(cell))}</td>')
+            html_parts.append('</tr>')
+        html_parts.append('</tbody></table></body></html>')
+        html_content = ''.join(html_parts)
+        return Response(
+            html_content,
+            mimetype='text/html; charset=utf-8',
+            headers={
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache'
+            }
+        )
+
+    # 默认返回 CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(headers)
+    for row in rows:
+        writer.writerow(row)
+    output.seek(0)
+    csv_content = '\ufeff' + output.getvalue()  # BOM for Excel UTF-8
+    return Response(
+        csv_content,
+        mimetype='text/csv; charset=utf-8',
+        headers={
+            'Content-Disposition': 'inline; filename="participants.csv"',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+        }
+    )
+
 
 @bp.route('/trips/<int:id>/bookings/add', methods=['POST'])
 @login_required
@@ -2562,22 +2726,27 @@ def add_participant(id):
                 if p_data.get('first_name') or p_data.get('last_name'):
                     participant_name = f"{p_data.get('first_name', '')} {p_data.get('last_name', '')}".strip() or participant_name
                 
+                question_answers = p_data.get('question_answers', {}) or {}
+                dob_val = None
+                if p_data.get('dob'):
+                    try:
+                        dob_val = datetime.strptime(str(p_data['dob']), '%Y-%m-%d').date()
+                    except (ValueError, TypeError):
+                        pass
                 participant = BookingParticipant(
                     booking_id=booking.id,
                     name=participant_name,
-                    email=p_data.get('email')
+                    email=p_data.get('email'),
+                    first_name=p_data.get('first_name'),
+                    middle_name=p_data.get('middle_name'),
+                    last_name=p_data.get('last_name'),
+                    gender=p_data.get('gender'),
+                    dob=dob_val,
+                    registration_type=p_data.get('registration_type'),
+                    question_answers=question_answers if question_answers else None,
                 )
                 db.session.add(participant)
                 db.session.flush()
-                
-                # Store custom question answers if provided
-                # Note: We'll need to add a JSON field to BookingParticipant model for this
-                # For now, we can store it in a notes field or add a migration later
-                question_answers = p_data.get('question_answers', {})
-                if question_answers:
-                    # TODO: Add question_answers JSON field to BookingParticipant model
-                    # For now, we'll skip storing it but the structure is ready
-                    pass
                 
                 # Handle Add-ons for this participant
                 # payload format: "addons": {"1": 2, "3": 1} (addon_id: quantity)
@@ -2644,11 +2813,21 @@ def manage_booking(trip_id, booking_id):
                     elif isinstance(p.question_answers, dict):
                         question_answers = p.question_answers
                 
+                name_parts = (p.name or '').strip().split()
+                first_name = getattr(p, 'first_name', None) or (name_parts[0] if name_parts else '')
+                last_name = getattr(p, 'last_name', None) or (name_parts[-1] if len(name_parts) > 1 else '')
+                middle_name = getattr(p, 'middle_name', None) or (name_parts[1] if len(name_parts) > 2 else '')
                 participants.append({
                     'id': p.id,
                     'name': p.name,
                     'email': p.email,
                     'phone': p.phone,
+                    'first_name': first_name,
+                    'middle_name': middle_name,
+                    'last_name': last_name,
+                    'gender': getattr(p, 'gender', None) or '',
+                    'dob': (lambda d: d.strftime('%Y-%m-%d') if d else '')(getattr(p, 'dob', None)),
+                    'registration_type': getattr(p, 'registration_type', None) or '',
                     'question_answers': question_answers,
                     'addons': participant_addons
                 })
@@ -2728,12 +2907,35 @@ def manage_booking(trip_id, booking_id):
             if not has_packages:
                 expected_amount = float(booking.amount_paid) if booking.amount_paid is not None else 0.0
             
-            # 获取支付历史
+            # -------------------------------------------------------------------------
+            # 支付数据流（与 routes 中 Stripe 回调一致）：
+            # - Payment.amount = 客户该笔实扣（美元，含卡手续费）
+            # - Payment.fee_cents = 该笔卡手续费（分）；若无则用 base_amount_cents 反推或 0
+            # - Booking.amount_paid = 已付基础金额合计（不含手续费），支付成功时在 routes 中累加
+            # - expected_amount = 订单应付（套餐+附加-折扣），与 Payment 无关
+            # - payment_summary = 从 Payment 表汇总；amount_paid_display = 有支付时用汇总实收，否则用 booking.amount_paid
+            # -------------------------------------------------------------------------
             payments = []
+            total_charged = 0.0
+            total_fee_dollars = 0.0
+            net_received = 0.0
             for payment in Payment.query.filter_by(booking_id=booking.id).order_by(Payment.created_at.desc()).all():
+                amt = float(payment.amount) if payment.amount else 0.0
+                fee_cents = payment.fee_cents if payment.fee_cents is not None else None
+                base_cents = payment.base_amount_cents if payment.base_amount_cents is not None else None
+                if fee_cents is not None:
+                    fee_dollars = fee_cents / 100.0
+                elif base_cents is not None:
+                    fee_dollars = amt - (base_cents / 100.0)
+                else:
+                    fee_dollars = 0.0
+                refunded = float(payment.refunded_amount) if payment.refunded_amount else 0.0
+                base_from_payment = amt - fee_dollars
+                net_from_payment = base_from_payment - refunded
+
                 payments.append({
                     'id': payment.id,
-                    'amount': float(payment.amount) if payment.amount else 0.0,
+                    'amount': amt,
                     'status': payment.status,
                     'paid_at': payment.paid_at.strftime('%Y-%m-%d %H:%M') if payment.paid_at else None,
                     'stripe_payment_intent_id': payment.stripe_payment_intent_id,
@@ -2741,6 +2943,20 @@ def manage_booking(trip_id, booking_id):
                     'funding': payment.funding,
                     'brand': payment.brand
                 })
+                if payment.status == 'succeeded':
+                    total_charged += amt
+                    total_fee_dollars += fee_dollars
+                    net_received += net_from_payment
+            net_received = round(net_received, 2)
+            total_fee_dollars = round(total_fee_dollars, 2)
+            total_charged = round(total_charged, 2)
+            payment_summary = {
+                'total_charged': total_charged,
+                'card_fee': total_fee_dollars,
+                'net_received': net_received
+            }
+            # 有支付记录时用汇总实收作为“已付金额”显示（与 Payment 表一致，避免 DB 存错）
+            amount_paid_display = round(net_received if total_charged > 0 else (float(booking.amount_paid) if booking.amount_paid else 0.0), 2)
             
             # 获取分期付款记录
             installments = []
@@ -2802,8 +3018,10 @@ def manage_booking(trip_id, booking_id):
                     # 金额信息
                     'status': booking.status,
                     'amount_paid': float(booking.amount_paid) if booking.amount_paid else 0.0,
+                    'amount_paid_display': amount_paid_display,
                     'expected_amount': expected_amount,
-                    'pending_amount': max(0.0, expected_amount - (float(booking.amount_paid) if booking.amount_paid else 0.0)),
+                    'pending_amount': max(0.0, expected_amount - amount_paid_display),
+                    'payment_summary': payment_summary,
                     # 其他信息
                     'passenger_count': booking.passenger_count,
                     'special_requests': booking.special_requests or '',
@@ -2822,7 +3040,12 @@ def manage_booking(trip_id, booking_id):
         # Handle form data (from FormData)
         if request.form:
             booking.status = request.form.get('status', booking.status)
-            booking.amount_paid = float(request.form.get('amount_paid', booking.amount_paid))
+            _ap = request.form.get('amount_paid')
+            if _ap is not None and _ap != '':
+                try:
+                    booking.amount_paid = float(_ap)
+                except (TypeError, ValueError):
+                    pass
             booking.special_requests = request.form.get('special_requests', booking.special_requests)
             
             # Update participants (matching builder structure: first_name, last_name, question_answers)
@@ -2834,22 +3057,24 @@ def manage_booking(trip_id, booking_id):
                     for p_data in participants_list:
                         participant = BookingParticipant.query.get(p_data.get('id'))
                         if participant and participant.booking_id == booking.id:
-                            # Update name: use first_name and last_name if available, otherwise fallback to name
-                            if p_data.get('first_name') or p_data.get('last_name'):
-                                participant.name = f"{p_data.get('first_name', '')} {p_data.get('last_name', '')}".strip() or participant.name
-                            else:
-                                participant.name = p_data.get('name', participant.name)
-                            
+                            first_name = p_data.get('first_name', '')
+                            middle_name = p_data.get('middle_name', '')
+                            last_name = p_data.get('last_name', '')
+                            participant.first_name = first_name or None
+                            participant.middle_name = middle_name or None
+                            participant.last_name = last_name or None
+                            participant.name = ' '.join(filter(None, [first_name, middle_name, last_name])).strip() or participant.name
                             participant.email = p_data.get('email', participant.email)
-                            
-                            # Update question_answers if provided (currently not stored in model, but prepare for future)
-                            # TODO: Add question_answers JSON field to BookingParticipant model
+                            participant.gender = p_data.get('gender') or None
+                            participant.registration_type = p_data.get('registration_type') or None
+                            if p_data.get('dob'):
+                                try:
+                                    participant.dob = datetime.strptime(str(p_data['dob']), '%Y-%m-%d').date()
+                                except (ValueError, TypeError):
+                                    pass
                             question_answers = p_data.get('question_answers', {})
-                            if question_answers and hasattr(participant, 'question_answers'):
-                                if isinstance(participant.question_answers, str):
-                                    participant.question_answers = json.dumps(question_answers)
-                                else:
-                                    participant.question_answers = question_answers
+                            if question_answers is not None:
+                                participant.question_answers = question_answers
                 except (json.JSONDecodeError, KeyError) as e:
                     # Log error but don't fail the whole request
                     print(f"Error updating participants: {e}")

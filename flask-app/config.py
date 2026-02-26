@@ -14,6 +14,9 @@ class Config:
     """基础配置类"""
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
     
+    # 文件上传限制 (16MB)
+    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB
+    
     # AWS SES邮件配置
     AWS_REGION = os.environ.get('AWS_REGION', '')
     AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID', '')
@@ -31,6 +34,9 @@ class Config:
     STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY')
     STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY')
     STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET')
+
+    # Excel 内置连接：本地运行时 URL 为 localhost，Excel 无法访问。设置此为可访问的 API 基地址（部署域名或隧道如 cloudflared）
+    EXCEL_REFRESH_BASE_URL = os.environ.get('EXCEL_REFRESH_BASE_URL', '').rstrip('/')
     
     # Flask配置
     DEBUG = False

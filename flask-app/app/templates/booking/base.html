@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include 'includes/meta.html' %}
+    <style>
+        /* 报名页：使用主站 nav/footer，内容区白底 */
+        body.booking-layout { background: #fff; }
+        /* 报名页 nav 强制顶层，避免被 main 内元素盖住 */
+        body.booking-layout #pageNav { z-index: 9999 !important; }
+        /* 整个报名/付款系统与主站统一字体与排版（与 beijing.css 一致） */
+        body.booking-layout,
+        body.booking-layout * {
+            font-family: var(--font-sans, "Source Sans Pro"), sans-serif !important;
+            font-feature-settings: normal;
+        }
+        body.booking-layout {
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        /* 弹窗打开时：禁止背景滚动、避免 100vw 导致横向滚动条，弹窗严格贴合可视区域 */
+        html:has(#booking-modal:not(.hidden)),
+        body:has(#booking-modal:not(.hidden)) {
+            overflow: hidden !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            position: relative !important;
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="booking-layout">
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+    {# 弹窗、Loading 挂到 body 下（main 之后），避免受 main 布局/堆叠影响导致不显示 #}
+    {% block modal %}{% endblock %}
+
+    {% include 'includes/footer.html' %}
+
+    {# 导航栏放最后，确保 paint 顺序在最上层（fixed 仍固定顶部） #}
+    {% include 'includes/nav_booking.html' %}
+
+    <script type="module" src="{{ url_for('static', filename='js/navigation.js') }}"></script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

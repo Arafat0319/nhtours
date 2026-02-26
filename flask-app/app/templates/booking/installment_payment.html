@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "booking/base.html" %}
 
 {% block title %}Installment Payment | Checkout{% endblock %}
 
@@ -31,8 +31,8 @@
     </nav>
 </div>
 
-{# 支付表单区域 #}
-<div class="max-w-xl mx-auto px-8 md:px-0 pb-16">
+{# 支付表单区域 - 与主站字体一致（Source Sans Pro） #}
+<div class="payment-section max-w-xl mx-auto px-8 md:px-0 pb-16">
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div class="lg:col-span-2 space-y-6">
             <div>
@@ -68,7 +68,7 @@
                         {% for item in summary_items %}
                         <div class="flex justify-between text-base text-zinc-600">
                             <span>{{ item.label }}</span>
-                            <span id="summary-item-amount" data-base-amount="{{ item.amount_cents }}">${{ "%.2f"|format(item.amount_cents / 100) }}</span>
+                            <span id="summary-item-amount" data-base-amount="{{ item.amount_cents }}">${{ (item.amount_cents / 100)|format_price }}</span>
                         </div>
                         {% endfor %}
                     {% endif %}
@@ -78,7 +78,7 @@
                     </div>
                     <div class="flex justify-between text-lg font-semibold border-t border-zinc-200 pt-2 text-zinc-800">
                         <span>Total</span>
-                        <span id="summary-total">${{ "%.2f"|format(base_amount_cents / 100) }}</span>
+                        <span id="summary-total">${{ (base_amount_cents / 100)|format_currency }}</span>
                     </div>
                 </div>
 
@@ -91,11 +91,11 @@
                                 Remaining Balance
                             </div>
                             <div class="text-sm text-zinc-500 mt-0.5">
-                                $<span id="remaining-balance-amount">{{ "%.2f"|format(remaining_amount_cents / 100) }}</span>
+                                $<span id="remaining-balance-amount">{{ (remaining_amount_cents / 100)|format_currency }}</span>
                             </div>
                         </div>
                         <label class="flex items-center space-x-2 cursor-pointer">
-                            <span class="text-base text-zinc-700 font-medium">Pay Off</span>
+                            <span class="text-base text-zinc-700 font-medium">PAY OFF</span>
                             <input type="checkbox" id="payoff-checkbox" class="w-4 h-4 text-amber-800 border-zinc-300 rounded focus:ring-amber-800 focus:ring-1 cursor-pointer">
                         </label>
                     </div>

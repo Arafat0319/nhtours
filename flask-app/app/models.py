@@ -2,10 +2,29 @@
 数据库模型定义
 """
 
+import re
+import uuid
 from datetime import datetime
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy import event
 from app import db, login_manager
+
+
+# ========== Slug 工具函数 ==========
+
+def simple_slugify(text: str) -> str:
+    """将文本转换为 URL 友好的 slug"""
+    text = (text or "").strip().lower()
+    text = re.sub(r"[^a-z0-9]+", "-", text)
+    text = re.sub(r"-{2,}", "-", text).strip("-")
+    return text or "trip"
+
+
+def make_unique_slug(title: str) -> str:
+    """生成唯一的 slug（基于标题 + 随机后缀）"""
+    base = simple_slugify(title)
+    return f"{base}-{uuid.uuid4().hex[:6]}"
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -64,7 +83,7 @@ class Trip(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(128), index=True)
-    slug = db.Column(db.String(128), unique=True, index=True)  # URL 友好的标识符
+    slug = db.Column(db.String(128), unique=True, index=True, nullable=False)  # URL 友好的标识符（自动生成）
     price = db.Column(db.Float)
     start_date = db.Column(db.Date)
     end_date = db.Column(db.Date)
@@ -106,6 +125,9 @@ class Trip(db.Model):
     # Step 5: Participant Info Logic
     participants_request_lock_date = db.Column(db.DateTime) # Info collected at checkout lock date
 
+    # Registration Date: customers can only start booking on or after this date (None = no restriction)
+    registration_date = db.Column(db.Date, nullable=True)
+
     @property
     def duration_days(self):
         if self.start_date and self.end_date:
@@ -115,6 +137,22 @@ class Trip(db.Model):
 
     def __repr__(self):
         return f'<Trip {self.title}>'
+
+
+# ========== Trip 模型事件钩子：确保 slug 自动生成 ==========
+@event.listens_for(Trip, "before_insert")
+def trip_before_insert(mapper, connection, target):
+    """插入前确保 slug 存在"""
+    if not getattr(target, "slug", None):
+        target.slug = make_unique_slug(getattr(target, "title", "trip") or "trip")
+
+
+@event.listens_for(Trip, "before_update")
+def trip_before_update(mapper, connection, target):
+    """更新前确保 slug 不为空字符串"""
+    if getattr(target, "slug", None) == "":
+        target.slug = make_unique_slug(getattr(target, "title", "trip") or "trip")
+
 
 class TripPackage(db.Model):
     """行程套餐 (Pricing Packages)"""
@@ -439,6 +477,17 @@ class BookingParticipant(db.Model):
     name = db.Column(db.String(128))
     email = db.Column(db.String(120))
     phone = db.Column(db.String(20))
+    
+    # 默认参与者字段
+    first_name = db.Column(db.String(64))
+    middle_name = db.Column(db.String(64))
+    last_name = db.Column(db.String(64))
+    gender = db.Column(db.String(32))
+    dob = db.Column(db.Date)
+    registration_type = db.Column(db.String(32))  # Student, Faculty, Parent
+    
+    # 自定义问题 + 默认 yesno 答案（dietary_restrictions_or_allergies, medical_conditions）
+    question_answers = db.Column(db.JSON)
     
     # In case we want to override package per person, or just track it
     # For now, let's assume it inherits from Booking but good to have link if needed later

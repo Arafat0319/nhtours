@@ -1,0 +1,174 @@
+{# Step 1: Package（按截图：Select package 标题；每行 [Quantity 下拉+人像] [套餐名与价格同行]；下一行 Available until | Only X left | Deposit 横排竖线分隔；描述再下一行）#}
+<div class="booking-step" data-step="1">
+    <section class="relative w-full booking-step-section" style="padding: 0 30px 12px 30px;">
+        <div class="mb-6 flex flex-col">
+            <h3 class="booking-step-title text-[16px] font-medium leading-[26px] text-gray-900 mb-2">Select package</h3>
+        </div>
+        <div class="w-full pt-0 pb-0">
+            <div class="w-full flex flex-col">
+                {% for package in packages %}
+                {% set ppc = package.payment_plan_config %}
+                {% set has_installment = ppc and ppc.get('enabled') %}
+                {% set deposit_amt = (ppc.get('deposit_amount') or ppc.get('deposit') or 0) if ppc else 0 %}
+                {% set spots = package_spots_available.get(package.id, package.capacity) if package.capacity is not none else none %}
+                <div class="package-card w-full flex flex-row border-b border-gray-300 last:border-b-0" data-package-id="{{ package.id }}" data-has-installment="{{ 'true' if has_installment else 'false' }}" data-deposit="{{ deposit_amt }}" data-testid="package-row-{{ loop.index0 }}">
+                    {# 左侧：Quantity 下拉（Uiverse 方案，主题色适配）#}
+                    <div class="w-fit max-w-[116px] min-w-[96px] pr-3 lg:pr-[18px] flex-shrink-0 flex items-center gap-2">
+                        <div class="quantity-select-uiverse select" data-package-id="{{ package.id }}" style="min-width: 96px;">
+                            <div class="selected">
+                                <span class="selected-value">0</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 512 512" class="arrow" aria-hidden="true">
+                                    <path d="M233.4 406.6c12.5 12.5 32.8 12.5 45.3 0l192-192c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L256 338.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l192 192z"></path>
+                                </svg>
+                            </div>
+                            <div class="options">
+                                {% set max_qty = [5, package.capacity or 100]|min %}
+                                {% for n in range(max_qty + 1) %}
+                                <div>
+                                    <input id="qty-pkg-{{ package.id }}-{{ n }}" name="qty_pkg_{{ package.id }}" type="radio" value="{{ n }}" class="quantity-radio" data-package-id="{{ package.id }}" {% if n == 0 %}checked{% endif %} />
+                                    <label class="option" for="qty-pkg-{{ package.id }}-{{ n }}" data-txt="{{ n }}"></label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <input type="hidden" name="package_quantity_{{ package.id }}" value="0" class="package-quantity" data-package-id="{{ package.id }}">
+                    </div>
+                    {# 右侧：第一行 套餐名 + 价格 同行；第二行 Available until | Only X left | Deposit；第三行 描述；有分期时显示 Payment plan 明细 #}
+                    <div class="flex-1 min-w-0 flex flex-col">
+                        <div class="flex flex-row justify-between items-start gap-3">
+                            <p class="text-[16px] font-semibold leading-[26px] text-gray-900 break-words">{{ package.name }}</p>
+                            <p class="text-[16px] font-semibold leading-[26px] text-gray-900 whitespace-nowrap flex-shrink-0" data-testid="option-price">${{ (package.price)|format_price }}</p>
+                        </div>
+                        <div class="flex flex-row justify-between items-start gap-3 pt-1.5 text-[0.9375rem] font-normal leading-tight text-gray-500">
+                            <div class="flex flex-wrap items-center gap-x-2 min-w-0">
+                                {% if package.booking_deadline %}<span>Available until {{ package.booking_deadline.strftime('%b %d, %Y') }}</span>{% endif %}
+                                {% if package.booking_deadline and spots is not none %}<span class="text-gray-300">|</span>{% endif %}
+                                {% if spots is not none %}<span class="text-orange-600 font-medium whitespace-nowrap" data-testid="package-availability-info">Only {{ spots }} left</span>{% endif %}
+                            </div>
+                            {% if has_installment %}<span class="whitespace-nowrap flex-shrink-0 text-right" data-testid="option-deposit">Deposit: ${{ (deposit_amt)|format_price }}</span>{% endif %}
+                        </div>
+                        {% if package.description %}
+                        <div class="pt-1.5 text-[0.9375rem] font-normal text-gray-600">{{ package.description }}</div>
+                        {% endif %}
+                        {% if has_installment and ppc %}
+                        <div class="package-installment-detail hidden mt-2 pt-2 border-t border-gray-200" data-package-id="{{ package.id }}">
+                            <p class="text-[0.9375rem] font-semibold text-gray-700 mb-1.5">Payment plan</p>
+                            <div class="flex justify-between gap-4 text-[0.9375rem] text-gray-600">
+                                <ul class="list-none p-0 m-0 space-y-0.5">
+                                    {% if ppc.get('deposit_amount') is not none %}<li>Deposit</li>{% endif %}
+                                    {% for inst in (ppc.get('installments') or []) %}<li>{{ inst.get('date', '')|format_iso_date }}</li>{% endfor %}
+                                </ul>
+                                <ul class="list-none p-0 m-0 space-y-0.5 text-right font-medium text-gray-900 text-[0.9375rem] installment-amounts-modal">
+                                    {% if ppc.get('deposit_amount') is not none %}<li>${{ (ppc.get('deposit_amount') or 0)|format_price }}</li>{% endif %}
+                                    {% for inst in (ppc.get('installments') or []) %}<li>${{ (inst.get('amount') or 0)|format_price }}</li>{% endfor %}
+                                </ul>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+</div>
+
+{# Step 2: Participant info - Buyer information + Participant Information（截图视觉风格） #}
+<div class="booking-step hidden" data-step="2">
+    <section class="relative w-full booking-step-2-section booking-step-section" style="padding: 0 30px 12px 30px;">
+        {# Buyer information - 与 package card 风格一致：圆角卡片、同款边框 #}
+        <div class="buyer-info-card mb-8">
+            <h4 class="booking-step-2-section-title text-base font-semibold text-gray-900 mb-4">Buyer information</h4>
+            <div class="buyer-fields-grid">
+        {% for field in buyer_info_fields|sort(attribute='display_order') %}
+        {% if field.field_type == 'address' %}
+        <div class="mb-4 flex flex-col custom-field" data-field-id="{{ field.id }}" data-field-type="address">
+            <label class="text-sm font-medium mb-1">{{ field.field_name }}{% if field.is_required %}<span class="required-asterisk">*</span>{% endif %}</label>
+            {{ form.buyer_address(class="w-full min-w-0 mb-2", required=field.is_required, placeholder="Address") }}
+            <div class="buyer-row-grid grid grid-cols-2"><label class="col-span-2 text-xs text-gray-500">City</label>{{ form.buyer_city(class="w-full min-w-0", required=field.is_required) }}<label class="col-span-2 text-xs text-gray-500">State</label>{{ form.buyer_state(class="w-full min-w-0", required=field.is_required) }}<label class="col-span-2 text-xs text-gray-500">ZIP</label>{{ form.buyer_zip_code(class="w-full min-w-0", required=field.is_required) }}<label class="col-span-2 text-xs text-gray-500">Country</label>{{ form.buyer_country(class="w-full min-w-0", required=field.is_required) }}</div>
+        </div>
+        {% elif field.field_type == 'emergency_contact' %}
+        <div class="mb-4 flex flex-col custom-field" data-field-id="{{ field.id }}" data-field-type="emergency_contact">
+            <label class="text-sm font-medium mb-1">{{ field.field_name }}{% if field.is_required %}<span class="required-asterisk">*</span>{% endif %}</label>
+            <div class="buyer-row-grid grid grid-cols-2">{{ form.buyer_emergency_contact_name(class="w-full min-w-0", placeholder="Name", required=field.is_required) }}{{ form.buyer_emergency_contact_phone(class="w-full min-w-0", placeholder="Phone", required=field.is_required) }}</div>
+        </div>
+        {% else %}
+        <div class="mb-4 flex flex-col custom-field" data-field-id="{{ field.id }}" data-field-type="{{ field.field_type }}">
+            <label class="text-sm font-medium mb-1">{{ field.field_name }}{% if field.is_required %}<span class="required-asterisk">*</span>{% endif %}</label>
+            {% set fn = field.field_name|lower %}
+            {% if fn in ['first name','firstname'] %}
+            {{ form.buyer_first_name(class="w-full min-w-0", required=field.is_required) }}
+            {% elif fn in ['last name','lastname'] %}
+            {{ form.buyer_last_name(class="w-full min-w-0", required=field.is_required) }}
+            {% elif fn == 'email' %}
+            {{ form.buyer_email(class="w-full min-w-0", type="email", required=field.is_required) }}
+            {% elif fn == 'phone' %}
+            {{ form.buyer_phone(class="w-full min-w-0", required=field.is_required) }}
+            {% elif field.field_type == 'textarea' %}
+            <textarea name="custom_field_{{ field.id }}" class="w-full min-w-0" rows="3" {% if field.is_required %}required{% endif %}></textarea>
+            {% elif field.field_type == 'select' %}
+            <select name="custom_field_{{ field.id }}" class="w-full min-w-0" {% if field.is_required %}required{% endif %}>
+                <option value="">Select</option>
+                {% for opt in (field.options or []) %}<option value="{{ opt }}">{{ opt }}</option>{% endfor %}
+            </select>
+            {% elif field.field_type == 'yesno_text' %}
+            <div class="buyer-yesno-field"><div class="flex gap-4 mb-2"><label class="inline-flex items-center"><input type="radio" name="custom_field_{{ field.id }}" value="no" checked class="yesno-radio"><span class="ml-2">No</span></label><label class="inline-flex items-center"><input type="radio" name="custom_field_{{ field.id }}" value="yes" class="yesno-radio"><span class="ml-2">Yes</span></label></div><div class="yesno-details hidden mt-2"><input type="text" name="custom_field_{{ field.id }}_details" class="w-full min-w-0" placeholder="If yes, explain"></div></div>
+            {% else %}
+            <input type="{{ 'email' if field.field_type == 'email' else 'tel' if field.field_type == 'phone' else 'text' }}" name="custom_field_{{ field.id }}" class="w-full min-w-0" {% if field.is_required %}required{% endif %}>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% endfor %}
+            </div>
+        </div>
+        {# Participant Information（动态生成，带数字圆圈与折叠样式） #}
+        <div>
+            <div id="participants-container" class="space-y-4"></div>
+        </div>
+    </section>
+</div>
+
+{# Step 3: Add-ons（与 Package 页一致：卡片圆角/边框、左侧步进器数量选择、右侧名称+价格+描述） #}
+<div class="booking-step hidden" data-step="3">
+    <section class="relative w-full booking-step-section" style="padding: 0 30px 12px 30px;">
+        <div class="mb-6 flex flex-col">
+            <h3 class="booking-step-title text-[16px] font-medium leading-[26px] text-gray-900 mb-2">Select Add-ons</h3>
+        </div>
+        <div class="w-full pt-0 pb-0">
+        {% if addons %}
+        <div class="w-full flex flex-col addon-cards-list">
+            {% for addon in addons %}
+            <div class="addon-card w-full flex flex-row items-start border-b border-gray-300 last:border-b-0" data-addon-id="{{ addon.id }}" data-addon-price="{{ addon.price }}" data-testid="addon-row-{{ loop.index0 }}">
+                {# 左侧：名称 + 描述 #}
+                <div class="flex-1 min-w-0 flex flex-col pr-3 lg:pr-[18px]">
+                    <p class="addon-card-name text-[16px] font-semibold leading-[26px] text-gray-900 break-words">{{ addon.name }}</p>
+                    {% if addon.description %}
+                    <div class="addon-card-desc pt-1.5 text-[0.9375rem] font-normal text-gray-600">{{ addon.description }}</div>
+                    {% endif %}
+                </div>
+                {# 右侧：金额 + 步进器（金额在上，步进器在下，便于后续对齐） #}
+                <div class="addon-card-right flex-shrink-0 flex flex-col items-end">
+                    <span class="addon-card-price text-[16px] font-semibold leading-[26px] text-gray-900 whitespace-nowrap" data-testid="addon-price">${{ (addon.price)|format_price }}</span>
+                    <div class="w-fit pr-3 lg:pr-[18px] flex-shrink-0 flex items-center mt-2">
+                        <div class="addon-stepper-wrapper" data-addon-id="{{ addon.id }}" data-max-qty="10">
+                            <input type="hidden" name="addon_quantity_{{ addon.id }}" value="0" class="addon-quantity" data-addon-id="{{ addon.id }}" data-addon-price="{{ addon.price }}">
+                            <button type="button" class="addon-stepper-minus" aria-label="Decrease"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+                            <span class="addon-qty-display">0</span>
+                            <button type="button" class="addon-stepper-plus" aria-label="Increase"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-[0.9375rem] text-gray-500 pt-2" style="color: #4b5563;">No add-ons. Continue to next step.</p>
+        {% endif %}
+        </div>
+    </section>
+</div>
+
+{# Step 4: Payment（与分期付款弹窗共用同一内容片段） #}
+<div class="booking-step hidden" data-step="4">
+    {% include 'booking/_modal_payment_step_content.html' %}
+</div>

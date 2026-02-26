@@ -1,743 +1,931 @@
-{% extends "base.html" %}
+{% extends "booking/base.html" %}
 
 {% block title %}Nexus Horizons | {{ trip.title }}{% endblock %}
 
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/booking-modal.css') }}">
+<style>
+    .flatpickr-calendar { font-size: 16px !important; }
+    .flatpickr-day { min-width: 38px; height: 38px; line-height: 38px; font-size: 14px; }
+    .flatpickr-month { height: 40px; }
+    .flatpickr-current-month { font-size: 115%; }
+    .flatpickr-weekdays { font-size: 13px; }
+    /* Hero：用 img 替代 background 有利于浏览器锐化渲染；高糊多因原图分辨率不足被放大 */
+    .trip-hero { min-height: 40.32vh; width: 100%; position: relative; z-index: 0; overflow: hidden; }
+    .trip-hero .trip-hero-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+    .trip-sidebar-card { border: none; box-shadow: none; border-radius: 0; }
+    .trip-package-card { transition: box-shadow 0.2s, border-color 0.2s; }
+    .trip-package-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); border-color: #d97706; }
+    .hero-price-card { background: rgba(255,255,255,0.95); border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
+    /* 组织者卡片：白底，无外框无阴影 */
+    .organizer-card { border: none; box-shadow: none; border-radius: 0; }
+    .organizer-card .organizer-icon { width: 1rem; height: 1rem; flex-shrink: 0; color: #0d9488; }
+    /* 强制 logo 为正圆，不被 flex 拉高 */
+    .organizer-logo-wrap { width: 5.2rem !important; height: 5.2rem !important; min-width: 5.2rem !important; min-height: 5.2rem !important; flex-shrink: 0 !important; align-self: flex-start !important; border-radius: 50% !important; }
+    @media (min-width: 768px) {
+        .organizer-logo-wrap { width: 6.5rem !important; height: 6.5rem !important; min-width: 6.5rem !important; min-height: 6.5rem !important; }
+    }
+    @media (min-width: 768px) {
+        .trip-main-grid { display: grid !important; grid-template-columns: 1fr 360px; gap: 2rem; align-items: start; }
+        .trip-main-grid .trip-content-col { grid-column: 1; min-width: 0; }
+        .trip-main-grid .trip-sidebar-col { grid-column: 2; position: sticky; top: 5.5rem; }
+    }
+    /* 报名弹窗：大屏下左右并排（不依赖 Tailwind lg:） */
+    @media (min-width: 1024px) {
+        #booking-modal-scroll { flex-direction: row !important; }
+        #booking-modal-left-col { width: 0 !important; min-width: 0 !important; flex: 1 1 0% !important; }
+        #booking-modal-left-inner { max-width: 535px !important; }
+        #booking-modal-right { width: 335px !important; min-width: 335px !important; flex-shrink: 0 !important; }
+    }
+    /* 卡片窄于 870px 时右侧栏允许收缩，避免撑破卡片 */
+    @media (max-width: 869px) {
+        #booking-modal-right { min-width: 0 !important; flex: 1 1 0% !important; }
+    }
+    /* 移动端：顶部 nav 增加底部留白（仅弹窗未打开时生效） */
+    @media (max-width: 767px) {
+        body.booking-layout #pageNav { padding-bottom: 1rem !important; margin-bottom: 0.5rem !important; }
+    }
+    /* 弹窗打开时：隐藏顶部 nav，main 整块提到最上（高于 footer） */
+    body:has(#booking-modal:not(.hidden)) main { position: relative !important; z-index: 10000 !important; }
+    body:has(#booking-modal:not(.hidden)) #pageNav { visibility: hidden !important; pointer-events: none !important; }
+    #booking-modal { position: fixed !important; top: 0 !important; right: 0 !important; bottom: 0 !important; left: 0 !important; z-index: 10001 !important; height: 100% !important; width: 100% !important; max-width: 100% !important; overflow-y: auto !important; overflow-x: hidden !important; border: none !important; outline: none !important; box-shadow: none !important; box-sizing: border-box !important; margin: 0 !important; padding: 0 !important; }
+    /* 弹窗显示时强制可见，避免 .hidden 移除后仍被其它样式隐藏 */
+    #booking-modal:not(.hidden) { display: block !important; visibility: visible !important; opacity: 1 !important; }
+    #booking-modal #closeBookingModal { border: none !important; outline: none !important; box-shadow: none !important; background-color: transparent !important; transition: background-color 0.2s ease, transform 0.2s ease, color 0.2s ease !important; }
+    #booking-modal #closeBookingModal:hover,
+    #booking-modal #closeBookingModal.close-btn-hover { background-color: rgba(244, 244, 245, 0.5) !important; color: #111827 !important; transform: scale(1.05) !important; border: none !important; outline: none !important; box-shadow: none !important; }
+    #booking-modal #closeBookingModal:active,
+    #booking-modal #closeBookingModal.close-btn-active { transform: scale(0.98) !important; }
+    #booking-modal #closeBookingModal:focus { border: none !important; outline: none !important; box-shadow: none !important; }
+    #booking-modal-scroll-viewport { min-height: 100% !important; width: 100% !important; max-width: 100% !important; overflow: visible !important; border: none !important; outline: none !important; box-sizing: border-box !important; display: flex !important; flex-direction: column !important; align-items: center !important; }
+    /* inner 铺满 viewport 宽，不随子元素撑开 */
+    #booking-modal-inner { flex: 0 0 auto !important; align-self: stretch !important; width: 100% !important; max-width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; }
+    /* 卡片：块级布局，避免 beijing.css 的 .flex 影响；按钮栏自然在底部 */
+    #booking-modal #booking-modal-card { display: block !important; }
+    #booking-modal-card { border: none !important; outline: none !important; box-shadow: 0 4px 24px rgba(0,0,0,0.12) !important; max-width: 870px !important; width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; overflow: visible !important; margin-top: 5rem !important; border-radius: 0.5rem !important; }
+    #booking-modal-scroll { min-width: 0 !important; }
+    /* 弹窗内所有元素去掉焦点轮廓，避免出现外框 */
+    #booking-modal * { outline: none !important; }
+    #booking-modal *:focus { outline: none !important; }
+    /* 报名弹窗 Continue / Confirm 按钮：绿色背景白字，与截图一致 */
+    #booking-modal #nextBtn { background-color: #16a34a !important; color: #fff !important; border-color: #16a34a !important; height: 40px !important; min-height: 40px !important; font-size: 14px !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; }
+    #booking-modal #nextBtn:hover { background-color: #15803d !important; opacity: 0.9; }
+    /* Book Now 与弹窗内 Continue 同款颜色与效果 */
+    #bookNowBtn { background-color: #16a34a !important; color: #fff !important; border: 1px solid #16a34a !important; font-size: 14px !important; transition: transform 0.2s ease, opacity 0.2s ease, background-color 0.2s ease !important; }
+    #bookNowBtn:hover:not(:disabled) { background-color: #15803d !important; opacity: 0.9; transform: translateY(-2px) !important; }
+    #booking-modal #submitBtn:not(.hidden) { background-color: #16a34a !important; color: #fff !important; border-color: #16a34a !important; height: 40px !important; min-height: 40px !important; font-size: 14px !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; }
+    #booking-modal #submitBtn:not(.hidden):hover { background-color: #15803d !important; opacity: 0.9; }
+    /* 付款结果页 Close 与 Continue 同款绿色 */
+    #booking-modal #booking-result-close-btn { background-color: #16a34a !important; color: #fff !important; border-color: #16a34a !important; }
+    #booking-modal #booking-result-close-btn:hover { background-color: #15803d !important; opacity: 0.9; }
+    /* 弹窗打开时侧栏始终在弹窗下方，避免缩放时露出 */
+    #booking-modal:not(.hidden) ~ * .trip-sidebar-inner,
+    body:has(#booking-modal:not(.hidden)) .trip-sidebar-inner { z-index: 0 !important; }
+    /* 窄屏：侧栏固定到底部，不随滚动；仅保留价格 + Book Now；禁止溢出视口 */
+    @media (max-width: 767px) {
+        .trip-sidebar-col { order: 2; width: 100%; padding-bottom: 140px !important; max-width: 100% !important; }
+        .trip-sidebar-inner {
+            position: fixed !important;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            width: 100% !important;
+            max-width: 100vw !important;
+            z-index: 40;
+            border-top: 1px solid #e5e7eb;
+            background: #f9fafb;
+            margin: 0 !important;
+            padding: 1rem 1rem 1.25rem !important;
+            border-radius: 0;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.06);
+            box-sizing: border-box !important;
+            overflow: hidden !important;
+        }
+        .trip-sidebar-inner #bookNowBtn { max-width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; }
+        .trip-main-grid .trip-content-col { order: 1; }
+    }
+    /* 宽屏：侧栏限制宽度，避免绿色按钮被拉成横条 */
+    .trip-sidebar-inner { max-width: 100% !important; overflow: hidden !important; box-sizing: border-box !important; }
+    #bookNowBtn { max-width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; }
+    /* 行程标题：字重、字间距、行高优化 */
+    .trip-title {
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        line-height: 1.35;
+        color: #111827;
+    }
+    /* 主内容区标题层级：h2 > h3 > h4 > h5 > h6，统一风格（大写、中粗、深灰、字间距） */
+    #main-content h2 {
+        font-weight: var(--font-weight-medium, 600) !important;
+        font-size: 1.5rem !important;
+        letter-spacing: var(--tracking-wide, 0.025em) !important;
+        color: var(--color-zinc-800, #27272a) !important;
+        text-transform: uppercase !important;
+        padding-bottom: 0.375rem !important;
+        text-align: left !important;
+    }
+    #main-content h3 {
+        font-weight: var(--font-weight-medium, 600) !important;
+        font-size: 1.375rem !important;
+        letter-spacing: var(--tracking-wide, 0.025em) !important;
+        color: var(--color-zinc-800, #27272a) !important;
+        text-transform: uppercase !important;
+        padding-bottom: 0.375rem !important;
+        text-align: left !important;
+    }
+    #main-content h4 {
+        font-weight: var(--font-weight-medium, 600) !important;
+        font-size: 1.25rem !important;
+        letter-spacing: var(--tracking-wide, 0.025em) !important;
+        color: var(--color-zinc-800, #27272a) !important;
+        text-transform: uppercase !important;
+        padding-bottom: 0.375rem !important;
+        text-align: left !important;
+    }
+    #main-content h5 {
+        font-weight: var(--font-weight-medium, 600) !important;
+        font-size: 1.125rem !important;
+        letter-spacing: var(--tracking-wide, 0.025em) !important;
+        color: var(--color-zinc-800, #27272a) !important;
+        text-transform: uppercase !important;
+        padding-bottom: 0.375rem !important;
+        text-align: left !important;
+    }
+    #main-content h6 {
+        font-weight: var(--font-weight-medium, 600) !important;
+        font-size: 1rem !important;
+        letter-spacing: var(--tracking-wide, 0.025em) !important;
+        color: var(--color-zinc-800, #27272a) !important;
+        text-transform: uppercase !important;
+        padding-bottom: 0.375rem !important;
+        text-align: left !important;
+    }
+    /* About this trip 正文：主站 overview 风格，字号还原为之前大小 */
+    .trip-description-overview {
+        font-size: 1rem;
+        line-height: 1.625;
+        font-weight: 400;
+        color: var(--color-zinc-800, #27272a);
+        max-width: none;
+    }
+    .trip-description-overview p { margin-top: 0.5rem; margin-bottom: 0; }
+    .trip-description-overview p:first-child { margin-top: 0; }
+    /* WeTravel 风格区块：trip-page__section + trip-page-section__header，标题与内容间距由 #main-content h2/h3 控制 */
+    #main-content.trip-main-content-sections > section { margin-top: 2.5rem; }
+    #main-content.trip-main-content-sections > section:first-child { margin-top: 0; }
+    /* What's included / not included：原版视觉 - 圆形图标 + 项间分隔线 */
+    .trip-includes-list, .trip-excludes-list { list-style: none; padding: 0; margin: 0; }
+    .trip-includes-list li, .trip-excludes-list li {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.65rem 0;
+        border-bottom: 1px solid #e5e7eb;
+        color: #4b5563;
+        font-size: 0.9375rem;
+    }
+    .trip-includes-list li:last-child, .trip-excludes-list li:last-child { border-bottom: none; }
+    .trip-includes-list .item-icon {
+        flex-shrink: 0;
+        width: 1.25rem;
+        height: 1.25rem;
+        border-radius: 50%;
+        background: #22c55e;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.7rem;
+        font-weight: bold;
+    }
+    .trip-excludes-list .item-icon {
+        flex-shrink: 0;
+        width: 1.25rem;
+        height: 1.25rem;
+        border-radius: 50%;
+        background: #e5e7eb;
+        color: #6b7280;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        font-weight: bold;
+    }
+    /* Available Packages：按参考图 - 浅灰容器、三行布局、青绿 Book Now */
+    .trip-packages-box {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        overflow: hidden;
+        padding: 0;
+    }
+    .trip-packages-box .package-row {
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid #e5e7eb;
+        background: #fff;
+    }
+    .trip-packages-box .package-row:last-child { border-bottom: none; }
+    /* 第一行：标题左 + 价格与按钮右，同一行 */
+    .trip-packages-box .package-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem;
+    }
+    .trip-packages-box .package-info { flex: 1; min-width: 0; text-align: left; }
+    .trip-packages-box .package-info h6 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #374151;
+        margin: 0;
+        text-align: left;
+        text-transform: none;
+    }
+    .trip-packages-box .package-right {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-shrink: 0;
+        min-width: 8.5rem;
+    }
+    .trip-packages-box .package-price {
+        font-weight: 700;
+        color: #111827;
+        font-size: 1rem;
+    }
+    /* 第二行：Available until ... | Only X left，Only X left 橙色 */
+    .trip-packages-box .package-availability {
+        font-size: 0.8125rem;
+        color: #6b7280;
+        margin-top: 0.5rem;
+    }
+    .trip-packages-box .package-availability .only-left { color: #ea580c; font-weight: 500; }
+    /* 第三行：描述（如 occupancy） */
+    .trip-packages-box .package-desc {
+        font-size: 0.8125rem;
+        color: #6b7280;
+        margin-top: 0.35rem;
+    }
+    /* 下面一块：Payment plan 明细，与上方价格列对齐 */
+    .trip-packages-box .package-installment-block {
+        margin-top: 0.75rem;
+        padding-top: 0.5rem;
+        border-top: 1px dashed #e5e7eb;
+        font-size: 0.8125rem;
+    }
+    .trip-packages-box .package-installment-block .installment-title {
+        font-weight: 600;
+        color: #374151;
+        margin: 0 0 0.35rem 0;
+    }
+    .trip-packages-box .package-installment-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+    .trip-packages-box .package-installment-row .installment-labels,
+    .trip-packages-box .package-installment-row .installment-amounts {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+    .trip-packages-box .package-installment-row .installment-labels { color: #4b5563; }
+    .trip-packages-box .package-installment-row .installment-labels li { padding: 0.15rem 0; }
+    .trip-packages-box .package-installment-row .installment-amounts {
+        width: 8.5rem;
+        min-width: 8.5rem;
+        text-align: right;
+        padding-right: 10.6rem;
+        box-sizing: border-box;
+    }
+    .trip-packages-box .package-installment-row .installment-amounts li {
+        padding: 0.15rem 0;
+        font-weight: 500;
+        color: #111827;
+    }
+    /* Book Now：白底、青绿边框与文字；高 40px、宽 100px；字稍大 */
+    .trip-packages-box .package-book-now,
+    .book-now-trigger.package-book-now {
+        width: 100px;
+        height: 40px;
+        padding: 0;
+        font-size: 0.9375rem;
+        font-weight: 500;
+        color: #0d9488;
+        background: #fff;
+        border: 1px solid #5eead4;
+        border-radius: 0.375rem;
+        cursor: pointer;
+        white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .trip-packages-box .package-book-now:hover { background: #f0fdfa; }
+    /* Available Add-Ons：与 Package 区块一致 - 浅灰圆角容器、项间分隔线、左名称/描述右价格 */
+    .trip-addons-box {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        overflow: hidden;
+        padding: 0;
+    }
+    .trip-addons-box .addon-row {
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid #e5e7eb;
+        background: #fff;
+    }
+    .trip-addons-box .addon-row:last-child { border-bottom: none; }
+    .trip-addons-box .addon-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem;
+    }
+    .trip-addons-box .addon-info { flex: 1; min-width: 0; text-align: left; }
+    .trip-addons-box .addon-info h6 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #374151;
+        margin: 0;
+        text-align: left;
+        text-transform: none;
+    }
+    .trip-addons-box .addon-desc {
+        font-size: 0.8125rem;
+        color: #6b7280;
+        margin-top: 0.35rem;
+    }
+    .trip-addons-box .addon-right {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-shrink: 0;
+        min-width: 8.5rem;
+    }
+    .trip-addons-box .addon-price {
+        font-weight: 700;
+        color: #111827;
+        font-size: 1rem;
+    }
+    </style>
+    <style id="booking-modal-card-block">#booking-modal #booking-modal-card { display: block !important; }</style>
+{% endblock %}
+
 {% block content %}
-{# Hero背景区域 #}
-<div class="w-full h-[70vh]" style="background-image: url('{{ url_for('static', filename='images/backgrounds/tibet_background.jpg') }}'); background-position: center; background-size: cover; background-repeat: no-repeat;">
-</div>
-
-<div class="w-full h-[16px] bg-indigo-800"></div>
-
-{# Draft Mode Banner for Admins #}
+{# Draft Mode Banner #}
 {% if trip.status != 'published' %}
 <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 text-center">
-    <div class="flex justify-center">
-        <div class="flex-shrink-0">
-            <svg class="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
-            </svg>
-        </div>
-        <div class="ml-3">
-            <p class="text-sm text-yellow-700">
-                <span class="font-bold">Admin Only:</span> This trip is not published (Draft Mode). Regular users will see a 404 error.
-            </p>
-        </div>
-    </div>
+    <p class="text-sm text-yellow-700"><span class="font-bold">Admin Only:</span> This trip is not published.</p>
 </div>
 {% endif %}
 
-{# 主要内容区域 #}
-<div class="max-w-6xl mx-auto py-8 px-8 md:px-0">
-    {# Breadcrumb导航 #}
-    <nav class="mb-8">
-        <ol class="flex flex-wrap items-center space-x-2 text-lg font-medium text-amber-800">
-            <li class="flex items-center">
-                <a class="hover:underline" href="{{ url_for('main.index') }}">Home</a>
-            </li>
-            <li class="flex items-center">
-                <span class="mx-2 text-gray-400">
-                    <svg class="feather feather-chevron-right" fill="none" height="18" stroke="currentColor"
-                        stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18"
-                        xmlns="http://www.w3.org/2000/svg">
-                        <polyline points="9 18 15 12 9 6"></polyline>
-                    </svg>
-                </span>
-                <span class="text-indigo-800 font-medium cursor-default">{{ trip.title }}</span>
-            </li>
-        </ol>
-    </nav>
-
-    <div class="text-center mb-12">
-        <h1>{{ trip.title }}</h1>
-        {% if trip.start_date and trip.end_date %}
-        <div class="content overview text-center mt-4">
-            {{ trip.start_date.strftime('%B %d, %Y') }} - {{ trip.end_date.strftime('%B %d, %Y') }}
-        </div>
-        {% endif %}
-    </div>
+{# ========== Hero：与主站 index 一致，nav 自然叠在上方 ========== #}
+{% set hero_bg = url_for('static', filename=trip.hero_image) if trip.hero_image else url_for('static', filename='images/backgrounds/tibet_background.jpg') %}
+{% set first_pkg = packages[0] if packages else None %}
+{% set has_installment = first_pkg and first_pkg.payment_plan_config and first_pkg.payment_plan_config.get('enabled') %}
+<div class="relative w-full trip-hero">
+    <img src="{{ hero_bg }}" alt="" class="trip-hero-img" loading="eager" decoding="async" fetchpriority="high">
+    {# 仅底部渐变，不覆盖顶部导航区 #}
+    <div class="absolute bottom-0 left-0 right-0 h-2/3 bg-gradient-to-t from-black/70 via-black/20 to-transparent pointer-events-none"></div>
 </div>
 
-{# 多步骤报名表单 - 简约现代设计 #}
-<div class="max-w-xl mx-auto px-8 md:px-0 pb-16">
-    <form method="POST" action="" id="bookingForm" class="bg-white">
-        {{ form.csrf_token }}
-        
-        {# 简约步骤指示器 - 优化版 #}
-        <div class="border-b border-zinc-200 pb-8 mb-10">
-            <div class="flex items-center w-full">
-                {% for step_num in range(1, 6) %}
-                <div class="flex items-center {% if step_num < 5 %}flex-1{% else %}flex-shrink-0{% endif %}">
-                    <div class="step-indicator flex flex-col items-center {% if step_num == 1 %}active{% endif %}" data-step="{{ step_num }}">
-                        <div class="w-12 h-12 rounded-full flex items-center justify-center font-semibold text-base step-circle transition-all duration-300 relative"
-                             style="background: {% if step_num == 1 %}#d59961{% else %}#f3f4f6{% endif %}; color: {% if step_num == 1 %}white{% else %}#6b7280{% endif %};">
-                            <span class="step-number">{{ step_num }}</span>
-                            <svg class="w-6 h-6 step-check hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path>
-                            </svg>
-                        </div>
-                        <span class="text-xs font-semibold mt-3 step-label whitespace-nowrap" style="color: {% if step_num == 1 %}#1f2937{% else %}#9ca3af{% endif %};">
-                            {% if step_num == 1 %}Buyer Info
-                            {% elif step_num == 2 %}Packages
-                            {% elif step_num == 3 %}Add-ons
-                            {% elif step_num == 4 %}Participants
-                            {% elif step_num == 5 %}Payment
-                            {% endif %}
-                        </span>
+{# ========== 主内容区：双栏布局 ========== #}
+<div class="max-w-7xl mx-auto px-12 md:px-16 lg:px-20 pt-10 md:pt-12 pb-8 md:pb-10" style="padding-bottom: 2rem !important;">
+    <div style="padding-left: 3%; padding-right: 3%;">
+        <div class="trip-main-grid grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-10" style="max-width: 1280px; margin-left: auto; margin-right: auto;">
+        <div class="trip-content-col md:col-span-8 flex flex-col">
+            {# 组织者信息卡片：左侧 logo，右侧从上到下为行程名、地点、公司名、日期与人数（与示例图一致） #}
+            <div class="organizer-card bg-white p-6 mb-8">
+                <div class="flex gap-4 md:gap-6" style="align-items: flex-start;">
+                    {# 左侧：圆形 logo，用 .organizer-logo-wrap 强制保持正圆 #}
+                    <div class="organizer-logo-wrap flex items-center justify-center p-2" style="background-color: #004174;">
+                        <img src="{{ url_for('static', filename='favicon/favicon-dark.png') }}" alt="Nexus Horizons" class="w-[55%] h-[55%] object-contain">
                     </div>
-                    {% if step_num < 5 %}
-                    <div class="flex-1 h-0.5 mx-3 step-connector relative" data-step="{{ step_num }}" style="background: #e5e7eb;">
-                        <div class="h-full step-progress transition-all duration-500 ease-out absolute top-0 left-0" style="width: 0%; background: #d59961;"></div>
+                    {# 右侧：行程名 → 地点 → 公司名 → 日期与人数一行 #}
+                    <div class="flex-1 min-w-0 flex flex-col justify-center">
+                        <h2 class="trip-title text-xl md:text-2xl">{{ trip.title }}</h2>
+                        {% if trip.destination_text %}
+                        <p class="flex items-center gap-2 mt-1 text-sm text-gray-500">
+                            <svg class="organizer-icon w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            {{ trip.destination_text }}
+                        </p>
+                        {% endif %}
+                        <div class="flex flex-wrap items-center gap-y-1 mt-2 text-sm text-gray-500">
+                            {% if trip.start_date and trip.end_date %}
+                            <span class="flex items-center gap-2">
+                                <svg class="organizer-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                {{ trip.start_date.strftime('%b %d') }} - {{ trip.end_date.strftime('%b %d, %Y') }}
+                            </span>
+                            {% endif %}
+                            {% if trip.min_capacity or trip.capacity %}
+                            <span class="flex items-center gap-2" style="margin-left: 2rem;">
+                                <svg class="organizer-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                                Group size: {{ trip.min_capacity or 1 }}{% if trip.capacity %} - {{ trip.capacity }}{% endif %}
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {# 主内容区 #}
+            <div class="trip-main-content-sections pb-12" id="main-content">
+        {# About this trip #}
+        {% if trip.description %}
+        <section id="section-overview" class="scroll-mt-24 trip-page__section">
+            <h3 class="trip-page-section__header">About this trip</h3>
+            <div class="trip-description-overview">{{ trip.description|strip_empty_paragraphs|safe }}</div>
+        </section>
+        {% endif %}
+
+        {# What's included：绿色圆勾 + 项间浅灰分隔线 #}
+        {% if trip.trip_includes and trip.trip_includes|length > 0 %}
+        <section id="section-includes" class="scroll-mt-24 trip-page__section">
+            <h3 class="trip-page-section__header">What's included</h3>
+            <ul class="trip-includes-list">
+                {% for item in trip.trip_includes %}
+                <li>
+                    <span class="item-icon" aria-hidden="true">✓</span>
+                    <span>{{ item.title if item is mapping else item }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+        {% endif %}
+
+        {# What's not included：灰色圆叉 + 项间浅灰分隔线 #}
+        {% if trip.trip_excludes and trip.trip_excludes|length > 0 %}
+        <section id="section-excludes" class="scroll-mt-24 trip-page__section">
+            <h3 class="trip-page-section__header">What's not included</h3>
+            <ul class="trip-excludes-list">
+                {% for item in trip.trip_excludes %}
+                <li>
+                    <span class="item-icon" aria-hidden="true">✕</span>
+                    <span>{{ item.title if item is mapping else item }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+        {% endif %}
+
+        {# Available Packages：浅灰圆角容器，项间分隔线，每项右侧小 Book Now #}
+        {% if packages %}
+        <section id="section-packages" class="scroll-mt-24 trip-page__section">
+            <h3 class="trip-page-section__header">Available Packages</h3>
+            <div class="trip-packages-box">
+                {% for package in packages %}
+                {% set spots = package_spots_available.get(package.id, package.capacity) if package.capacity is not none else none %}
+                <div class="package-row">
+                    {# 上面一块：套餐名 + 金额 + Book Now #}
+                    <div class="package-head">
+                        <div class="package-info">
+                            <h6>{{ package.name }}</h6>
+                            <div class="package-availability">
+                                {% if package.booking_deadline %}Available until {{ package.booking_deadline.strftime('%B %d, %Y') }}{% endif %}
+                                {% if package.booking_deadline and spots is not none %} | {% endif %}
+                                {% if spots is not none %}<span class="{% if spots < 5 %}only-left{% endif %}">Only {{ spots }} left</span>{% endif %}
+                            </div>
+                            {% if package.description %}<div class="package-desc">{{ package.description }}</div>{% endif %}
+                        </div>
+                        <div class="package-right">
+                            <span class="package-price">${{ "%.2f"|format(package.price) }}</span>
+                            <button type="button" class="package-book-now book-now-trigger">Book Now</button>
+                        </div>
+                    </div>
+                    {# 下面一块：仅在有 Payment plan 时显示明细 #}
+                    {% if package.payment_plan_config and package.payment_plan_config.get('enabled') %}
+                    {% set ppc = package.payment_plan_config %}
+                    <div class="package-installment-block">
+                        <div class="installment-title">Payment plan</div>
+                        <div class="package-installment-row">
+                            <ul class="installment-labels">
+                                {% if ppc.get('deposit_amount') is not none %}<li>Deposit</li>{% endif %}
+                                {% for inst in (ppc.get('installments') or []) %}
+                                <li>{{ inst.get('date', '')|format_iso_date }}</li>
+                                {% endfor %}
+                            </ul>
+                            <ul class="installment-amounts">
+                                {% if ppc.get('deposit_amount') is not none %}<li class="inst-amount">${{ "%.2f"|format(ppc.get('deposit_amount') or 0) }}</li>{% endif %}
+                                {% for inst in (ppc.get('installments') or []) %}
+                                <li class="inst-amount">${{ "%.2f"|format(inst.get('amount') or 0) }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
                     </div>
                     {% endif %}
                 </div>
                 {% endfor %}
             </div>
-        </div>
+        </section>
+        {% endif %}
 
-        {# 步骤内容区域 #}
-        <div class="space-y-6">
-            {# Step 1: 购买者信息 #}
-            <div class="booking-step" data-step="1">
-                <h2 class="text-2xl font-medium text-zinc-800 mb-2 uppercase tracking-wide">Buyer Information</h2>
-                <p class="content mb-6">Please provide your contact and billing information to proceed.</p>
-                
-                {% if buyer_info_fields|length > 0 %}
-                    {% for field in buyer_info_fields|sort(attribute='display_order') %}
-                        {% if field.field_type == 'address' %}
-                        <div class="border-t border-zinc-200 pt-6 mt-6 {% if loop.first %}border-t-0 pt-0 mt-0{% endif %}">
-                            <h3 class="text-base font-medium text-zinc-800 mb-3">{{ field.field_name }}</h3>
-                            <div class="flex flex-col mb-3">
-                                <label class="text-sm font-medium mb-2">
-                                    Address
-                                    {% if field.is_required %}<span class="text-red-500 ml-1">*</span>{% endif %}
-                                </label>
-                                {{ form.buyer_address(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", required=field.is_required) }}
-                            </div>
-                            <div class="grid grid-cols-2 gap-4">
-                                <div class="flex flex-col">
-                                    <label class="text-sm font-medium mb-2">
-                                        City
-                                        {% if field.is_required %}<span class="text-red-500 ml-1">*</span>{% endif %}
-                                    </label>
-                                    {{ form.buyer_city(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", required=field.is_required) }}
-                                </div>
-                                <div class="flex flex-col">
-                                    <label class="text-sm font-medium mb-2">
-                                        State/Province
-                                        {% if field.is_required %}<span class="text-red-500 ml-1">*</span>{% endif %}
-                                    </label>
-                                    {{ form.buyer_state(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", required=field.is_required) }}
-                                </div>
-                            </div>
-                            <div class="grid grid-cols-2 gap-4 mt-4">
-                                <div class="flex flex-col">
-                                    <label class="text-sm font-medium mb-2">
-                                        ZIP/Postal Code
-                                        {% if field.is_required %}<span class="text-red-500 ml-1">*</span>{% endif %}
-                                    </label>
-                                    {{ form.buyer_zip_code(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", required=field.is_required) }}
-                                </div>
-                                <div class="flex flex-col">
-                                    <label class="text-sm font-medium mb-2">
-                                        Country
-                                        {% if field.is_required %}<span class="text-red-500 ml-1">*</span>{% endif %}
-                                    </label>
-                                    {{ form.buyer_country(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", required=field.is_required) }}
-                                </div>
-                            </div>
+        {# Available Add-Ons：与 Package 区块一致 - 浅灰圆角容器、项间分隔线、左名称/描述右价格 #}
+        {% if addons %}
+        <section id="section-addons" class="scroll-mt-24 trip-page__section">
+            <h3 class="trip-page-section__header">Available Add-Ons</h3>
+            <div class="trip-addons-box">
+                {% for addon in addons %}
+                <div class="addon-row">
+                    <div class="addon-head">
+                        <div class="addon-info">
+                            <h6>{{ addon.name }}</h6>
+                            {% if addon.description %}<div class="addon-desc">{{ addon.description }}</div>{% endif %}
                         </div>
-                        
-                        {% elif field.field_type == 'emergency_contact' %}
-                        <div class="border-t border-zinc-200 pt-6 mt-6 {% if loop.first %}border-t-0 pt-0 mt-0{% endif %}">
-                            <h3 class="text-base font-medium text-zinc-800 mb-3">{{ field.field_name }}</h3>
-                            <div class="grid grid-cols-2 gap-4">
-                                <div class="flex flex-col">
-                                    <label class="text-sm font-medium mb-2">
-                                        Contact Name
-                                        {% if field.is_required %}<span class="text-red-500 ml-1">*</span>{% endif %}
-                                    </label>
-                                    {{ form.buyer_emergency_contact_name(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", required=field.is_required) }}
-                                </div>
-                                <div class="flex flex-col">
-                                    <label class="text-sm font-medium mb-2">
-                                        Phone
-                                        {% if field.is_required %}<span class="text-red-500 ml-1">*</span>{% endif %}
-                                    </label>
-                                    {{ form.buyer_emergency_contact_phone(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", required=field.is_required) }}
-                                </div>
-                            </div>
-                        </div>
-                        
-                        {% else %}
-                        {% set field_name_lower = field.field_name|lower %}
-                        {% set is_standard_name = field_name_lower in ['first name', 'firstname', 'last name', 'lastname', 'email', 'phone'] %}
-                        <div class="flex flex-col mb-4 {% if not is_standard_name %}custom-field{% endif %}"
-                             {% if not is_standard_name %}data-field-id="{{ field.id }}"{% endif %}>
-                            <label class="text-sm font-medium mb-2">
-                                {{ field.field_name }}
-                                {% if field.is_required %}<span class="text-red-500 ml-1">*</span>{% endif %}
-                            </label>
-                            
-                            {% if field.field_name|lower == 'first name' or field.field_name|lower == 'firstname' %}
-                                {{ form.buyer_first_name(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", required=field.is_required) }}
-                            {% elif field.field_name|lower == 'last name' or field.field_name|lower == 'lastname' %}
-                                {{ form.buyer_last_name(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", required=field.is_required) }}
-                            {% elif field.field_name|lower == 'email' %}
-                                {{ form.buyer_email(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", type="email", required=field.is_required) }}
-                            {% elif field.field_name|lower == 'phone' %}
-                                {{ form.buyer_phone(class="px-2 py-2 w-full border border-zinc-400 rounded-xs", required=field.is_required) }}
-                            {% elif field.field_type == 'textarea' %}
-                                <textarea name="custom_field_{{ field.id }}" 
-                                    class="px-2 py-2 w-full border border-zinc-400 rounded-xs" rows="4"
-                                    {% if field.is_required %}required{% endif %}></textarea>
-                            {% elif field.field_type == 'select' %}
-                                <select name="custom_field_{{ field.id }}" 
-                                    class="px-2 py-2 w-full border border-zinc-400 rounded-xs"
-                                    {% if field.is_required %}required{% endif %}>
-                                    <option value="">Select an option</option>
-                                    {% if field.options %}
-                                    {% for option in field.options %}
-                                    <option value="{{ option }}">{{ option }}</option>
-                                    {% endfor %}
-                                    {% endif %}
-                                </select>
-                            {% elif field.field_type == 'date' %}
-                                <input type="date" name="custom_field_{{ field.id }}" 
-                                    class="px-2 py-2 w-full border border-zinc-400 rounded-xs"
-                                    {% if field.is_required %}required{% endif %}>
-                            {% else %}
-                                <input type="{{ 'email' if field.field_type == 'email' else 'tel' if field.field_type == 'phone' else 'text' }}"
-                                    name="custom_field_{{ field.id }}" 
-                                    class="px-2 py-2 w-full border border-zinc-400 rounded-xs"
-                                    {% if field.is_required %}required{% endif %}>
-                            {% endif %}
-                        </div>
-                        {% endif %}
-                    {% endfor %}
-                {% else %}
-                    <div class="text-center py-8 text-zinc-500">
-                        <p>No buyer information fields configured for this trip.</p>
-                    </div>
-                {% endif %}
-                
-                {{ form.buyer_custom_info(id="buyer_custom_info", type="hidden") }}
-            </div>
-
-            {# Step 2: 选择套餐 #}
-            <div class="booking-step hidden" data-step="2">
-                <h2 class="text-2xl font-medium text-zinc-800 mb-2 uppercase tracking-wide">Select Package</h2>
-                <p class="content mb-6">Choose the package that best fits your travel needs.</p>
-                
-                {% if packages %}
-                <div class="space-y-4">
-                    {% for package in packages %}
-                    <div class="package-card border border-zinc-300 p-6 hover:border-amber-800 transition-all duration-200" data-package-id="{{ package.id }}">
-                        <div class="flex items-start justify-between mb-4">
-                            <div class="flex-1">
-                                <h3 class="text-lg font-medium text-zinc-800 mb-2">{{ package.name }}</h3>
-                                {% if package.description %}
-                                <p class="text-sm text-zinc-600">{{ package.description }}</p>
-                                {% endif %}
-                            </div>
-                            <div class="ml-4 text-right">
-                                <div class="text-2xl font-medium text-amber-800">${{ "%.2f"|format(package.price) }}</div>
-                                <div class="text-xs text-zinc-500 mt-1">per person</div>
-                            </div>
-                        </div>
-                        {% if package.capacity %}
-                        {% set spots_available = package_spots_available.get(package.id, package.capacity) %}
-                        <div class="flex items-center justify-between pt-4 border-t border-zinc-200">
-                            <span class="text-xs text-zinc-600 {% if spots_available < 5 %}text-red-600{% endif %}">
-                                {{ spots_available }} spots left
-                            </span>
-                            <label class="text-sm font-medium text-zinc-700">
-                                Quantity:
-                                <input type="number" name="package_quantity_{{ package.id }}" 
-                                    value="0" min="0" max="{{ package.capacity }}"
-                                    class="w-20 px-2 py-1 ml-2 border border-zinc-400 rounded-xs text-center package-quantity"
-                                    data-package-id="{{ package.id }}"
-                                    data-package-price="{{ package.price }}">
-                            </label>
-                        </div>
-                        {% else %}
-                        <div class="flex items-center justify-end pt-4 border-t border-zinc-200">
-                            <label class="text-sm font-medium text-zinc-700">
-                                Quantity:
-                                <input type="number" name="package_quantity_{{ package.id }}" 
-                                    value="0" min="0"
-                                    class="w-20 px-2 py-1 ml-2 border border-zinc-400 rounded-xs text-center package-quantity"
-                                    data-package-id="{{ package.id }}"
-                                    data-package-price="{{ package.price }}">
-                            </label>
-                        </div>
-                        {% endif %}
-                    </div>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div class="text-center py-12">
-                    <p class="text-zinc-500">No packages available for this trip.</p>
-                </div>
-                {% endif %}
-            </div>
-
-            {# Step 3: 选择附加项 #}
-            <div class="booking-step hidden" data-step="3">
-                <h2 class="text-2xl font-medium text-zinc-800 mb-2 uppercase tracking-wide">Select Add-ons</h2>
-                <p class="content mb-6">Enhance your trip with optional add-ons. All add-ons are optional.</p>
-                
-                {% if addons %}
-                <div class="space-y-4">
-                    {% for addon in addons %}
-                    <div class="addon-card border border-zinc-300 p-6 transition-all duration-200" data-addon-id="{{ addon.id }}">
-                        <div class="flex-1">
-                            <div class="flex justify-between items-start mb-2">
-                                <h4 class="text-lg font-medium text-zinc-800">{{ addon.name }}</h4>
-                                <div class="text-xl font-medium text-amber-800 ml-4">${{ "%.2f"|format(addon.price) }}</div>
-                            </div>
-                            {% if addon.description %}
-                            <p class="text-sm text-zinc-600 mb-4">{{ addon.description }}</p>
-                            {% endif %}
-                            <div class="flex items-center pt-4 border-t border-zinc-200">
-                                <label class="text-sm font-medium text-zinc-700">
-                                    Quantity:
-                                    <input type="number" name="addon_quantity_{{ addon.id }}" 
-                                        value="0" min="0" 
-                                        class="w-20 px-2 py-1 ml-2 border border-zinc-400 rounded-xs text-center addon-quantity"
-                                        data-addon-id="{{ addon.id }}"
-                                        data-addon-price="{{ addon.price }}">
-                                </label>
-                            </div>
+                        <div class="addon-right">
+                            <span class="addon-price">${{ "%.2f"|format(addon.price) }}</span>
                         </div>
                     </div>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div class="text-center py-12">
-                    <p class="text-zinc-500">No add-ons available for this trip.</p>
-                    <p class="text-sm text-zinc-400 mt-2">You can proceed to the next step.</p>
-                </div>
-                {% endif %}
-            </div>
-
-            {# Step 4: 参与者信息 #}
-            <div class="booking-step hidden" data-step="4">
-                <h2 class="text-2xl font-medium text-zinc-800 mb-2 uppercase tracking-wide">Participant Information</h2>
-                <p class="content mb-6">Enter information for each participant based on your selected packages.</p>
-                
-                <div id="participants-container" class="space-y-6">
-                    {# 动态添加参与者表单 #}
-                </div>
-            </div>
-
-            {# Step 5: 折扣码和支付总结 #}
-            <div class="booking-step hidden" data-step="5">
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div class="lg:col-span-2 space-y-6">
-                        <div>
-                            <h2 class="text-2xl font-medium text-zinc-800 mb-2 uppercase tracking-wide">Review & Payment</h2>
-                            <p class="content mb-2">Card fees apply to credit cards: Visa/Mastercard 2.9%, AmEx 3.5%. Debit or prepaid cards have no fee.</p>
-                            <p class="text-sm text-zinc-500">Complete your payment below to finish the booking.</p>
-                        </div>
-
-                        <div class="bg-white border border-zinc-300 rounded-xs p-6 space-y-4">
-                            <h3 class="text-lg font-medium text-zinc-800">Card Details</h3>
-                            <div id="payment-element" class="rounded-xs p-3"></div>
-                            <div id="payment-message" class="text-sm text-red-600 hidden"></div>
-                        </div>
-                    </div>
-
-                    <div class="bg-white border border-zinc-300 rounded-xs p-6 space-y-4 h-fit">
-                        <h3 class="text-lg font-medium text-zinc-800">Order Summary</h3>
-                        <div id="order-summary" class="space-y-2">
-                            <p class="text-zinc-500">Loading...</p>
-                        </div>
-                        
-                        {# Subtotal #}
-                        <div class="border-t border-zinc-200 pt-3">
-                            <div class="flex justify-between items-center text-zinc-600">
-                                <span>Subtotal</span>
-                                <span id="subtotal-amount">$0.00</span>
-                            </div>
-                        </div>
-                        
-                        {# 折扣码输入 - 类似 Stripe 样式 #}
-                        <div class="border-t border-zinc-200 pt-3">
-                            {# 未应用折扣时显示输入框 #}
-                            <div id="discount-input-section">
-                                <div class="flex gap-2">
-                                    <input type="text" id="discount-code-input" 
-                                        class="flex-1 px-3 py-2 border border-zinc-300 rounded-xs text-sm focus:outline-none focus:ring-1 focus:ring-amber-800 uppercase"
-                                        placeholder="Add promotion code">
-                                    <button type="button" id="apply-discount-btn"
-                                        class="px-4 py-2 bg-zinc-800 text-white text-sm rounded-xs hover:bg-zinc-700 transition-colors">
-                                        Apply
-                                    </button>
-                                </div>
-                                <div id="discount-message" class="text-sm mt-2 hidden"></div>
-                            </div>
-                            
-                            {# 已应用折扣时显示 #}
-                            <div id="discount-applied" class="hidden">
-                                <div class="flex items-center justify-between">
-                                    <div class="flex items-center gap-2">
-                                        <span class="text-zinc-600">Discount</span>
-                                        <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded" id="discount-code-display">CODE</span>
-                                        <button type="button" id="remove-discount-btn" class="text-zinc-400 hover:text-red-500 transition-colors">
-                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                                            </svg>
-                                        </button>
-                                    </div>
-                                    <span class="text-green-600 font-medium" id="discount-amount-display">-$0.00</span>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        {# Card Fee #}
-                        <div class="border-t border-zinc-200 pt-3">
-                            <div class="flex justify-between items-center text-zinc-500">
-                                <span>Card Fee</span>
-                                <span id="fee-amount">$0.00</span>
-                            </div>
-                        </div>
-                        
-                        {# Total #}
-                        <div class="border-t border-zinc-300 pt-4">
-                            <div class="flex justify-between items-center">
-                                <span class="text-lg font-medium text-zinc-800">Total due today</span>
-                                <span id="total-amount" class="text-xl font-semibold text-zinc-900">$0.00</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        {# 导航按钮 - 简约设计 #}
-        <div class="border-t border-zinc-200 pt-6 mt-8">
-            <div class="flex items-center gap-4">
-                <button type="button" id="prevBtn" 
-                    class="w-48 px-4 py-2 bg-amber-800 text-white uppercase tracking-tight font-medium rounded-xs hover:bg-amber-800/90 transition-colors flex items-center justify-center hidden">
-                    Previous
-                </button>
-                <div class="flex-1"></div>
-                <button type="button" id="nextBtn" 
-                    class="w-48 px-4 py-2 bg-amber-800 text-white uppercase tracking-tight font-medium rounded-xs hover:bg-amber-800/90 transition-colors flex items-center justify-center">
-                    Next
-                </button>
-                <button type="submit" id="submitBtn" 
-                    class="w-48 px-4 py-2 bg-amber-800 text-white uppercase tracking-tight font-medium rounded-xs hover:bg-amber-800/90 transition-colors flex items-center justify-center hidden">
-                    Place Order
-                </button>
-            </div>
-        </div>
-    </form>
-</div>
-
-{# 行程详情（折叠显示） #}
-<div class="max-w-6xl mx-auto px-8 md:px-0 pb-16">
-    <details class="mt-8">
-        <summary class="text-lg font-medium text-indigo-800 cursor-pointer hover:text-amber-800">
-            Trip Details
-        </summary>
-        <div class="mt-4 space-y-6">
-            {% if trip.description %}
-            <div class="prose max-w-none text-zinc-700">
-                {{ trip.description|safe }}
-            </div>
-            {% endif %}
-            
-            {% if itinerary_items %}
-            <div class="space-y-4">
-                {% for item in itinerary_items %}
-                <div class="border-l-4 border-amber-800 pl-4 py-1">
-                    <h4 class="text-lg font-medium text-zinc-800">Day {{ item.day_number }}: {{ item.title }}</h4>
-                    <p class="text-zinc-600 mt-1">{{ item.description }}</p>
                 </div>
                 {% endfor %}
             </div>
-            {% endif %}
+        </section>
+        {% endif %}
+
+        {# Itinerary #}
+        {% if itinerary_items %}
+        <section id="section-itinerary" class="scroll-mt-24 trip-page__section">
+            <h2 class="trip-page-section__header">Itinerary</h2>
+            <div class="space-y-3">
+                {% for item in itinerary_items %}
+                <details class="border border-gray-200 rounded-lg overflow-hidden group">
+                    <summary class="px-4 py-3 cursor-pointer bg-gray-50 hover:bg-gray-100 flex items-center justify-between">
+                        <span class="font-medium text-gray-900">Day {{ item.day_number }}: {{ item.title }}</span>
+                        <svg class="w-5 h-5 text-gray-500 group-open:rotate-180 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </summary>
+                    <div class="px-4 py-3 text-gray-700 border-t border-gray-200">{{ item.description }}</div>
+                </details>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+            </div>
         </div>
-    </details>
+
+        {# ========== 右侧固定栏：仅总价 + Book Now，风格与参考图一致 ========== #}
+        <div class="trip-sidebar-col md:col-span-4">
+            <div class="trip-sidebar-inner md:sticky md:top-24 trip-sidebar-card p-6 bg-white">
+            {% if registration_open is defined and not registration_open and registration_date %}
+            <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                <p class="text-sm text-amber-800">Registration opens {{ registration_date.strftime('%B %d, %Y') }}.</p>
+            </div>
+            {% endif %}
+            {# 顶部总价 + Deposit（WeTravel 风格） #}
+            <div class="text-center pb-4">
+                {% if packages %}
+                <div class="font-bold text-gray-800" id="sidebar-total-price" style="font-size: 2.25rem;">${{ "%.2f"|format(packages[0].price) }}</div>
+                {% if has_installment and first_pkg.payment_plan_config and first_pkg.payment_plan_config.get('deposit_amount') is not none %}
+                <div class="text-sm text-gray-500 mt-1">Deposit: <span class="font-semibold text-gray-700">${{ "%.2f"|format(first_pkg.payment_plan_config.get('deposit_amount') or 0) }}</span></div>
+                {% endif %}
+                {% else %}
+                <div class="text-xl font-semibold text-gray-500">—</div>
+                {% endif %}
+            </div>
+            <div class="pt-4" style="border-top: 1px solid #e5e7eb;">
+                <button type="button" id="bookNowBtn" class="w-full text-white font-bold rounded-lg text-base shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-opacity" style="height: 40px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center;" {% if registration_open is defined and not registration_open %}disabled{% endif %}>
+                    Book Now
+                </button>
+            </div>
+            </div>
+        </div>
+    </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block modal %}
+{# ========== Loading 遮罩 ========== #}
+<div id="booking-loading-overlay" class="hidden fixed inset-0 bg-black/50 z-[100] flex items-center justify-center">
+    <div class="flex gap-2">
+        <span class="w-3 h-3 bg-white rounded-full animate-bounce" style="animation-delay: 0ms"></span>
+        <span class="w-3 h-3 bg-white rounded-full animate-bounce" style="animation-delay: 150ms"></span>
+        <span class="w-3 h-3 bg-white rounded-full animate-bounce" style="animation-delay: 300ms"></span>
+    </div>
 </div>
 
-{# 简约现代样式 - 优化版 #}
-<style>
-    #payment-element,
-    #payment-element .StripeElement,
-    #payment-element .StripeElement--focus {
-        border: none !important;
-        box-shadow: none !important;
-        outline: none !important;
-    }
-    /* 步骤指示器样式 - 优化 */
-    .step-indicator.active .step-circle {
-        background: #d59961 !important;
-        color: white !important;
-        box-shadow: 0 2px 8px rgba(213, 153, 97, 0.25);
-    }
-    
-    .step-indicator.completed .step-circle {
-        background: #d59961 !important;
-        color: white !important;
-    }
-    
-    .step-indicator.completed .step-number {
-        display: none !important;
-    }
-    
-    .step-indicator.completed .step-check {
-        display: block !important;
-    }
-    
-    .step-indicator.completed .step-label {
-        color: #1f2937 !important;
-    }
-    
-    /* 步骤圆圈悬停效果 */
-    .step-indicator:not(.active):not(.completed) .step-circle {
-        transition: all 0.2s ease;
-    }
-    
-    .step-indicator:not(.active):not(.completed):hover .step-circle {
-        background: #e5e7eb !important;
-        transform: scale(1.05);
-    }
-    
-    /* 连接线优化 */
-    .step-connector {
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .step-progress {
-        transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    
-    /* Package选中状态 - 根据quantity > 0 */
-    .package-card.selected {
-        border-color: #d59961;
-        border-width: 2px;
-        background-color: #fffbeb;
-    }
-    
-    /* Add-on选中状态 - 根据quantity > 0 */
-    .addon-card.selected {
-        border-color: #d59961;
-        border-width: 2px;
-        background-color: #fffbeb;
-    }
-    
-    /* 表单输入框聚焦 */
-    input:focus, textarea:focus, select:focus {
-        outline: none;
-        border-color: #d59961;
-        box-shadow: 0 0 0 3px rgba(213, 153, 97, 0.1);
-    }
-    
-    /* 表单验证错误样式 */
-    input.border-red-500,
-    textarea.border-red-500,
-    select.border-red-500 {
-        border-color: #ef4444 !important;
-        border-width: 2px !important;
-        box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
-    }
-    
-    input.border-red-500:focus,
-    textarea.border-red-500:focus,
-    select.border-red-500:focus {
-        border-color: #ef4444 !important;
-        box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
-    }
-    
-    /* 错误提示信息 */
-    .error-message {
-        display: block;
-        color: #ef4444;
-        font-size: 0.75rem;
-        margin-top: 0.25rem;
-        animation: fadeIn 0.2s ease-out;
-    }
-    
-    /* 动画 */
-    .booking-step {
-        animation: fadeIn 0.3s ease-out;
-    }
-    
-    @keyframes fadeIn {
-        from {
-            opacity: 0;
-            transform: translateY(10px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-    
-    /* 响应式优化 */
-    @media (max-width: 640px) {
-        .step-indicator .step-circle {
-            width: 2.5rem;
-            height: 2.5rem;
-            font-size: 0.875rem;
-        }
-        
-        .step-label {
-            font-size: 0.625rem;
-            margin-top: 0.5rem;
-        }
-        
-        .step-connector {
-            margin-left: 0.5rem;
-            margin-right: 0.5rem;
-        }
-    }
-    
-    /* 自定义提示框 */
-    .custom-alert {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: white;
-        border: 2px solid #d59961;
-        border-radius: 0.125rem;
-        padding: 1.5rem;
-        min-width: 300px;
-        max-width: 500px;
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-        z-index: 1000;
-        animation: alertFadeIn 0.3s ease-out;
-    }
-    
-    .custom-alert-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.5);
-        z-index: 999;
-        animation: overlayFadeIn 0.2s ease-out;
-    }
-    
-    .custom-alert-title {
-        font-size: 1.125rem;
-        font-weight: 600;
-        color: #1f2937;
-        margin-bottom: 0.75rem;
-    }
-    
-    .custom-alert-message {
-        font-size: 0.875rem;
-        color: #4b5563;
-        margin-bottom: 1.25rem;
-        line-height: 1.5;
-    }
-    
-    .custom-alert-button {
-        width: 100%;
-        padding: 0.5rem 1rem;
-        background: #d59961;
-        color: white;
-        border: none;
-        font-weight: 500;
-        font-size: 0.875rem;
-        cursor: pointer;
-        transition: background 0.2s;
-    }
-    
-    .custom-alert-button:hover {
-        background: #b45309;
-    }
-    
-    @keyframes alertFadeIn {
-        from {
-            opacity: 0;
-            transform: translate(-50%, -60%);
-        }
-        to {
-            opacity: 1;
-            transform: translate(-50%, -50%);
-        }
-    }
-    
-    @keyframes overlayFadeIn {
-        from {
-            opacity: 0;
-        }
-        to {
-            opacity: 1;
-        }
-    }
-</style>
+{# ========== 报名 Modal ========== #}
+<div id="booking-modal" class="hidden fixed inset-0" style="background-color: rgba(39, 43, 43, 0.88); z-index: 10001; height: 100vh; border: none; outline: none;">
+    <a href="{{ url_for('main.index') }}" id="booking-modal-screen-logo" class="fixed z-[10002] flex items-center pointer-events-auto" style="left: 1.5rem; top: 1rem;" aria-label="Nexus Horizons Home">
+        <img src="{{ url_for('static', filename='images/icons/logo-2-white.DyAUH4zT.svg') }}" alt="Nexus Horizons" style="width: 256px; height: 57.69px; object-fit: contain;">
+    </a>
+    {# 遮罩单独一层、在 viewport 之下，避免 fixed 与卡片在同一 flex 内导致卡片被盖住或不可见 #}
+    <div class="fixed inset-0 z-0 pointer-events-auto" id="booking-modal-backdrop" aria-hidden="true"></div>
+    <div id="booking-modal-scroll-viewport" class="z-10 w-full min-h-full" style="min-height: 100vh; border: none; outline: none; pointer-events: none;">
+        <div id="booking-modal-inner" class="flex justify-center items-center min-h-full px-4 relative" style="padding-top: 60px; padding-bottom: 60px; min-height: 100vh; box-sizing: border-box; pointer-events: auto;">
+            <div id="booking-modal-card" class="booking-modal-content relative w-full bg-white" style="max-width: 870px; margin-top: 5rem; margin-bottom: 0; border-radius: 0.5rem; overflow: visible; border: none; outline: none; display: block; pointer-events: auto;">
+            {# 关闭键放在卡片层、不进入 header，避免被装饰 SVG 盖住或挡住点击 #}
+            <button type="button" id="closeBookingModal" class="absolute border-0 rounded transition-colors text-gray-600 cursor-pointer outline-none" style="top: 12px; right: 12px; padding: 8px; margin: 0; min-width: 40px; min-height: 40px; display: flex; align-items: center; justify-content: center; border: none; outline: none; background-color: transparent; box-shadow: none; z-index: 999; pointer-events: auto;" aria-label="Close">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 22px; height: 22px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+            {# 头部：圆图+标题+日期+步骤条 #}
+            <header class="flex-shrink-0 relative flex flex-col justify-center items-center pt-0 pb-3 overflow-visible" style="background-color: #f4f4f5; border-radius: 0.5rem 0.5rem 0 0; height: 180px;">
+                <div class="absolute pointer-events-none overflow-hidden booking-modal-header-deco" style="right: 0; bottom: 0; width: 807px; max-width: 100%; height: 180px; z-index: 0; opacity: 1; border-top-right-radius: 0.5rem; isolation: isolate;">
+                    <div class="absolute pointer-events-none" style="right: 0; bottom: 0; width: 807px; max-width: 100%; height: 300px;">
+                    <svg width="807" height="300" viewBox="0 0 577 214" xmlns="http://www.w3.org/2000/svg" style="display: block; width: 100%; height: 100%; object-fit: contain;"><defs><clipPath id="clip0_modal_header"><rect x="305" y="453" width="577" height="214"/></clipPath></defs><g clip-path="url(#clip0_modal_header)" transform="translate(-305 -453)"><path d="M388.686 161.594 388.686 161.275C386.455 155.857 382.949 150.439 378.487 145.498 369.882 136.255 357.451 129.403 341.674 129.243L341.196 129.243C331.794 129.243 322.073 131.474 312.83 135.618 303.587 139.921 294.981 146.136 287.81 153.945 286.535 155.22 284.622 155.698 283.029 154.901 280.957 153.945 278.726 153.148 276.335 152.67L276.017 152.67C273.626 152.032 271.076 151.873 268.686 151.714 255.14 151.554 240.001 157.769 228.367 167.65L227.57 168.287C217.531 177.212 210.359 188.845 210.2 201.116 210.2 212.112 214.662 224.064 226.774 232.67 236.813 239.841 252.272 244.622 274.264 244.941L274.582 244.941C281.116 244.941 287.491 244.463 293.547 242.869 299.124 241.435 304.702 239.363 309.802 236.495 311.714 235.379 314.264 236.017 315.379 237.929 318.567 243.347 323.985 248.766 330.678 254.025L331.316 254.503C340.081 261.037 351.077 267.411 362.87 272.829 385.818 283.347 411.953 290.519 432.033 290.837 456.256 291.156 475.699 284.941 489.404 275.379 504.543 264.702 512.83 249.881 512.99 235.22 512.99 227.73 511.396 221.196 508.527 215.459 505.659 209.562 501.515 204.463 496.734 199.841 488.926 192.351 509.962 191.076 512.671 191.236 525.579 191.395 537.053 194.104 547.571 197.61 584.544 210.2 611.317 233.786 654.345 200.479 668.528 189.642 684.623 177.052 711.396 171.475 736.576 166.216 754.265 170.518 771.636 178.327L769.564 176.415C750.122 159.204 734.345 145.18 712.034 144.861 698.647 144.702 684.942 149.801 671.396 154.901 656.894 160.319 642.392 165.897 626.934 165.578 617.213 165.578 606.695 163.028 597.133 158.566 589.165 154.901 581.675 149.961 575.779 143.905 568.448 150.439 560.002 155.379 550.918 158.885 540.4 163.028 528.766 164.941 517.292 164.781 501.834 164.622 487.173 160.16 476.017 151.076 466.774 143.586 460.081 132.909 457.531 118.885 442.232 117.929 428.527 111.554 418.647 101.833 411.953 95.2991 406.854 87.3309 404.145 78.4066L400.32 77.9285 393.945 77.6098C381.196 77.4504 368.447 79.8409 356.814 84.7811 345.658 89.562 335.618 96.574 327.65 105.658 326.854 106.614 325.579 107.092 324.304 107.092L318.885 106.773C303.108 106.614 290.997 109.642 281.435 114.901 272.033 120.16 264.861 127.49 259.284 135.937 258.009 137.849 255.459 138.327 253.706 137.052L252.909 136.255C244.303 126.853 234.104 119.841 223.108 114.901 211.475 109.801 198.885 107.092 186.295 106.933 170.678 106.773 155.22 110.439 141.992 117.769 129.562 124.622 119.044 134.821 112.032 148.208 111.076 150.12 108.526 150.917 106.614 149.961L106.136 149.642C100.877 145.658 95.1397 142.789 89.4026 140.877 83.1875 138.805 76.813 137.849 70.2791 137.69 52.2711 137.53 34.1037 144.702 20.7172 156.813 8.44624 168.128 0.318726 183.746 0 201.913L0 202.391C-0.159363 223.108 7.3307 239.045 20.0797 249.881 42.2312 268.527 80.7971 270.917 108.367 262.63 118.566 259.602 127.809 254.821 136.415 248.766 138.168 247.491 140.718 247.969 141.992 249.722L141.992 250.041C151.714 264.543 165.578 276.017 181.355 283.826 198.248 292.272 217.69 296.734 236.813 297.053 254.981 297.212 273.308 293.865 289.403 286.216 302.63 279.841 314.423 270.758 323.188 258.327 318.089 254.025 313.626 249.722 310.599 245.26 305.818 247.65 300.718 249.403 295.618 250.678 288.925 252.272 281.913 252.909 274.742 252.909L274.264 252.909C250.359 252.59 233.626 247.172 222.311 239.204 207.65 228.845 202.072 214.503 202.391 200.957 202.391 188.048 208.925 175.777 218.487 165.897 216.415 164.941 214.343 163.985 212.112 163.347 208.128 162.232 204.144 161.594 200.16 161.435L199.682 161.435C189.483 161.435 179.602 164.941 172.112 171.475 164.622 178.008 159.682 187.57 159.522 199.841L159.522 200.319C159.522 209.722 160.797 216.574 164.781 221.993 168.925 227.57 176.096 231.873 187.889 236.176 189.961 236.973 191.076 239.204 190.279 241.276 189.483 243.347 187.252 244.463 185.18 243.666 171.793 238.885 163.506 233.626 158.247 226.774 152.988 219.762 151.395 211.315 151.554 200.16L151.554 199.841C151.554 192.192 153.307 185.499 156.016 179.602L151.714 178.805C148.686 178.327 145.817 178.008 143.586 178.008 131.156 178.008 116.494 181.196 105.817 187.73 97.6895 192.829 91.9525 199.841 91.7931 208.606 91.7931 216.574 94.9804 220.399 97.8489 223.746L99.2832 225.499C100.717 227.252 100.558 229.801 98.8051 231.236 97.0521 232.67 94.5023 232.511 93.068 230.758L91.6337 229.005C87.809 224.542 83.5062 219.602 83.6656 208.606 83.6656 196.654 91.1556 187.411 101.514 181.036 113.466 173.546 129.881 169.881 143.745 170.04 146.455 170.04 149.801 170.518 152.988 170.997 155.538 171.475 158.088 171.953 160.319 172.431 162.232 169.881 164.303 167.491 166.694 165.419 175.618 157.61 187.411 153.467 199.522 153.467L199.841 153.467C204.622 153.467 209.403 154.263 214.025 155.698 217.531 156.813 221.036 158.247 224.383 160.16 237.132 149.801 253.547 143.427 268.367 143.586 271.395 143.586 274.423 143.905 277.451 144.542L277.77 144.542C279.682 145.02 281.594 145.658 283.507 146.295 290.997 138.646 299.762 132.431 309.164 128.128 319.363 123.506 330.2 120.957 340.877 120.957L341.196 120.957C359.523 121.116 374.025 129.243 383.905 139.761 388.049 144.224 391.555 149.323 393.945 154.423 396.336 153.467 398.726 152.67 400.957 152.192 404.623 151.395 408.288 150.917 411.794 150.917 423.587 150.917 433.627 156.176 440.957 163.825 448.766 171.953 453.228 183.108 453.069 194.264 452.91 207.65 446.376 217.531 437.77 224.542 424.702 235.22 406.216 239.204 398.726 239.204L396.017 239.204C396.017 239.204 393.308 238.726 393.308 238.726 391.077 238.407 389.643 236.176 389.961 234.104 390.28 231.873 392.511 230.439 394.583 230.758L396.655 231.076 398.567 231.076C405.101 231.236 420.878 227.73 432.352 218.327 439.364 212.59 444.623 204.781 444.782 194.104 444.782 185.02 441.117 175.937 434.902 169.244 429.005 163.028 420.878 159.044 411.475 158.885 408.607 158.885 405.738 159.204 402.551 159.841 400.639 160.319 398.726 160.957 396.655 161.594 398.089 165.897 398.726 170.2 398.726 174.184L398.726 174.503C398.726 186.455 392.989 198.248 384.543 206.694 376.097 215.14 364.782 220.718 352.989 220.718L352.67 220.718C344.383 220.718 336.734 218.009 331.316 213.228 326.216 208.606 323.029 202.232 323.188 194.104 323.188 189.164 324.782 184.224 327.969 180.558 330.838 177.212 334.981 174.821 340.559 174.343 342.79 174.184 344.702 175.777 345.021 178.008 345.18 180.24 343.587 182.152 341.356 182.471 338.168 182.789 335.618 184.064 334.025 185.977 332.113 188.208 331.156 191.236 331.156 194.423 331.156 200.001 333.228 204.303 336.575 207.331 340.559 210.837 346.296 212.75 352.511 212.75L352.83 212.75C362.391 212.75 371.635 208.128 378.487 201.116 385.499 193.945 390.121 184.383 390.28 174.503L387.571 160.957 387.571 160.957ZM411.157 73.6257C410.041 69.6416 409.563 65.4982 409.563 61.3548L409.563 61.036C409.882 43.6655 420.24 28.3666 435.38 17.3706 450.679 6.37452 470.599 0 489.563 0L490.041 0C511.715 0.318726 530.679 8.28688 544.384 20.0797 556.496 30.279 564.623 43.1874 567.173 56.2551L567.173 56.2551C567.81 59.4424 567.97 62.4703 567.97 65.4982 567.97 73.4664 564.464 80.7971 558.567 85.8967 552.99 90.8369 544.862 93.7055 534.822 93.7055 526.217 93.7055 517.77 91.1556 511.715 87.1716 506.615 83.825 503.268 79.5221 503.268 74.7413 503.268 71.7134 505.181 68.048 507.571 65.0201 510.121 61.8329 513.149 59.6018 515.221 59.4424 517.452 59.4424 519.205 57.3707 519.045 55.1396 519.045 52.9085 516.974 51.1555 514.742 51.3149 510.599 51.6336 505.181 55.1396 501.356 59.9205 497.85 64.0639 495.3 69.4823 495.3 74.5819 495.3 82.3907 500.081 89.0839 507.412 93.8648 514.742 98.6457 524.782 101.514 534.822 101.674 546.934 101.674 556.814 98.0083 563.826 91.9525 571.476 85.2592 575.779 75.8568 575.938 65.6576 575.938 63.1078 575.938 60.7173 575.46 58.1675 578.328 57.052 581.516 56.2551 584.703 55.6177 589.324 54.8209 594.105 54.3428 598.886 54.5022 612.432 54.6615 626.297 58.3269 636.018 64.8607 643.986 70.2791 649.245 77.7691 649.245 87.1716 649.245 90.8369 648.129 94.821 646.536 98.8051 644.623 103.427 641.755 108.048 638.568 112.351 638.249 112.829 637.93 113.466 637.771 114.263 637.452 116.494 639.046 118.566 641.277 118.885L646.695 119.522 652.113 119.841C660.719 119.841 669.165 118.247 679.205 116.335 692.432 113.785 708.209 110.598 728.767 110.917 782.472 111.554 796.656 133.387 809.883 153.945 822.791 174.024 835.062 192.829 876.656 193.467 895.461 193.626 915.062 189.801 934.823 185.817 953.469 182.152 972.274 178.327 989.644 178.168 1032.03 177.849 1065.82 190.598 1097.53 202.55 1130.2 214.821 1160.8 226.295 1196.66 222.949 1186.3 225.021 1175.78 225.977 1165.26 225.817 1138.17 225.499 1118.41 218.168 1098.33 210.837 1077.45 203.188 1056.26 195.379 1026.46 195.06 990.919 194.582 971.955 200.001 953.788 205.26L953.469 205.26C934.027 210.997 915.381 216.256 877.293 213.387 844.146 210.837 821.516 202.232 802.871 193.307 792.353 185.658 783.429 177.53 775.142 170.2 754.584 151.873 737.691 137.052 712.353 136.733 697.372 136.574 683.03 141.992 668.687 147.251 654.982 152.51 640.958 157.61 627.253 157.451 618.647 157.451 609.404 155.06 600.799 151.235 592.512 147.411 585.022 142.152 579.444 135.618L579.285 135.618C577.691 133.865 575.141 133.706 573.547 135.299 566.376 142.311 557.771 147.73 548.368 151.395 538.806 155.06 528.288 156.973 517.611 156.813 504.065 156.654 490.997 152.829 481.436 145.02 472.989 138.168 467.093 128.128 465.499 114.741 465.34 112.67 463.587 111.076 461.515 111.076L461.356 111.076C446.854 110.917 433.945 105.18 424.862 96.0959 418.647 90.0401 414.025 82.3907 411.794 73.9444L411.794 73.6257Z" stroke="#FFFFFF" stroke-width="1.32" fill="none" fill-rule="evenodd" transform="matrix(1.01087 0 0 1 305 456.07)"/></g></svg>
+                    </div>
+                </div>
+                <img src="{{ url_for('static', filename=trip.hero_image or 'images/backgrounds/tibet_background.jpg') }}" alt="Trip Image" class="rounded-full overflow-hidden object-cover flex-shrink-0 mb-2 relative" style="width: 103px; height: 103px; max-width: 103px; max-height: 103px; z-index: 20; margin-top: -52px;">
+                <div class="relative z-10 w-full flex flex-col items-center px-4 pb-4" style="gap: 0.75rem;">
+                    <h2 class="text-center px-3 line-clamp-2 m-0" style="font-size: 1.25rem; font-weight: 700; line-height: 1.35; color: #1f2937;">{{ trip.title }}</h2>
+                    {% if trip.start_date and trip.end_date %}
+                    <div class="flex justify-center items-center gap-2">
+                        <svg class="flex-shrink-0" style="width: 14px; height: 14px; color: #6b7280;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        <span style="font-size: 0.875rem; font-weight: 400; color: #4b5563;">{{ trip.start_date.strftime('%b %d') }} - {{ trip.end_date.strftime('%b %d, %Y') }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="flex items-center justify-center overflow-x-auto flex-wrap gap-x-1 gap-y-0 mt-1">
+                        <div class="flex items-center gap-x-1" id="modal-step-tabs" role="tablist">
+                            <button type="button" class="modal-step-tab whitespace-nowrap cursor-pointer py-0 border-0 bg-transparent" style="color: #1f2937;" data-step="1" aria-selected="true">Package</button>
+                            <span class="modal-step-sep">&gt;</span>
+                            <button type="button" class="modal-step-tab whitespace-nowrap cursor-pointer py-0 border-0 bg-transparent" style="color: #9ca3af;" data-step="2" aria-selected="false">Participant info</button>
+                            {% if addons %}
+                            <span class="modal-step-sep">&gt;</span>
+                            <button type="button" class="modal-step-tab whitespace-nowrap cursor-pointer py-0 border-0 bg-transparent" style="color: #9ca3af;" data-step="3" aria-selected="false">Add-ons</button>
+                            {% endif %}
+                            <span class="modal-step-sep">&gt;</span>
+                            <button type="button" class="modal-step-tab whitespace-nowrap cursor-pointer py-0 border-0 bg-transparent" style="color: #9ca3af;" data-step="{{ 4 if addons else 3 }}" aria-selected="false">Payment</button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+            {# 内容区：不设固定高度，由内容撑高，使 #booking-modal-card 总高超出视口时 #booking-modal 出现滚动 #}
+            <div id="booking-modal-scroll" class="booking-modal-body flex flex-col lg:flex-row flex-shrink-0" style="border-bottom-left-radius: 0.5rem;">
+                {# 左侧列 #}
+                <div id="booking-modal-left-col" class="w-full lg:w-0 lg:flex-1 lg:min-w-0 flex flex-col min-w-0" style="border-bottom-left-radius: 0.5rem;">
+                    <form method="POST" action="" id="bookingForm" class="w-full flex flex-col">
+                        {{ form.csrf_token }}
+                        {{ form.buyer_custom_info(id='buyer_custom_info', type='hidden') }}
+                        {% if registration_open is defined and not registration_open %}
+                        <div class="absolute inset-0 bg-white/70 z-10 cursor-not-allowed flex items-center justify-center"><p class="text-amber-800 font-medium">Registration not yet open.</p></div>
+                        {% endif %}
+                        {# 步骤区 + 付款结果（成功/失败/处理中） #}
+                        <div id="booking-modal-left-inner" class="booking-main-content w-full lg:max-w-[535px] bg-white rounded-bl-lg lg:rounded-bl-2xl flex flex-col">
+                            <div id="modal-form-area" class="flex flex-col">
+                                {% include 'booking/_modal_steps_experimental.html' if use_experimental_modal|default(false) else 'booking/_modal_steps.html' %}
+                                {# Continue 与 package card 同宽，位于表单区内 #}
+                                <div id="booking-modal-btn-bar" class="booking-modal-footer w-full bg-white rounded-b flex gap-3 flex-shrink-0 booking-btn-bar-spaced">
+                                    <button type="button" id="nextBtn" form="bookingForm" class="btn-neon-green flex-1 w-full rounded border font-normal" style="height: 40px; min-height: 40px; font-size: 14px; display: inline-flex; align-items: center; justify-content: center;">Continue</button>
+                                </div>
+                            </div>
+                            {# 付款结果区：处理中 / 成功 / 失败，默认隐藏 #}
+                            <div id="booking-modal-result" class="booking-modal-result hidden flex flex-col flex-1 min-h-[280px]" aria-hidden="true">
+                                <div id="booking-result-loading" class="booking-result-state flex flex-col items-center justify-center flex-1 py-12 px-6">
+                                    <span class="booking-result-spinner w-10 h-10 border-2 border-gray-200 border-t-blue-600 rounded-full animate-spin mb-4" aria-hidden="true"></span>
+                                    <p class="text-gray-600 text-base">Processing payment…</p>
+                                </div>
+                                <div id="booking-result-success" class="booking-result-state hidden flex flex-col flex-1 py-10 px-6">
+                                    <div class="rounded-full bg-green-100 p-4 w-fit mx-auto mb-6">
+                                        <svg class="h-12 w-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                    </div>
+                                    <h2 class="text-2xl font-bold text-gray-900 text-center mb-3">Booking Confirmed!</h2>
+                                    <p class="text-gray-600 text-center mb-6">Thank you for booking with Nexus Horizons. A confirmation email has been sent to your inbox.</p>
+                                    <div id="booking-result-receipt-wrap" class="flex justify-center mb-6">
+                                        <a id="booking-result-receipt-link" href="#" target="_blank" rel="noopener" class="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium">Download receipt</a>
+                                    </div>
+                                    <button type="button" id="booking-result-close-btn" class="w-full rounded border font-normal mt-auto inline-flex items-center justify-center" style="height: 40px; min-height: 40px; font-size: 14px;">Close</button>
+                                </div>
+                                <div id="booking-result-failure" class="booking-result-state hidden flex flex-col flex-1 py-10 px-6">
+                                    <div class="rounded-full bg-red-100 p-4 w-fit mx-auto mb-6">
+                                        <svg class="h-12 w-12 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                    </div>
+                                    <h2 class="text-2xl font-bold text-gray-900 text-center mb-3">Payment Failed</h2>
+                                    <p class="text-gray-600 text-center mb-6">Your payment could not be completed. Please try again.</p>
+                                    <button type="button" id="booking-result-try-again-btn" class="border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 px-4 py-2 font-medium w-full" style="height: 44px;">Try Again</button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                {# 右侧：Your Booking 标题；Discount code 与 Apply 等高 #}
+                <div id="booking-modal-right" class="booking-sidebar w-full lg:w-[335px] lg:min-w-[335px] lg:min-h-[247px] flex-shrink-0 lg:sticky lg:top-[50px] lg:self-start" style="border-radius: 0 0 0.5rem 0; padding: 16px 30px 0 30px; background-color: #faf9f6;">
+                            <div class="flex flex-row justify-between items-center pb-4 border-b border-gray-200">
+                                <h3 class="booking-sidebar-title text-[16px] font-medium leading-[26px] text-gray-900" style="text-transform: none; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">Your Booking</h3>
+                            </div>
+                            <div id="discount-input-section" class="flex justify-between items-center gap-2 py-4 border-b border-gray-200">
+                                <input type="text" id="discount-code-input" class="discount-input-match flex-1 min-w-0" placeholder="Discount code" value="">
+                                <button type="button" id="apply-discount-btn" class="apply-discount-btn-match flex-shrink-0">Apply</button>
+                            </div>
+                            <div id="discount-message" class="text-sm hidden mt-2"></div>
+                            <div id="discount-applied" class="hidden py-2">
+                                <div class="flex items-center justify-between text-sm">
+                                    <span class="text-green-700">Discount: <span id="discount-code-display"></span></span>
+                                    <span class="text-green-600 font-medium" id="discount-amount-display"></span>
+                                    <button type="button" id="remove-discount-btn" class="text-red-600 hover:underline ml-2">Remove</button>
+                                </div>
 
-{# 加载 booking.js #}
-<script src="{{ url_for('static', filename='js/booking.js') }}"></script>
+                            </div>
+                            <div id="order-summary" class="space-y-2 text-sm text-gray-700 py-2">
+                                <p class="text-gray-500">Select packages to see total.</p>
+                            </div>
+                            <section class="py-4 border-t border-gray-200">
+                                <div class="flex justify-between items-start" data-testid="trip-total-row">
+                                    <p class="font-medium text-[13px] leading-[21px] text-gray-900">Trip Total</p>
+                                    <p id="trip-total-amount" class="text-right leading-[23px] font-semibold text-[18px] text-gray-900">$0.00</p>
+                                </div>
+                            </section>
+                            <div class="pt-2 text-[13px] text-gray-600" style="border-top: 1px solid #e5e7eb;">
+                                <div class="flex justify-between"><span>Fee</span><span id="fee-amount">$0.00</span></div>
+                            </div>
+                            <div class="border-t border-gray-200 pt-3">
+                                <div class="flex justify-between items-center">
+                                    <span class="font-semibold text-gray-900">Due at Booking</span>
+                                    <span id="total-amount" class="text-lg font-bold text-gray-900">$0.00</span>
+                                </div>
+                            </div>
+                            <div id="amount-paid-row" class="border-t border-gray-200 pt-3 hidden">
+                                <div class="flex justify-between items-center">
+                                    <span class="font-semibold text-gray-900">Amount paid</span>
+                                    <span id="amount-paid" class="text-lg font-bold text-gray-900">$0.00</span>
+                                </div>
+                            </div>
+                        </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>
+</div>{# end #booking-modal #}
+{% endblock %}
 
-{# 强制确保Next按钮显示 #}
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script>
-    (function() {
-        function ensureNextButtonVisible() {
-            const nextBtn = document.getElementById('nextBtn');
-            if (nextBtn) {
-                nextBtn.style.display = 'flex';
+(function() {
+    /** 两位数年 pivot：30–99 → 1930–1999，0–29 → 2000–2029，避免 88 被当成 2088、08 被当成 1908 */
+    function fullYearFromTwoDigit(y) {
+        if (y >= 100) return y;
+        return y <= 29 ? 2000 + y : 1900 + y;
+    }
+    /** 解析多种键入格式为 Date（统一用本地时间，避免 UTC 导致日期错位） */
+    function parseTypedDate(str) {
+        if (!str || typeof str !== 'string') return undefined;
+        var s = str.trim();
+        if (!s) return undefined;
+        var d;
+        if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(s)) {
+            var p = s.split('-');
+            d = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+        } else if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s)) {
+            var parts = s.split('/');
+            var y = fullYearFromTwoDigit(parseInt(parts[2], 10));
+            d = new Date(y, parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
+        } else if (/^\d{1,2}-\d{1,2}-\d{2,4}$/.test(s)) {
+            var parts = s.split('-');
+            var y = fullYearFromTwoDigit(parseInt(parts[2], 10));
+            d = new Date(y, parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+        } else {
+            if (/^\d{1,2}$/.test(s)) {
+                var y = fullYearFromTwoDigit(parseInt(s, 10));
+                d = new Date(y, 0, 1);
+            } else {
+                d = new Date(s);
+                if (!isNaN(d.getTime()) && d.getFullYear() >= 1 && d.getFullYear() <= 99) {
+                    d = new Date(fullYearFromTwoDigit(d.getFullYear()), d.getMonth(), d.getDate());
+                }
             }
         }
-        ensureNextButtonVisible();
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', ensureNextButtonVisible);
-        }
-        setTimeout(ensureNextButtonVisible, 200);
-    })();
+        return isNaN(d.getTime()) ? undefined : d;
+    }
+    /** 用输入框的值同步到 Flatpickr，保证「最后操作」为准：先选日历再键入时，以键入为准 */
+    function syncInputToPicker(inputEl, fp) {
+        var val = (inputEl.value || '').trim();
+        if (!val) return;
+        var d = parseTypedDate(val);
+        if (!d) return;
+        var cur = fp.selectedDates[0];
+        if (cur && cur.getTime() === d.getTime()) return;
+        fp.setDate(d, true);
+    }
+    function initFlatpickrOnDates() {
+        if (typeof flatpickr === 'undefined') return;
+        document.querySelectorAll('.fp-date:not([data-fp-init])').forEach(function(el) {
+            el.dataset.fpInit = '1';
+            function updateFpDateFilled() {
+                var hasValue = el.value && el.value.trim();
+                if (hasValue) {
+                    el.classList.add('fp-date-filled');
+                    el.style.setProperty('background-color', 'rgba(0, 102, 255, 0.1)', 'important');
+                } else {
+                    el.classList.remove('fp-date-filled');
+                    el.style.removeProperty('background-color');
+                }
+            }
+            var fp = flatpickr(el, {
+                dateFormat: 'Y-m-d',
+                allowInput: true,
+                static: false,
+                disableMobile: true,
+                parseDate: parseTypedDate,
+                onClose: function() {
+                    syncInputToPicker(el, fp);
+                    setTimeout(updateFpDateFilled, 0);
+                },
+                onChange: function() {
+                    setTimeout(updateFpDateFilled, 0);
+                }
+            });
+            el.addEventListener('blur', function() { syncInputToPicker(el, fp); updateFpDateFilled(); });
+            el.addEventListener('change', function() { syncInputToPicker(el, fp); updateFpDateFilled(); });
+            el.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    syncInputToPicker(el, fp);
+                    fp.close();
+                    updateFpDateFilled();
+                }
+            }, true);
+        });
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initFlatpickrOnDates);
+    } else {
+        initFlatpickrOnDates();
+    }
+    window.initFlatpickrOnDates = initFlatpickrOnDates;
+})();
 </script>
-
-{# 传递数据到 JavaScript #}
+<script src="{{ url_for('static', filename='js/booking.js') }}"></script>
+<script src="{{ url_for('static', filename='js/booking-modal.js') }}"></script>
+<script src="https://js.stripe.com/v3/"></script>
 <script>
-    window.tripData = {
-        id: {{ trip.id }},
-        title: {{ trip.title|tojson }},
-        packages: [
-            {% for package in packages %}
-            {
-                id: {{ package.id }},
-                name: {{ package.name|tojson }},
-                price: {{ package.price|default(0) }},
-                description: {{ package.description|tojson if package.description else 'null' }},
-                capacity: {{ package.capacity|tojson if package.capacity is not none else 'null' }},
-                payment_plan_config: {{ package.payment_plan_config|tojson if package.payment_plan_config else 'null' }}
-            }{% if not loop.last %},{% endif %}
-            {% endfor %}
-        ],
-        addons: [
-            {% for addon in addons %}
-            {
-                id: {{ addon.id }},
-                name: {{ addon.name|tojson }},
-                price: {{ addon.price|default(0) }},
-                description: {{ addon.description|tojson if addon.description else 'null' }}
-            }{% if not loop.last %},{% endif %}
-            {% endfor %}
-        ],
-        custom_questions: [
-            {% for question in custom_questions %}
-            {
-                id: {{ question.id }},
-                label: {{ question.label|tojson }},
-                type: {{ question.type|tojson }},
-                options: {{ question.options|tojson if question.options else 'null' }},
-                required: {{ question.required|lower if question.required else 'false' }}
-            }{% if not loop.last %},{% endif %}
-            {% endfor %}
-        ]
-    };
-            window.paymentConfig = {
-                publishableKey: {{ publishable_key|tojson }}
-            };
+window.tripData = {
+    id: {{ trip.id }},
+    title: {{ trip.title|tojson }},
+    hasAddons: {{ 'true' if addons else 'false' }},
+    packages: [
+        {% for package in packages %}
+        { id: {{ package.id }}, name: {{ package.name|tojson }}, price: {{ package.price|default(0) }}, description: {{ package.description|tojson if package.description else 'null' }}, capacity: {{ package.capacity|tojson if package.capacity is not none else 'null' }}, payment_plan_config: {{ package.payment_plan_config|tojson if package.payment_plan_config else 'null' }}, booking_deadline: {{ package.booking_deadline.strftime('%Y-%m-%d')|tojson if package.booking_deadline else 'null' }} }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ],
+    addons: [
+        {% for addon in addons %}
+        { id: {{ addon.id }}, name: {{ addon.name|tojson }}, price: {{ addon.price|default(0) }}, description: {{ addon.description|tojson if addon.description else 'null' }} }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ],
+    custom_questions: [
+        {% for question in custom_questions %}
+        { id: {{ question.id }}, label: {{ question.label|tojson }}, type: {{ question.type|tojson }}, options: {{ question.options|tojson if question.options else 'null' }}, required: {{ question.required|lower }} }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ]
+};
+window.paymentConfig = { publishableKey: {{ publishable_key|tojson }} };
+window.registrationOpen = {{ 'true' if registration_open is defined and registration_open else 'false' }};
+window.packageSpotsAvailable = {{ package_spots_available|tojson }};
 </script>
-        <script src="https://js.stripe.com/v3/"></script>
+{# 窄屏/移动端：column 顺序，按钮栏在卡片最底部（与弹窗一体）；弹窗下移露出 logo；圆形图下移一半叠在 header 上。大屏 grid 已移除，避免未包裹的 @media 导致弹窗错位/消失。 #}
+<style id="booking-modal-narrow-styles">
+@media (max-width: 1023px) {
+    #booking-modal-scroll-viewport { overflow-x: hidden !important; }
+    #booking-modal-scroll {
+        display: flex !important;
+        flex-direction: column !important;
+        min-width: 0 !important;
+    }
+    #booking-modal-inner {
+        padding-top: 7rem !important;
+        padding-bottom: 1.5rem !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+    }
+    #booking-modal-left-col,
+    #booking-modal-right { min-width: 0 !important; max-width: 100% !important; }
+    /* 仅窄屏：防止 header 内 807px 装饰块把整卡撑宽，导致弹窗左移/只显示右侧；保留四角圆角 */
+    #booking-modal-card {
+        max-width: 100% !important;
+        width: 100% !important;
+        overflow: visible !important;
+        box-sizing: border-box !important;
+        border-radius: 0.5rem !important;
+    }
+    #booking-modal-card header > div:nth-child(2) {
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+    /* 所有视口下限制 header 装饰宽度，避免撑开卡片导致弹窗/按钮错位 */
+    #booking-modal-card .booking-modal-header-deco,
+    #booking-modal-card .booking-modal-header-deco > div { max-width: 100% !important; }
+    #booking-modal-btn-bar {
+        flex-shrink: 0 !important;
+        background: #fff !important;
+        box-shadow: 0 -1px 0 0 rgba(0,0,0,0.06) !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+    }
+    #booking-modal #nextBtn { max-width: 100% !important; min-width: 0 !important; }
+    /* 右侧 Your Booking 底部留白，避免被固定 CONTINUE 遮住 Fee、Due at Booking（覆盖内联 padding） */
+    #booking-modal #booking-modal-right { padding-bottom: max(120px, calc(80px + env(safe-area-inset-bottom, 0px))) !important; }
+}
+/* 弹窗内层与滚动区：保证不撑出视口、按钮栏完整可见 */
+#booking-modal-inner { max-width: 100% !important; box-sizing: border-box !important; min-width: 0 !important; }
+#booking-modal-scroll { min-width: 0 !important; }
+</style>
 {% endblock %}

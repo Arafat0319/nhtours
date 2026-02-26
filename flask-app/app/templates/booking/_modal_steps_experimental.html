@@ -1,0 +1,232 @@
+{# 实验用弹窗步骤（design-preview 页使用）。Step 1 响应式：p-4 lg:p-8、sm 断点标题/价格行、overflow-x-auto 表格。 #}
+{# Step 1: Select Package（设计稿 + 响应式修复） #}
+<div class="booking-step" data-step="1">
+    <section class="booking-step1-section w-full min-w-0 pt-0 px-4 pb-4 lg:px-8 lg:pb-8">
+        <div class="mb-6">
+            <h3 class="booking-step-title text-[16px] font-medium leading-[26px] text-gray-900 mb-2">Select your package</h3>
+            <p id="step1-error-message" class="step1-error-message text-red-500 text-sm mt-1 hidden" role="alert">Please select at least one package.</p>
+        </div>
+        <div class="space-y-4">
+            {% for package in packages %}
+            {% set ppc = package.payment_plan_config %}
+            {% set has_installment = ppc and ppc.get('enabled') %}
+            {% set deposit_amt = (ppc.get('deposit_amount') or ppc.get('deposit') or 0) if ppc else 0 %}
+            {% set spots = package_spots_available.get(package.id, package.capacity) if package.capacity is not none else none %}
+            {% set max_qty = [5, package.capacity or 100]|min %}
+            <div class="package-card relative w-full border-2 rounded-xl p-4 lg:p-6 transition-all cursor-pointer group min-w-0 {{ 'border-[#0066ff] bg-blue-50/30 shadow-sm' if has_installment else 'border-slate-100 hover:border-[#0066ff]/30' }} bg-white" data-package-id="{{ package.id }}" data-has-installment="{{ 'true' if has_installment else 'false' }}" data-deposit="{{ deposit_amt }}" data-testid="package-row-{{ loop.index0 }}">
+                {% if has_installment %}
+                <div class="absolute top-4 right-4 shrink-0">
+                    <svg fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                </div>
+                {% endif %}
+                <div class="flex flex-col gap-2 min-w-0">
+                    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 sm:gap-4">
+                        <div class="flex-1 min-w-0">
+                            <h4 class="text-lg font-bold text-slate-900">{{ package.name }}</h4>
+                            {% if package.description %}
+                            <p class="pkg-card-detail text-sm text-slate-600 mt-1 line-clamp-2 lg:line-clamp-none">{{ package.description }}</p>
+                            {% endif %}
+                        </div>
+                        <div class="text-left sm:text-right shrink-0">
+                            <span class="text-lg sm:text-xl font-bold text-slate-900" data-testid="option-price">${{ (package.price)|format_price }}</span>
+                        </div>
+                    </div>
+                    <div class="pkg-card-stepper-row mt-4 sm:mt-6 flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-slate-100 {{ 'opacity-100' if has_installment else 'opacity-50 group-hover:opacity-100' }} transition-opacity">
+                        <span class="text-sm font-semibold text-slate-700">Travelers</span>
+                        <div class="pkg-stepper-wrapper flex items-center border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm shrink-0" data-package-id="{{ package.id }}" data-max-qty="{{ max_qty }}">
+                            <input type="hidden" name="package_quantity_{{ package.id }}" value="0" class="package-quantity" data-package-id="{{ package.id }}">
+                            <button type="button" class="pkg-stepper-minus px-3 py-2 sm:px-4 sm:py-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors" aria-label="Decrease"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+                            <span class="pkg-qty-display px-4 py-2 text-sm font-bold border-x border-slate-100 min-w-[45px] text-center text-slate-900">0</span>
+                            <button type="button" class="pkg-stepper-plus px-3 py-2 sm:px-4 sm:py-2 text-slate-600 hover:text-[#0066ff] hover:bg-slate-50 transition-colors" aria-label="Increase"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></button>
+                        </div>
+                    </div>
+                    {% if spots is not none %}<p class="pkg-card-detail text-sm text-orange-600 font-medium mt-1" data-testid="package-availability-info">Only {{ spots }} left</p>{% endif %}
+                    {% if has_installment and ppc %}
+                    <div class="package-installment-detail pkg-card-detail mt-6 pt-6 border-t border-slate-100" data-package-id="{{ package.id }}">
+                        <h5>Payment Schedule</h5>
+                        <div class="overflow-x-auto -mx-1">
+                            <div class="installment-schedule">
+                                <div class="installment-schedule-list">
+                                    <div class="installment-schedule-item installment-schedule-item-deposit">
+                                        <span class="installment-schedule-label">Deposit</span>
+                                        <span class="installment-schedule-date">Due Today</span>
+                                        <span class="installment-schedule-amount" data-testid="option-deposit">${{ deposit_amt|format_price }}</span>
+                                    </div>
+                                    {% for inst in (ppc.get('installments') or []) %}
+                                    <div class="installment-schedule-item">
+                                        <span class="installment-schedule-label">Payment {{ loop.index }}</span>
+                                        <span class="installment-schedule-date">{{ inst.get('date', '')|format_iso_date }}</span>
+                                        <span class="installment-schedule-amount">${{ (inst.get('amount') or 0)|format_price }}</span>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        <p class="installment-reminder mt-3 text-xs text-slate-500">We will automatically collect any overdue payments in this charge.</p>
+                        <p class="installment-reminder mt-1 text-xs text-slate-500">Automatic reminders will be sent before each due date.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="mt-6 lg:mt-8 min-w-0">
+            <div class="w-full h-32 sm:h-40 rounded-xl bg-cover bg-center overflow-hidden relative shadow-inner" style="background-image: url('{{ url_for('static', filename=trip.hero_image or 'images/backgrounds/tibet_background.jpg') }}');">
+                <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                <div class="absolute bottom-4 left-4 text-white">
+                    <p class="text-xs font-medium uppercase tracking-widest opacity-80">Destination Highlight</p>
+                    <p class="font-bold">{{ trip.title }}</p>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+{# Step 2: Participant info - 与 Step 1 视觉统一：同 padding、标题样式、卡片式区块 #}
+<div class="booking-step hidden" data-step="2">
+    <section class="booking-step2-section w-full min-w-0 pt-0 px-4 pb-4 lg:px-8 lg:pb-8">
+        <div class="mb-6">
+            <h3 class="booking-step-title text-[16px] font-medium leading-[26px] text-gray-900 mb-2">Participant info</h3>
+        </div>
+        {# Buyer information - 与 package card 风格一致 #}
+        <div class="buyer-info-card mb-6">
+            <h4 class="text-base font-semibold text-slate-900 mb-4">Buyer information</h4>
+            <div class="buyer-fields-grid-2col">
+        {% for field in buyer_info_fields|sort(attribute='display_order') %}
+        {% set inputClass = "w-full min-w-0" %}
+        {% if field.field_type == 'address' %}
+        <div class="flex flex-col custom-field md:col-span-2" data-field-id="{{ field.id }}" data-field-type="address">
+            <label class="text-sm font-semibold text-gray-700 mb-2">{{ field.field_name }}{% if field.is_required %}<span class="required-asterisk ml-1">*</span>{% endif %}</label>
+            {{ form.buyer_address(class=inputClass + " mb-2", required=field.is_required, placeholder="Address") }}
+            <div class="buyer-row-grid grid grid-cols-1 sm:grid-cols-2"><label class="sm:col-span-2 text-xs text-gray-500">City</label>{{ form.buyer_city(class=inputClass, required=field.is_required) }}<label class="sm:col-span-2 text-xs text-gray-500">State</label>{{ form.buyer_state(class=inputClass, required=field.is_required) }}<label class="sm:col-span-2 text-xs text-gray-500">ZIP</label>{{ form.buyer_zip_code(class=inputClass, required=field.is_required) }}<label class="sm:col-span-2 text-xs text-gray-500">Country</label>{{ form.buyer_country(class=inputClass, required=field.is_required) }}</div>
+        </div>
+        {% elif field.field_type == 'emergency_contact' %}
+        <div class="flex flex-col custom-field md:col-span-2 mt-2" data-field-id="{{ field.id }}" data-field-type="emergency_contact">
+            <label class="text-sm font-semibold text-gray-700 mb-2">{{ field.field_name }}{% if field.is_required %}<span class="required-asterisk ml-1">*</span>{% endif %}</label>
+            <div class="buyer-row-grid grid grid-cols-1 sm:grid-cols-2">{{ form.buyer_emergency_contact_name(class=inputClass, placeholder="Name", required=field.is_required) }}{{ form.buyer_emergency_contact_phone(class=inputClass, placeholder="Phone", required=field.is_required) }}</div>
+        </div>
+        {% else %}
+        <div class="flex flex-col custom-field min-w-0" data-field-id="{{ field.id }}" data-field-type="{{ field.field_type }}">
+            <label class="text-sm font-semibold text-gray-700 mb-2">{{ field.field_name }}{% if field.is_required %}<span class="required-asterisk ml-1">*</span>{% endif %}</label>
+            {% set fn = field.field_name|lower %}
+            {% if fn in ['first name','firstname'] %}
+            {{ form.buyer_first_name(class=inputClass, required=field.is_required) }}
+            {% elif fn in ['last name','lastname'] %}
+            {{ form.buyer_last_name(class=inputClass, required=field.is_required) }}
+            {% elif fn == 'email' %}
+            {{ form.buyer_email(class=inputClass, type="email", required=field.is_required) }}
+            {% elif fn == 'phone' %}
+            {{ form.buyer_phone(class=inputClass, required=field.is_required) }}
+            {% elif field.field_type == 'textarea' %}
+            <textarea name="custom_field_{{ field.id }}" class="{{ inputClass }}" rows="3" {% if field.is_required %}required{% endif %}></textarea>
+            {% elif field.field_type == 'select' %}
+            <select name="custom_field_{{ field.id }}" class="{{ inputClass }}" {% if field.is_required %}required{% endif %}>
+                <option value="">Select</option>
+                {% for opt in (field.options or []) %}<option value="{{ opt }}">{{ opt }}</option>{% endfor %}
+            </select>
+            {% elif field.field_type == 'yesno_text' %}
+            <div class="buyer-yesno-field"><div class="flex gap-4 mb-2"><label class="inline-flex items-center"><input type="radio" name="custom_field_{{ field.id }}" value="no" checked class="yesno-radio"><span class="ml-2">No</span></label><label class="inline-flex items-center"><input type="radio" name="custom_field_{{ field.id }}" value="yes" class="yesno-radio"><span class="ml-2">Yes</span></label></div><div class="yesno-details hidden mt-2"><input type="text" name="custom_field_{{ field.id }}_details" class="{{ inputClass }}" placeholder="If yes, explain"></div></div>
+            {% else %}
+            <input type="{{ 'email' if field.field_type == 'email' else 'tel' if field.field_type == 'phone' else 'text' }}" name="custom_field_{{ field.id }}" class="{{ inputClass }}" {% if field.is_required %}required{% endif %}>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% endfor %}
+            </div>
+        </div>
+        {# Participant Information（动态生成，卡片样式由 CSS 统一） #}
+        <div class="min-w-0 space-y-4">
+            <div id="participants-container" class="space-y-4"></div>
+        </div>
+    </section>
+</div>
+
+{# Step 3: Add-ons（与 Package / Participant info 同风格：灰线分隔、字号/颜色/间距统一） #}
+<div class="booking-step hidden" data-step="3">
+    <section class="relative w-full min-w-0 pt-0 px-4 pb-4 lg:px-8 lg:pb-8">
+        <div class="mb-6 flex flex-col">
+            <h3 class="booking-step-title text-[16px] font-medium leading-[26px] text-gray-900 mb-2">Select Add-ons</h3>
+        </div>
+        <div class="w-full pt-0 pb-0">
+        {% if addons %}
+        <div class="w-full flex flex-col">
+            {% for addon in addons %}
+            <div class="addon-card w-full flex flex-row border-b border-gray-300 last:border-b-0 items-start" data-addon-id="{{ addon.id }}" data-addon-price="{{ addon.price }}">
+                <div class="addon-card-left flex-1 min-w-0 flex flex-col pr-3 lg:pr-[18px]">
+                    <p class="addon-card-name text-[16px] font-semibold leading-[26px] text-gray-900 break-words">{{ addon.name }}</p>
+                    {% if addon.description %}
+                    <div class="addon-card-desc pt-1.5 text-[0.9375rem] font-normal leading-[1.45] text-gray-500">{{ addon.description }}</div>
+                    {% endif %}
+                </div>
+                <div class="addon-card-right flex-shrink-0 flex flex-col items-end">
+                    <span class="addon-card-price text-[16px] font-medium leading-[26px] text-gray-900 whitespace-nowrap" data-testid="addon-price">${{ (addon.price)|format_price }}</span>
+                    <div class="w-fit pr-3 lg:pr-[18px] flex-shrink-0 flex items-center mt-2">
+                        <div class="addon-stepper-wrapper" data-addon-id="{{ addon.id }}" data-max-qty="10">
+                            <input type="hidden" name="addon_quantity_{{ addon.id }}" value="0" class="addon-quantity" data-addon-id="{{ addon.id }}" data-addon-price="{{ addon.price }}">
+                            <button type="button" class="addon-stepper-minus" aria-label="Decrease"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+                            <span class="addon-qty-display">0</span>
+                            <button type="button" class="addon-stepper-plus" aria-label="Increase"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-[0.9375rem] text-gray-500 pt-2" style="color: #4b5563;">No add-ons. Continue to next step.</p>
+        {% endif %}
+        </div>
+    </section>
+</div>
+
+{# Step 4: Payment（与分期付款弹窗共用同一内容片段） #}
+<div class="booking-step hidden" data-step="4">
+    {% include 'booking/_modal_payment_step_content.html' %}
+</div>
+
+{# 实验页 Step 1：Travelers +/- 与 hidden/radio 同步，触发 change 供 booking.js 更新摘要 #}
+<script>
+(function() {
+    var modal = document.getElementById('booking-modal');
+    if (!modal) return;
+    function initSteppers() {
+        modal.querySelectorAll('.pkg-stepper-wrapper').forEach(function(wrap) {
+            if (wrap.getAttribute('data-stepper-inited') === '1') return;
+            wrap.setAttribute('data-stepper-inited', '1');
+            var pid = wrap.getAttribute('data-package-id');
+            var maxQty = parseInt(wrap.getAttribute('data-max-qty'), 10) || 5;
+            var hidden = wrap.querySelector('input.package-quantity');
+            var display = wrap.querySelector('.pkg-qty-display');
+            var minusBtn = wrap.querySelector('.pkg-stepper-minus');
+            var plusBtn = wrap.querySelector('.pkg-stepper-plus');
+            var radios = modal.querySelectorAll('input.quantity-radio[data-package-id="' + pid + '"]');
+            function setQty(n) {
+                n = Math.max(0, Math.min(maxQty, n));
+                if (hidden) hidden.value = String(n);
+                if (display) display.textContent = n;
+                radios.forEach(function(r) { r.checked = (r.value === String(n)); });
+                var card = wrap.closest('.package-card');
+                if (card) { if (n > 0) card.classList.add('selected'); else card.classList.remove('selected'); }
+                if (hidden) hidden.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            function syncFromHidden() {
+                var n = parseInt(hidden && hidden.value, 10);
+                if (isNaN(n)) n = 0;
+                setQty(n);
+            }
+            if (minusBtn) minusBtn.addEventListener('click', function() { setQty((parseInt(hidden && hidden.value, 10) || 0) - 1); });
+            if (plusBtn) plusBtn.addEventListener('click', function() { setQty((parseInt(hidden && hidden.value, 10) || 0) + 1); });
+            if (hidden) hidden.addEventListener('change', function() {
+                var n = parseInt(hidden.value, 10) || 0;
+                if (display) display.textContent = n;
+                radios.forEach(function(r) { r.checked = (r.value === String(n)); });
+                var card = wrap.closest('.package-card');
+                if (card) { if (n > 0) card.classList.add('selected'); else card.classList.remove('selected'); }
+            });
+            syncFromHidden();
+        });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initSteppers);
+    else initSteppers();
+})();
+</script>

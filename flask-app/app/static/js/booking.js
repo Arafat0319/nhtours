@@ -6,6 +6,22 @@
 (function() {
     'use strict';
 
+    /** 金额显示：整数不显示小数，有小数时显示（最多两位，去掉尾随零） */
+    function formatMoneyAmount(num) {
+        var n = typeof num === 'number' ? num : parseFloat(num);
+        if (isNaN(n)) return '0';
+        if (Math.abs(n - Math.round(n * 100) / 100) < 1e-9) return String(Math.round(n));
+        var s = n.toFixed(2);
+        return s.replace(/\.?0+$/, '');
+    }
+
+    /** 客户可见金额一律保留两位小数，避免被误认为多收（如 $39.00、$2285.50） */
+    function formatCurrency(num) {
+        var n = typeof num === 'number' ? num : parseFloat(num);
+        if (isNaN(n)) return '0.00';
+        return (Math.round(n * 100) / 100).toFixed(2);
+    }
+
     // 全局状态
     let currentStep = 1;
     let bookingData = {
@@ -22,7 +38,7 @@
     // DOM 元素
     let stepContainers = [];
     let stepButtons = [];
-    let nextButton, prevButton, submitButton;
+    let nextButton, submitButton;
     let participantsContainer;
     let orderSummaryEl, totalAmountEl;
     let participantCount = 0;
@@ -38,6 +54,110 @@
 
     // Trip 数据（从 window.tripData 获取）
     let tripData = window.tripData || {};
+
+    /**
+     * 将单个原生 select 替换为与 Package 一致的 Uiverse 下拉组件
+     */
+    function convertSelectToUiverse(selectEl) {
+        if (!selectEl || selectEl.getAttribute('data-booking-uiverse') === 'true') return;
+        var options = [];
+        for (var i = 0; i < selectEl.options.length; i++) {
+            options.push({ value: selectEl.options[i].value, text: selectEl.options[i].text });
+        }
+        var idx = selectEl.selectedIndex >= 0 ? selectEl.selectedIndex : 0;
+        var selectedText = selectEl.options[idx] ? selectEl.options[idx].text : (options[0] ? options[0].text : '');
+        var wrap = document.createElement('div');
+        wrap.className = 'booking-select-uiverse select';
+        wrap.setAttribute('data-for-select', selectEl.name || '');
+        var arrowSvg = '<svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 512 512" class="arrow" aria-hidden="true"><path d="M233.4 406.6c12.5 12.5 32.8 12.5 45.3 0l192-192c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L256 338.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l192 192z"></path></svg>';
+        var optionsHtml = options.map(function(opt) {
+            return '<div class="option" data-value="' + (opt.value || '').replace(/"/g, '&quot;') + '" role="option">' + (opt.text || '').replace(/</g, '&lt;') + '</div>';
+        }).join('');
+        wrap.innerHTML = '<div class="selected" tabindex="0" role="combobox" aria-expanded="false" aria-haspopup="listbox"><span class="selected-value">' + (selectedText || '').replace(/</g, '&lt;') + '</span>' + arrowSvg + '</div><div class="options" role="listbox">' + optionsHtml + '</div>';
+        selectEl.setAttribute('data-booking-uiverse', 'true');
+        selectEl.classList.add('booking-select-native-hidden');
+        selectEl.parentNode.insertBefore(wrap, selectEl);
+        wrap.appendChild(selectEl);
+        var selectedVal = wrap.querySelector('.selected-value');
+        var optionsDiv = wrap.querySelector('.options');
+        var selectedDiv = wrap.querySelector('.selected');
+        selectedDiv.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var open = wrap.classList.toggle('is-open');
+            selectedDiv.setAttribute('aria-expanded', open);
+        });
+        selectedDiv.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                var open = wrap.classList.toggle('is-open');
+                selectedDiv.setAttribute('aria-expanded', open);
+            }
+        });
+        var filledBg = 'rgba(0, 102, 255, 0.1)';
+        function updateSelectHasValue() {
+            if (selectEl.value && selectEl.value.trim()) {
+                wrap.classList.add('booking-select-has-value');
+                if (selectedDiv) selectedDiv.style.setProperty('background-color', filledBg, 'important');
+            } else {
+                wrap.classList.remove('booking-select-has-value');
+                if (selectedDiv) selectedDiv.style.removeProperty('background-color');
+            }
+        }
+        updateSelectHasValue();
+        optionsDiv.querySelectorAll('.option').forEach(function(optEl) {
+            optEl.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var val = this.getAttribute('data-value') || '';
+                selectEl.value = val;
+                selectedVal.textContent = this.textContent;
+                updateSelectHasValue();
+                wrap.classList.remove('is-open');
+                selectedDiv.setAttribute('aria-expanded', 'false');
+                selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+        });
+        document.addEventListener('click', function closeDropdown(e) {
+            if (!wrap.contains(e.target)) {
+                wrap.classList.remove('is-open');
+                selectedDiv.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+
+    /**
+     * 弹窗内所有未转换的 select 转为 Uiverse 下拉（与 Package 一致）
+     */
+    function convertAllModalSelects() {
+        var modal = document.getElementById('booking-modal');
+        if (!modal) return;
+        modal.querySelectorAll('select').forEach(function(sel) {
+            if (sel.closest('.quantity-select-uiverse')) return;
+            /* addon 数量用步进器，不把 addon 的 select 转成 Uiverse 下拉 */
+            if (sel.classList.contains('addon-quantity') || sel.closest('.addon-card')) return;
+            if (sel.getAttribute('data-booking-uiverse') !== 'true') convertSelectToUiverse(sel);
+        });
+    }
+
+    /** 弹窗内任意文本类输入/文本框：有内容时加淡蓝背景（与下拉/日期一致），.fp-date 由日期逻辑单独处理 */
+    function updateBookingInputFilled(el) {
+        if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return;
+        if (el.classList && el.classList.contains('fp-date')) return;
+        var hasValue = el.value && el.value.trim();
+        if (hasValue) {
+            el.classList.add('booking-input-filled');
+            el.style.setProperty('background-color', 'rgba(0, 102, 255, 0.1)', 'important');
+        } else {
+            el.classList.remove('booking-input-filled');
+            el.style.removeProperty('background-color');
+        }
+    }
+
+    /** 弹窗内所有文本类输入刷新填完态（步骤切换、恢复数据、自动填充后调用） */
+    function refreshAllBookingInputsFilled() {
+        var modal = document.getElementById('booking-modal');
+        if (!modal) return;
+        modal.querySelectorAll('input[type="text"]:not(.fp-date), input[type="email"], input[type="tel"], textarea').forEach(updateBookingInputFilled);
+    }
 
     /**
      * 初始化
@@ -56,7 +176,6 @@
 
         // 获取按钮
         nextButton = document.getElementById('nextBtn');
-        prevButton = document.getElementById('prevBtn');
         submitButton = document.getElementById('submitBtn');
         participantsContainer = document.getElementById('participants-container');
         orderSummaryEl = document.getElementById('order-summary');
@@ -70,8 +189,20 @@
 
         // 绑定事件
         if (nextButton) nextButton.addEventListener('click', handleNext);
-        if (prevButton) prevButton.addEventListener('click', handlePrev);
         if (submitButton) submitButton.addEventListener('click', handleSubmit);
+        document.querySelectorAll('.modal-step-tab').forEach(function(tab) {
+            tab.addEventListener('click', function() {
+                const targetStep = parseInt(this.getAttribute('data-step'), 10);
+                if (targetStep < 1 || targetStep > stepContainers.length) return;
+                if (targetStep === currentStep) return;
+                // 仅在前进一步时校验当前步骤；退回任意前序步骤均不校验（能到当前页说明前面已填过）
+                if (targetStep > currentStep && !validateCurrentStep()) {
+                    return;
+                }
+                saveCurrentStepData();
+                showStep(targetStep);
+            });
+        });
 
         // 折扣码应用按钮
         const applyDiscountBtn = document.getElementById('apply-discount-btn');
@@ -85,6 +216,21 @@
             removeDiscountBtn.addEventListener('click', removeDiscountCode);
         }
         
+        // 弹窗内所有文本类输入：填完后淡蓝背景（委托，含姓名/邮箱/电话/YesNo 说明等；.fp-date 由日期逻辑处理）
+        var bookingModal = document.getElementById('booking-modal');
+        if (bookingModal) {
+            ['input', 'change', 'blur'].forEach(function(ev) {
+                bookingModal.addEventListener(ev, function(e) {
+                    var t = e.target;
+                    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA') && !t.classList.contains('fp-date')) {
+                        if (t.type === 'text' || t.type === 'email' || t.type === 'tel' || t.tagName === 'TEXTAREA') {
+                            updateBookingInputFilled(t);
+                        }
+                    }
+                });
+            });
+        }
+
         // 回车键应用折扣码
         const discountCodeInput = document.getElementById('discount-code-input');
         if (discountCodeInput) {
@@ -96,33 +242,94 @@
             });
         }
 
-        // 监听package quantity变化，更新卡片样式
+        // 监听 package quantity 变化（input 或 select），更新卡片样式并同步 select -> hidden
         document.addEventListener('input', function(e) {
             if (e.target.matches('input.package-quantity')) {
-                const quantityInput = e.target;
-                const quantity = parseInt(quantityInput.value) || 0;
-                const packageCard = quantityInput.closest('.package-card');
-                
-                if (packageCard) {
-                    if (quantity > 0) {
-                        packageCard.classList.add('selected');
-                    } else {
-                        packageCard.classList.remove('selected');
-                    }
-                }
+                syncPackageQuantityFromInput(e.target);
             }
-            
-            // 监听addon quantity变化，更新卡片样式
             if (e.target.matches('input.addon-quantity')) {
                 const quantityInput = e.target;
                 const quantity = parseInt(quantityInput.value) || 0;
                 const addonCard = quantityInput.closest('.addon-card');
-                
                 if (addonCard) {
-                    if (quantity > 0) {
-                        addonCard.classList.add('selected');
-                    } else {
-                        addonCard.classList.remove('selected');
+                    if (quantity > 0) addonCard.classList.add('selected');
+                    else addonCard.classList.remove('selected');
+                }
+            }
+            if (e.target.matches('select.addon-quantity')) {
+                const quantitySelect = e.target;
+                const quantity = parseInt(quantitySelect.value) || 0;
+                const addonCard = quantitySelect.closest('.addon-card');
+                if (addonCard) {
+                    if (quantity > 0) addonCard.classList.add('selected');
+                    else addonCard.classList.remove('selected');
+                }
+            }
+        });
+        document.addEventListener('change', function(e) {
+            if (e.target.matches('select.package-quantity-select')) {
+                const sel = e.target;
+                const packageId = sel.getAttribute('data-package-id');
+                const hidden = document.querySelector('input.package-quantity[data-package-id="' + packageId + '"]');
+                if (hidden) {
+                    hidden.value = sel.value;
+                    syncPackageQuantityFromInput(hidden);
+                    hidden.classList.remove('border-red-500', 'border-2');
+                    hidden.style.borderColor = '';
+                    hidden.style.borderWidth = '';
+                }
+                sel.classList.remove('border-red-500', 'border-2');
+                sel.style.borderColor = '';
+                sel.style.borderWidth = '';
+                var step1 = document.querySelector('.booking-step[data-step="1"]');
+                if (step1) savePackagesData(step1);
+                updateParticipantCount();
+                if (typeof updateOrderSummary === 'function') updateOrderSummary();
+            }
+            // Uiverse 数量单选：同步到 hidden、更新显示、移除错误态、触发订单逻辑
+            if (e.target.matches('input.quantity-radio')) {
+                var radio = e.target;
+                var pid = radio.getAttribute('data-package-id');
+                var hid = document.querySelector('input.package-quantity[data-package-id="' + pid + '"]');
+                var uiverse = radio.closest('.quantity-select-uiverse');
+                var val = radio.value;
+                if (hid && uiverse) {
+                    hid.value = val;
+                    hid.classList.remove('border-red-500', 'border-2');
+                    hid.style.borderColor = '';
+                    hid.style.borderWidth = '';
+                    uiverse.querySelector('.selected-value').textContent = val;
+                    uiverse.classList.remove('quantity-error');
+                    syncPackageQuantityFromInput(hid);
+                    if (typeof returnQuantityOptionsToOwner === 'function') returnQuantityOptionsToOwner();
+                    var step1 = document.querySelector('.booking-step[data-step="1"]');
+                    if (step1) savePackagesData(step1);
+                    updateParticipantCount();
+                    if (typeof updateOrderSummary === 'function') updateOrderSummary();
+                }
+            }
+        });
+
+        function syncPackageQuantityFromInput(quantityInput) {
+            const quantity = parseInt(quantityInput.value) || 0;
+            const packageCard = quantityInput.closest('.package-card');
+            if (packageCard) {
+                if (quantity > 0) packageCard.classList.add('selected');
+                else packageCard.classList.remove('selected');
+            }
+        }
+
+        // Yes/No with details: 选择 Yes 时显示文本框（Participant 和 Buyer 共用）
+        document.addEventListener('change', function(e) {
+            if (e.target.matches('input.yesno-radio, input.participant-yesno-radio')) {
+                const field = e.target.closest('.participant-yesno-field, .buyer-yesno-field, .participant-default-yesno');
+                if (field) {
+                    const detailsDiv = field.querySelector('.yesno-details');
+                    const detailsInput = field.querySelector('.yesno-details input, input.participant-yesno-details-input');
+                    if (detailsDiv) {
+                        const isYes = e.target.value === 'yes';
+                        detailsDiv.classList.toggle('hidden', !isYes);
+                        if (detailsInput) detailsInput.required = isYes;
                     }
                 }
             }
@@ -130,25 +337,40 @@
         
         // 监听套餐和附加项变化，更新订单总结和参与者数量
         document.addEventListener('change', function(e) {
-            if (e.target.matches('input.package-quantity, input.addon-quantity')) {
-                // 如果是在步骤2，更新参与者数量
-                if (currentStep === 2) {
-                    const step2Container = document.querySelector('.booking-step[data-step="2"]');
-                    if (step2Container) {
-                        savePackagesData(step2Container);
-                        updateParticipantCount();
-                    }
+            if (e.target.matches('.addon-quantity')) {
+                var quantity = parseInt(e.target.value) || 0;
+                var addonCard = e.target.closest('.addon-card');
+                if (addonCard) {
+                    if (quantity > 0) addonCard.classList.add('selected');
+                    else addonCard.classList.remove('selected');
                 }
-                // 如果在步骤3，保存addon数据
+            }
+            if (e.target.matches('input.package-quantity, .addon-quantity')) {
+                // 如果是在步骤1（套餐），更新参与者数量并自动更新订单总结（含分期逾期计算）
+                if (currentStep === 1) {
+                    const step1Container = document.querySelector('.booking-step[data-step="1"]');
+                    if (step1Container) {
+                        savePackagesData(step1Container);
+                        updateParticipantCount();
+                        var hasAny = false;
+                        step1Container.querySelectorAll('input.package-quantity').forEach(function(inp) {
+                            if ((parseInt(inp.value, 10) || 0) > 0) hasAny = true;
+                        });
+                        if (hasAny && typeof clearStep1ValidationError === 'function') clearStep1ValidationError(step1Container);
+                    }
+                    if (typeof updateOrderSummary === 'function') updateOrderSummary();
+                }
+                // 如果在步骤3（附加项），保存 addon 数据并立即更新订单总结
                 if (currentStep === 3) {
                     const step3Container = document.querySelector('.booking-step[data-step="3"]');
                     if (step3Container) {
                         saveAddonsData(step3Container);
                     }
+                    if (typeof updateOrderSummary === 'function') updateOrderSummary();
                 }
-                // 如果在步骤4，更新订单总结
+                // 如果在步骤4（支付），更新订单总结
                 if (currentStep === 4) {
-                    updateOrderSummary();
+                    if (typeof updateOrderSummary === 'function') updateOrderSummary();
                 }
             }
         });
@@ -157,31 +379,148 @@
         currentStep = 1;
         showStep(1);
         
-        // 初始化package quantity状态，更新卡片样式
+        // 初始化 package quantity：从 hidden 同步卡片选中态
         const packageQuantityInputs = document.querySelectorAll('input.package-quantity');
         packageQuantityInputs.forEach(input => {
             const quantity = parseInt(input.value) || 0;
             const packageCard = input.closest('.package-card');
             if (packageCard) {
-                if (quantity > 0) {
-                    packageCard.classList.add('selected');
-                } else {
-                    packageCard.classList.remove('selected');
-                }
+                if (quantity > 0) packageCard.classList.add('selected');
+                else packageCard.classList.remove('selected');
             }
         });
-        
-        // 初始化addon quantity状态，更新卡片样式
-        const addonQuantityInputs = document.querySelectorAll('input.addon-quantity');
-        addonQuantityInputs.forEach(input => {
-            const quantity = parseInt(input.value) || 0;
-            const addonCard = input.closest('.addon-card');
-            if (addonCard) {
-                if (quantity > 0) {
-                    addonCard.classList.add('selected');
-                } else {
-                    addonCard.classList.remove('selected');
+
+        /** Add-on 数量步进器（与 package card 同款风格）：+/- 更新 hidden 并触发 change */
+        function initAddonSteppers() {
+            var modal = document.getElementById('booking-modal');
+            if (!modal) return;
+            modal.querySelectorAll('.addon-stepper-wrapper').forEach(function(wrap) {
+                if (wrap.getAttribute('data-addon-stepper-inited') === '1') return;
+                wrap.setAttribute('data-addon-stepper-inited', '1');
+                var addonId = wrap.getAttribute('data-addon-id');
+                var maxQty = parseInt(wrap.getAttribute('data-max-qty'), 10) || 10;
+                var hidden = wrap.querySelector('input.addon-quantity');
+                var display = wrap.querySelector('.addon-qty-display');
+                var minusBtn = wrap.querySelector('.addon-stepper-minus');
+                var plusBtn = wrap.querySelector('.addon-stepper-plus');
+                function setQty(n) {
+                    n = Math.max(0, Math.min(maxQty, n));
+                    if (hidden) hidden.value = String(n);
+                    if (display) display.textContent = n;
+                    var card = wrap.closest('.addon-card');
+                    if (card) {
+                        if (n > 0) card.classList.add('selected');
+                        else card.classList.remove('selected');
+                    }
+                    if (hidden) hidden.dispatchEvent(new Event('change', { bubbles: true }));
                 }
+                if (minusBtn) minusBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    setQty((parseInt(hidden && hidden.value, 10) || 0) - 1);
+                });
+                if (plusBtn) plusBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    setQty((parseInt(hidden && hidden.value, 10) || 0) + 1);
+                });
+                if (hidden) {
+                    var n = parseInt(hidden.value, 10) || 0;
+                    if (display) display.textContent = n;
+                }
+            });
+        }
+        initAddonSteppers();
+
+        // 将已挂到 body 的下拉移回原处
+        var quantityDropdownCloseTimeout = null;
+        function returnQuantityOptionsToOwner() {
+            if (quantityDropdownCloseTimeout) clearTimeout(quantityDropdownCloseTimeout);
+            quantityDropdownCloseTimeout = null;
+            document.querySelectorAll('.quantity-options-portal').forEach(function(op) {
+                var wrap = op._ownerWrap;
+                if (wrap && op.parentNode !== wrap) {
+                    wrap.appendChild(op);
+                    op.classList.remove('quantity-options-portal');
+                    op.style.cssText = '';
+                }
+                if (wrap) wrap.classList.remove('is-open');
+            });
+        }
+        function scheduleQuantityDropdownClose() {
+            if (quantityDropdownCloseTimeout) clearTimeout(quantityDropdownCloseTimeout);
+            quantityDropdownCloseTimeout = setTimeout(returnQuantityOptionsToOwner, 150);
+        }
+        function openQuantityDropdown(uiverse) {
+            var opts = uiverse.querySelector('.options');
+            if (!opts || opts.classList.contains('quantity-options-portal')) return;
+            var rect = uiverse.getBoundingClientRect();
+            var w = Math.max(96, rect.width);
+            opts._ownerWrap = uiverse;
+            document.body.appendChild(opts);
+            opts.classList.add('quantity-options-portal');
+            opts.style.position = 'fixed';
+            opts.style.left = (rect.right - w) + 'px';
+            opts.style.top = rect.bottom + 'px';
+            opts.style.width = w + 'px';
+            opts.style.maxHeight = 'min(220px, 45vh)';
+            opts.style.opacity = '1';
+            opts.style.pointerEvents = 'auto';
+            opts.style.zIndex = '10001';
+            uiverse.classList.add('is-open');
+            if (!opts._portalListenersAttached) {
+                opts._portalListenersAttached = true;
+                opts.addEventListener('mouseenter', function() { if (quantityDropdownCloseTimeout) clearTimeout(quantityDropdownCloseTimeout); quantityDropdownCloseTimeout = null; });
+                opts.addEventListener('mouseleave', function(ev) {
+                    if (ev.relatedTarget && opts._ownerWrap && opts._ownerWrap.contains(ev.relatedTarget)) return;
+                    scheduleQuantityDropdownClose();
+                });
+            }
+        }
+        // Uiverse 数量下拉：初始化；点击或 hover 打开时都挂到 body 防溢出
+        document.querySelectorAll('.quantity-select-uiverse').forEach(function(el) {
+            var checked = el.querySelector('.options input[type="radio"]:checked');
+            var valEl = el.querySelector('.selected-value');
+            if (checked && valEl) valEl.textContent = checked.value;
+            el.addEventListener('mouseenter', function(ev) {
+                if (quantityDropdownCloseTimeout) clearTimeout(quantityDropdownCloseTimeout);
+                quantityDropdownCloseTimeout = null;
+                var opts = el.querySelector('.options');
+                if (opts && opts.parentNode === el) openQuantityDropdown(el);
+            });
+            el.addEventListener('mouseleave', function(ev) {
+                var portal = document.querySelector('.quantity-options-portal');
+                if (ev.relatedTarget && portal && portal.contains(ev.relatedTarget)) return;
+                scheduleQuantityDropdownClose();
+            });
+        });
+        document.addEventListener('click', function(e) {
+            var uiverse = e.target.closest('.quantity-select-uiverse');
+            if (e.target.closest('.quantity-select-uiverse .selected')) {
+                returnQuantityOptionsToOwner();
+                if (uiverse) {
+                    var wasOpen = uiverse.classList.contains('is-open');
+                    uiverse.classList.toggle('is-open');
+                    if (!wasOpen && uiverse.classList.contains('is-open')) openQuantityDropdown(uiverse);
+                }
+                return;
+            }
+            if (!e.target.closest('.quantity-select-uiverse .options')) {
+                returnQuantityOptionsToOwner();
+            }
+        });
+        var modalEl = document.getElementById('booking-modal');
+        var modalScrollEl = document.getElementById('booking-modal-scroll-viewport') || modalEl;
+        if (modalScrollEl) {
+            modalScrollEl.addEventListener('scroll', function() { if (typeof returnQuantityOptionsToOwner === 'function') returnQuantityOptionsToOwner(); }, true);
+        }
+
+        // 初始化 addon quantity 状态，更新卡片样式（支持 input 或 select）
+        const addonQuantityEls = document.querySelectorAll('.addon-quantity');
+        addonQuantityEls.forEach(function(el) {
+            const quantity = parseInt(el.value) || 0;
+            const addonCard = el.closest('.addon-card');
+            if (addonCard) {
+                if (quantity > 0) addonCard.classList.add('selected');
+                else addonCard.classList.remove('selected');
             }
         });
         
@@ -194,10 +533,6 @@
                 nextButton.classList.remove('hidden');
                 // 强制显示
                 nextButton.setAttribute('style', 'display: flex !important; visibility: visible !important; opacity: 1 !important;');
-            }
-            if (prevButton) {
-                prevButton.style.display = 'none';
-                prevButton.classList.add('hidden');
             }
             if (submitButton) {
                 submitButton.style.display = 'none';
@@ -215,6 +550,57 @@
             step1Indicator.classList.add('active');
             step1Indicator.classList.remove('completed');
         }
+
+        // 付款结果区：Close / Try Again
+        var resultCloseBtn = document.getElementById('booking-result-close-btn');
+        var resultTryAgainBtn = document.getElementById('booking-result-try-again-btn');
+        if (resultCloseBtn) {
+            resultCloseBtn.addEventListener('click', function() {
+                showBookingModalResult(null);
+                var m = document.getElementById('booking-modal');
+                if (m) {
+                    m.classList.add('hidden');
+                    document.documentElement.style.overflow = '';
+                    document.body.style.overflow = '';
+                }
+            });
+        }
+        if (resultTryAgainBtn) {
+            resultTryAgainBtn.addEventListener('click', function() {
+                showBookingModalResult(null);
+            });
+        }
+
+        // 弹窗内所有下拉框改为与 Package 一致的 Uiverse 组件
+        convertAllModalSelects();
+
+        // 3DS 返回：URL 带 modal=1&payment_intent_id=xxx 时自动打开弹窗并显示处理中 → 轮询结果
+        (function checkPaymentReturnUrl() {
+            var params = new URLSearchParams(window.location.search);
+            if (params.get('modal') !== '1') return;
+            var pi = params.get('payment_intent_id');
+            if (!pi) return;
+            var m = document.getElementById('booking-modal');
+            if (!m) return;
+            m.classList.remove('hidden');
+            document.documentElement.style.overflow = 'hidden';
+            document.body.style.overflow = 'hidden';
+            showBookingModalResult('loading');
+            pollPaymentStatusThenShowResult(pi);
+            try {
+                history.replaceState({}, '', window.location.pathname + (window.location.hash || ''));
+            } catch (e) {}
+        })();
+
+        // 桌面端弹窗内容区高度取左右最大：resize 时重新同步
+        var syncMinHeightTimer = null;
+        window.addEventListener('resize', function() {
+            if (syncMinHeightTimer) clearTimeout(syncMinHeightTimer);
+            syncMinHeightTimer = setTimeout(function() {
+                syncMinHeightTimer = null;
+                syncBookingModalBodyMinHeight();
+            }, 150);
+        });
     }
 
     /**
@@ -284,60 +670,73 @@
         currentStep = step;
         updateStepButtons();
 
-        if (step === 5) {
+        // 更新 WeTravel 风格步骤 Tab（深色头下仅文字色：当前白、其余灰）
+        document.querySelectorAll('.modal-step-tab').forEach(function(tab) {
+            const tabStep = parseInt(tab.getAttribute('data-step'), 10);
+            tab.style.color = (tabStep === step) ? '#1f2937' : '#9ca3af';
+            tab.setAttribute('aria-selected', tabStep === step ? 'true' : 'false');
+        });
+
+        if (step === 4) {
             initEmbeddedPaymentSession();
         } else {
             resetEmbeddedPaymentSession();
         }
         
-        // 如果到了第4步（参与者），根据package数量生成表单
-        if (step === 4) {
+        // 如果到了第2步（参与者信息），根据package数量生成表单，并转换下拉与日期
+        if (step === 2) {
             updateParticipantCount();
+            setTimeout(function() {
+                convertAllModalSelects();
+                if (typeof window.initFlatpickrOnDates === 'function') window.initFlatpickrOnDates();
+                refreshAllBookingInputsFilled();
+                setTimeout(refreshAllBookingInputsFilled, 300);
+            }, 0);
+        }
+        // 步骤 3（Add-ons）显示时初始化 addon 步进器并刷新填完态
+        if (step === 3) {
+            setTimeout(function() {
+                if (typeof initAddonSteppers === 'function') initAddonSteppers();
+                refreshAllBookingInputsFilled();
+                setTimeout(refreshAllBookingInputsFilled, 300);
+            }, 0);
         }
         
-        // 如果到了第5步（支付），更新订单总结
-        if (step === 5) {
-            // 确保所有步骤的数据都已保存（特别是步骤2、3、4）
+        // 每次显示步骤时刷新订单总价（自动计算 Trip Total / Due at Booking，含分期逾期）
+        if (step === 1 || step === 2 || step === 3) {
+            setTimeout(function() { if (typeof updateOrderSummary === 'function') updateOrderSummary(); }, 0);
+        }
+        // 如果到了第4步（支付），保存数据并更新订单总结
+        if (step === 4) {
             saveAllStepsData();
-            
-            // 延迟更新，确保DOM已完全渲染
             setTimeout(() => {
                 updateOrderSummary();
             }, 150);
         }
+
+        // 根据当前步骤左右列高度动态同步 body 高度，避免 Add-ons 等短步骤底部大块空白
+        requestAnimationFrame(function() {
+            syncBookingModalBodyMinHeight();
+        });
     }
 
     /**
      * 更新按钮状态
      */
     function updateStepButtons() {
-        if (prevButton) {
-            // 第一页隐藏Previous按钮，从第二页开始显示
-            if (currentStep === 1) {
-                prevButton.style.display = 'none';
-            } else {
-                prevButton.style.display = 'inline-flex';
-                prevButton.disabled = false;
-                prevButton.classList.remove('opacity-50', 'cursor-not-allowed');
-            }
-        }
-
         if (nextButton) {
             const isLastStep = currentStep === stepContainers.length;
-            // 最后一步隐藏Next按钮，其他步骤显示
-            if (isLastStep) {
-                nextButton.style.display = 'none';
-            } else {
-                nextButton.style.display = 'flex';
-                nextButton.style.visibility = 'visible';
-                nextButton.classList.remove('hidden');
-            }
+            // 最后一步仍显示同一按钮，文案改为 Confirm Booking；其他步骤为 Continue
+            nextButton.style.display = 'flex';
+            nextButton.style.visibility = 'visible';
+            nextButton.classList.remove('hidden');
+            nextButton.textContent = isLastStep ? 'Confirm Booking' : 'Continue';
         }
 
+        // 只保留一个按钮：不再显示单独的 Confirm 按钮
         if (submitButton) {
-            const isLastStep = currentStep === stepContainers.length;
-            // 最后一步显示Submit按钮，其他步骤隐藏
-            submitButton.style.display = isLastStep ? 'inline-flex' : 'none';
+            submitButton.style.display = 'none';
+            submitButton.classList.add('hidden');
         }
     }
 
@@ -357,13 +756,23 @@
         
         console.log('handleNext: saved current step data, bookingData:', bookingData);
 
+        // 最后一步（Payment）：同一按钮执行提交
+        if (currentStep === stepContainers.length) {
+            handleSubmit(e);
+            return;
+        }
+
         // 显示下一步
         if (currentStep < stepContainers.length) {
-            const nextStep = currentStep + 1;
+            let nextStep = currentStep + 1;
+            // 无 add-ons 时跳过步骤3
+            if (nextStep === 3 && (!tripData.hasAddons || !(tripData.addons && tripData.addons.length))) {
+                nextStep = 4;
+            }
             showStep(nextStep);
             
-            // 如果下一步是步骤5，确保所有数据都已保存
-            if (nextStep === 5) {
+            // 如果下一步是步骤4（支付），确保所有数据都已保存
+            if (nextStep === 4) {
                 // 再次保存所有步骤数据，确保数据完整
                 setTimeout(() => {
                     saveAllStepsData();
@@ -374,14 +783,23 @@
     }
 
     /**
-     * 处理上一步
+     * 清除步骤1「未选套餐」的红色提示（错误信息 + 卡片边框）
      */
-    function handlePrev(e) {
-        e.preventDefault();
-        
-        if (currentStep > 1) {
-            showStep(currentStep - 1);
-        }
+    function clearStep1ValidationError(step1Container) {
+        if (!step1Container) return;
+        step1Container.classList.remove('step1-validation-error');
+        step1Container.querySelectorAll('.package-card').forEach(function(card) {
+            card.classList.remove('package-card-validation-error');
+        });
+        step1Container.querySelectorAll('input.package-quantity').forEach(function(input) {
+            input.classList.remove('border-red-500', 'border-2');
+            input.style.borderColor = '';
+            input.style.borderWidth = '';
+            var uiverse = input.closest('.package-card') && input.closest('.package-card').querySelector('.quantity-select-uiverse');
+            if (uiverse) uiverse.classList.remove('quantity-error');
+        });
+        var step1ErrorMsg = document.getElementById('step1-error-message');
+        if (step1ErrorMsg) step1ErrorMsg.classList.add('hidden');
     }
 
     /**
@@ -415,6 +833,9 @@
                 field.classList.add('border-2');
                 field.style.borderColor = '#ef4444';
                 field.style.borderWidth = '2px';
+                // 必填下拉：可见的是 Uiverse 的 .selected，给包装加错误类以显示红框
+                var uiverseWrap = field.closest('.booking-select-uiverse');
+                if (uiverseWrap) uiverseWrap.classList.add('booking-select-validation-error');
                 
                 // 添加错误提示 - 在输入框后面插入
                 const fieldContainer = field.closest('.flex.flex-col');
@@ -439,8 +860,9 @@
                 
                 // 滚动到第一个错误字段
                 if (invalidFields.length === 1) {
-                    field.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    field.focus();
+                    var scrollEl = uiverseWrap ? uiverseWrap : field;
+                    scrollEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    if (uiverseWrap) uiverseWrap.querySelector('.selected').focus(); else field.focus();
                 }
             } else {
                 // 移除错误样式
@@ -448,6 +870,8 @@
                 field.classList.remove('border-2');
                 field.style.borderColor = '';
                 field.style.borderWidth = '';
+                var uiverseWrap = field.closest('.booking-select-uiverse');
+                if (uiverseWrap) uiverseWrap.classList.remove('booking-select-validation-error');
                 
                 // 移除错误提示 - 从字段容器中查找并移除
                 const fieldContainer = field.closest('.flex.flex-col');
@@ -462,26 +886,31 @@
         
         // 监听输入事件，实时移除错误样式
         invalidFields.forEach(field => {
-            const handleInput = () => {
-                if (field.value && field.value.trim()) {
-                    field.classList.remove('border-red-500');
-                    field.classList.remove('border-2');
-                    field.style.borderColor = '';
-                    field.style.borderWidth = '';
-                    const errorMsg = field.closest('.flex.flex-col')?.querySelector('.error-message');
-                    if (errorMsg) {
-                        errorMsg.remove();
-                    }
-                    field.removeEventListener('input', handleInput);
-                    field.removeEventListener('change', handleInput);
+            const clearError = () => {
+                var isEmpty = false;
+                if (field.tagName === 'SELECT') {
+                    isEmpty = !field.value || field.value === '';
+                } else {
+                    isEmpty = !field.value || !field.value.trim();
                 }
+                if (isEmpty) return;
+                field.classList.remove('border-red-500');
+                field.classList.remove('border-2');
+                field.style.borderColor = '';
+                field.style.borderWidth = '';
+                var wrap = field.closest('.booking-select-uiverse');
+                if (wrap) wrap.classList.remove('booking-select-validation-error');
+                const errorMsg = field.closest('.flex.flex-col')?.querySelector('.error-message');
+                if (errorMsg) errorMsg.remove();
+                field.removeEventListener('input', clearError);
+                field.removeEventListener('change', clearError);
             };
-            field.addEventListener('input', handleInput);
-            field.addEventListener('change', handleInput);
+            field.addEventListener('input', clearError);
+            field.addEventListener('change', clearError);
         });
 
-        // 特殊验证：步骤2（套餐选择）- 检查是否有quantity > 0的package
-        if (currentStep === 2) {
+        // 特殊验证：步骤1（套餐选择）- 检查是否有quantity > 0的package
+        if (currentStep === 1) {
             const packageQuantityInputs = currentContainer.querySelectorAll('input.package-quantity');
             let hasSelectedPackage = false;
             packageQuantityInputs.forEach(input => {
@@ -491,21 +920,32 @@
                 }
             });
             if (!hasSelectedPackage) {
-                // 高亮所有套餐数量输入框
+                // 高亮套餐数量控件（Uiverse 下拉）
                 packageQuantityInputs.forEach(input => {
-                    input.classList.add('border-red-500');
-                    input.classList.add('border-2');
+                    input.classList.add('border-red-500', 'border-2');
                     input.style.borderColor = '#ef4444';
-                    input.style.borderWidth = '2px';
+                    var card = input.closest('.package-card');
+                    var uiverse = card ? card.querySelector('.quantity-select-uiverse') : null;
+                    if (uiverse) uiverse.classList.add('quantity-error');
+                    if (card) card.classList.add('package-card-validation-error');
                 });
+                // 显示「请至少选择一个套餐」提示（实验弹窗）
+                var step1ErrorMsg = document.getElementById('step1-error-message');
+                if (step1ErrorMsg) {
+                    step1ErrorMsg.classList.remove('hidden');
+                }
+                currentContainer.classList.add('step1-validation-error');
                 isValid = false;
+            } else {
+                clearStep1ValidationError(currentContainer);
             }
         }
         
         // 步骤3（附加项）不需要验证，可以跳过
-        // 步骤4（参与者）的验证
-        if (currentStep === 4) {
+        // 步骤2（参与者信息）的验证
+        if (currentStep === 2) {
             const participantForms = currentContainer.querySelectorAll('.participant-form');
+            const participantFormsWithInvalidFields = new Set();
             participantForms.forEach((form, index) => {
                 const requiredFields = form.querySelectorAll('[required]');
                 requiredFields.forEach(field => {
@@ -539,14 +979,52 @@
                             }
                         }
                         
+                        participantFormsWithInvalidFields.add(form);
                         isValid = false;
                     }
                 });
             });
+            // 有未填项且位于折叠的 Participant 卡片内时：自动展开该卡片并提示
+            if (participantFormsWithInvalidFields.size > 0) {
+                const participantsWrap = currentContainer.querySelector('#participants-container');
+                let hintEl = participantsWrap && participantsWrap.querySelector('.participant-step-validation-hint');
+                if (!hintEl && participantsWrap) {
+                    hintEl = document.createElement('p');
+                    hintEl.className = 'participant-step-validation-hint text-sm text-red-600 mb-3';
+                    hintEl.setAttribute('role', 'alert');
+                    participantsWrap.insertBefore(hintEl, participantsWrap.firstChild);
+                }
+                if (hintEl) {
+                    hintEl.textContent = 'Please complete the required fields in the section(s) below.';
+                    hintEl.classList.remove('hidden');
+                }
+                participantFormsWithInvalidFields.forEach(function(form) {
+                    const headerEl = form.querySelector('.participant-section-header');
+                    const bodyEl = form.querySelector('.participant-form-body');
+                    if (headerEl && bodyEl && headerEl.getAttribute('aria-expanded') !== 'true') {
+                        headerEl.setAttribute('aria-expanded', 'true');
+                        bodyEl.style.display = '';
+                        var chevron = headerEl.querySelector('.participant-chevron');
+                        if (chevron) chevron.style.transform = 'rotate(0deg)';
+                        form.classList.add('participant-form-validation-error');
+                    }
+                });
+                var firstInvalidForm = participantFormsWithInvalidFields.values().next().value;
+                if (firstInvalidForm) {
+                    firstInvalidForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            } else {
+                var wrap = currentContainer.querySelector('#participants-container');
+                var hint = wrap && wrap.querySelector('.participant-step-validation-hint');
+                if (hint) hint.classList.add('hidden');
+                currentContainer.querySelectorAll('.participant-form-validation-error').forEach(function(el) {
+                    el.classList.remove('participant-form-validation-error');
+                });
+            }
         }
         
-        // 步骤5（支付）需要验证参与者信息
-        if (currentStep === 5) {
+        // 步骤4（支付）需要验证参与者信息
+        if (currentStep === 4) {
             const participants = bookingData.participants || [];
             if (participants.length === 0) {
                 // 不显示 alert，只阻止继续
@@ -565,72 +1043,41 @@
         if (!currentContainer) return;
 
         switch (currentStep) {
-            case 1: // 购买者信息
-                saveBuyerInfoData(currentContainer);
-                break;
-            case 2: // 套餐选择
+            case 1: // 套餐选择
                 savePackagesData(currentContainer);
+                break;
+            case 2: // 参与者信息（含购买者）
+                saveBuyerInfoData(currentContainer);
+                saveParticipantsData(currentContainer);
                 break;
             case 3: // 附加项选择
                 saveAddonsData(currentContainer);
                 break;
-            case 4: // 参与者信息
-                saveParticipantsData(currentContainer);
-                break;
-            case 5: // 支付总结
-                // 支付步骤不需要保存数据，只是展示总结
+            case 4: // 支付总结
                 break;
         }
     }
     
     /**
-     * 保存所有步骤的数据（用于在显示步骤5前确保数据完整）
+     * 保存所有步骤的数据（用于在显示步骤4支付前确保数据完整）
      */
     function saveAllStepsData() {
         console.log('saveAllStepsData: saving all steps data');
-        console.log('stepContainers length:', stepContainers.length);
         
-        // 保存步骤2（套餐）
-        const step2Container = stepContainers[1];
-        console.log('Step 2 container:', step2Container ? 'found' : 'not found');
+        // 步骤1：套餐
+        const step1Container = stepContainers[0] || document.querySelector('.booking-step[data-step="1"]');
+        if (step1Container) savePackagesData(step1Container);
+        
+        // 步骤2：参与者（含购买者）
+        const step2Container = stepContainers[1] || document.querySelector('.booking-step[data-step="2"]');
         if (step2Container) {
-            savePackagesData(step2Container);
-        } else {
-            // 如果通过索引找不到，尝试通过选择器查找
-            const step2Alt = document.querySelector('.booking-step[data-step="2"]');
-            if (step2Alt) {
-                console.log('Step 2 container found via selector');
-                savePackagesData(step2Alt);
-            }
+            saveBuyerInfoData(step2Container);
+            saveParticipantsData(step2Container);
         }
         
-        // 保存步骤3（附加项）
-        const step3Container = stepContainers[2];
-        console.log('Step 3 container:', step3Container ? 'found' : 'not found');
-        if (step3Container) {
-            saveAddonsData(step3Container);
-        } else {
-            // 如果通过索引找不到，尝试通过选择器查找
-            const step3Alt = document.querySelector('.booking-step[data-step="3"]');
-            if (step3Alt) {
-                console.log('Step 3 container found via selector');
-                saveAddonsData(step3Alt);
-            }
-        }
-        
-        // 保存步骤4（参与者）
-        const step4Container = stepContainers[3];
-        console.log('Step 4 container:', step4Container ? 'found' : 'not found');
-        if (step4Container) {
-            saveParticipantsData(step4Container);
-        } else {
-            // 如果通过索引找不到，尝试通过选择器查找
-            const step4Alt = document.querySelector('.booking-step[data-step="4"]');
-            if (step4Alt) {
-                console.log('Step 4 container found via selector');
-                saveParticipantsData(step4Alt);
-            }
-        }
+        // 步骤3：附加项
+        const step3Container = stepContainers[2] || document.querySelector('.booking-step[data-step="3"]');
+        if (step3Container) saveAddonsData(step3Container);
         
         console.log('saveAllStepsData: final bookingData', bookingData);
     }
@@ -682,8 +1129,8 @@
         // 更新参与者数量（根据套餐数量）
         updateParticipantCount();
         
-        // 如果当前在步骤5，更新订单总结
-        if (currentStep === 5) {
+        // 如果当前在步骤4（支付），更新订单总结
+        if (currentStep === 4) {
             updateOrderSummary();
         }
     }
@@ -698,32 +1145,25 @@
         }
         
         bookingData.addons = [];
-        // 即使容器被隐藏，querySelectorAll 仍然可以工作
-        const addonQuantityInputs = container.querySelectorAll('input.addon-quantity');
+        const addonQuantityEls = container.querySelectorAll('.addon-quantity');
         
-        console.log('saveAddonsData: found', addonQuantityInputs.length, 'addon inputs');
-        
-        addonQuantityInputs.forEach(input => {
-            const addonId = parseInt(input.getAttribute('data-addon-id'));
-            const quantity = parseInt(input.value) || 0;
-            
-            console.log('Addon input:', { addonId, quantity, value: input.value });
+        addonQuantityEls.forEach(function(el) {
+            const addonId = parseInt(el.getAttribute('data-addon-id'));
+            const quantity = parseInt(el.value) || 0;
             
             // 只保存数量大于0的附加项
             if (quantity > 0 && addonId) {
                 bookingData.addons.push({
                     addon_id: addonId,
-                    package_id: null, // Add-ons 现在不绑定到特定 package
-                    participant_id: null, // 可以后续关联到特定参与者
+                    package_id: null,
+                    participant_id: null,
                     quantity: quantity
                 });
             }
         });
         
-        console.log('saveAddonsData: saved addons', bookingData.addons);
-        
-        // 如果当前在步骤5，更新订单总结
-        if (currentStep === 5) {
+        // 如果当前在步骤4（支付），更新订单总结
+        if (currentStep === 4) {
             updateOrderSummary();
         }
     }
@@ -736,11 +1176,25 @@
         const participantForms = container.querySelectorAll('.participant-form');
         
         participantForms.forEach((form) => {
+            const dataIndex = form.getAttribute('data-index');
             const participant = {
                 // 默认必填字段（系统默认收集）
                 first_name: form.querySelector('[name*="participant_first_name"]')?.value || '',
+                middle_name: form.querySelector('[name*="participant_middle_name"]')?.value || '',
                 last_name: form.querySelector('[name*="participant_last_name"]')?.value || '',
-                email: form.querySelector('[name*="participant_email"]')?.value || '',
+                gender: form.querySelector('[name*="participant_gender"]')?.value || '',
+                dob: form.querySelector('[name*="participant_dob"]')?.value || '',
+                registration_type: form.querySelector('[name*="participant_registration_type"]')?.value || '',
+                dietary_restrictions_or_allergies: (() => {
+                    const radio = form.querySelector('input[name="participant_dietary_' + dataIndex + '"]:checked');
+                    const details = form.querySelector('input[name="participant_dietary_' + dataIndex + '_details"]');
+                    return { value: radio ? radio.value : 'no', details: details ? details.value : '' };
+                })(),
+                medical_conditions: (() => {
+                    const radio = form.querySelector('input[name="participant_medical_' + dataIndex + '"]:checked');
+                    const details = form.querySelector('input[name="participant_medical_' + dataIndex + '_details"]');
+                    return { value: radio ? radio.value : 'no', details: details ? details.value : '' };
+                })(),
                 // 构造器配置的自定义问题答案
                 custom_answers: {}
             };
@@ -748,14 +1202,25 @@
             // 收集所有构造器配置的问题答案
             if (window.tripData && window.tripData.custom_questions) {
                 window.tripData.custom_questions.forEach(question => {
-                    const fieldName = `participant_question_${question.id}_`;
-                    const input = form.querySelector(`[name^="${fieldName}"]`);
-                    if (input) {
+                    if (question.type === 'yesno_text') {
+                        const radio = form.querySelector(`input[name="participant_question_${question.id}_${dataIndex}"]:checked`);
+                        const detailsInput = form.querySelector(`input[name="participant_question_${question.id}_${dataIndex}_details"]`);
                         participant.custom_answers[question.id] = {
                             question_id: question.id,
                             label: question.label,
-                            value: input.value || ''
+                            value: radio ? radio.value : 'no',
+                            details: detailsInput ? detailsInput.value : ''
                         };
+                    } else {
+                        const fieldName = `participant_question_${question.id}_${dataIndex}`;
+                        const input = form.querySelector(`[name="${fieldName}"]`);
+                        if (input) {
+                            participant.custom_answers[question.id] = {
+                                question_id: question.id,
+                                label: question.label,
+                                value: input.value || ''
+                            };
+                        }
                     }
                 });
             }
@@ -793,11 +1258,20 @@
         const customInfo = {};
         customFields.forEach(field => {
             const fieldId = field.getAttribute('data-field-id');
+            const fieldType = field.getAttribute('data-field-type');
             if (fieldId) {
-                const input = field.querySelector('input, textarea, select');
-                if (input) {
-                    // 收集所有字段值，包括空值（如果字段存在）
-                    customInfo[fieldId] = input.value || '';
+                if (fieldType === 'yesno_text') {
+                    const radio = field.querySelector('input[type="radio"]:checked');
+                    const detailsInput = field.querySelector('input[name$="_details"]');
+                    customInfo[fieldId] = {
+                        value: radio ? radio.value : 'no',
+                        details: detailsInput ? detailsInput.value : ''
+                    };
+                } else {
+                    const input = field.querySelector('input:not([type="radio"]), textarea, select');
+                    if (input) {
+                        customInfo[fieldId] = input.value || '';
+                    }
                 }
             }
         });
@@ -817,24 +1291,90 @@
         let fieldsHtml = '';
         
         // 1. 默认必填字段（系统默认收集，不需要在构造器中配置）
+        const reqStar = '<span class="required-asterisk">*</span>';
         fieldsHtml += `
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div class="flex flex-col">
-                    <label class="block text-sm font-medium mb-2">*First Name</label>
+                    <label class="text-sm font-medium mb-1">First Name${reqStar}</label>
                     <input type="text" name="participant_first_name_${participantIndex}" 
-                        class="px-2 py-2 w-full border border-zinc-400 rounded-xs" required>
+                        class="w-full min-w-0" required>
                 </div>
                 <div class="flex flex-col">
-                    <label class="block text-sm font-medium mb-2">*Last Name</label>
+                    <label class="text-sm font-medium mb-1">Middle Name</label>
+                    <input type="text" name="participant_middle_name_${participantIndex}" 
+                        class="w-full min-w-0" placeholder="Optional">
+                </div>
+                <div class="flex flex-col">
+                    <label class="text-sm font-medium mb-1">Last Name${reqStar}</label>
                     <input type="text" name="participant_last_name_${participantIndex}" 
-                        class="px-2 py-2 w-full border border-zinc-400 rounded-xs" required>
+                        class="w-full min-w-0" required>
                 </div>
             </div>
-            <div class="mt-4">
+            <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="flex flex-col">
-                    <label class="block text-sm font-medium mb-2">*Email</label>
-                    <input type="email" name="participant_email_${participantIndex}" 
-                        class="px-2 py-2 w-full border border-zinc-400 rounded-xs" required>
+                    <label class="text-sm font-medium mb-1">Gender${reqStar}</label>
+                    <select name="participant_gender_${participantIndex}" 
+                        class="w-full min-w-0" required>
+                        <option value="">Select...</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                        <option value="Prefer not to say">Prefer not to say</option>
+                    </select>
+                </div>
+                <div class="flex flex-col">
+                    <label class="text-sm font-medium mb-1">Date of Birth${reqStar}</label>
+                    <input type="text" name="participant_dob_${participantIndex}" 
+                        class="fp-date w-full min-w-0" 
+                        placeholder="YYYY-MM-DD" required>
+                </div>
+                <div class="flex flex-col">
+                    <label class="text-sm font-medium mb-1">Registration Type${reqStar}</label>
+                    <select name="participant_registration_type_${participantIndex}" 
+                        class="w-full min-w-0" required>
+                        <option value="">Select...</option>
+                        <option value="Student">Student</option>
+                        <option value="Faculty">Faculty</option>
+                        <option value="Parent">Parent</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mt-4 participant-yesno-field participant-default-yesno" data-field="dietary">
+                <label class="text-sm font-medium mb-1">Dietary restrictions or allergies${reqStar}</label>
+                <div class="flex gap-4 mb-2">
+                    <label class="inline-flex items-center cursor-pointer">
+                        <input type="radio" name="participant_dietary_${participantIndex}" value="no" checked class="participant-yesno-radio">
+                        <span class="ml-2">No</span>
+                    </label>
+                    <label class="inline-flex items-center cursor-pointer">
+                        <input type="radio" name="participant_dietary_${participantIndex}" value="yes" class="participant-yesno-radio">
+                        <span class="ml-2">Yes</span>
+                    </label>
+                </div>
+                <div class="yesno-details hidden mt-2">
+                    <label class="block text-sm text-gray-700 mb-1">If yes, please explain:</label>
+                    <input type="text" name="participant_dietary_${participantIndex}_details" 
+                        class="w-full min-w-0 participant-yesno-details-input" 
+                        placeholder="e.g. allergies, dietary restrictions">
+                </div>
+            </div>
+            <div class="mt-4 participant-yesno-field participant-default-yesno" data-field="medical">
+                <label class="text-sm font-medium mb-1">Medical conditions${reqStar}</label>
+                <div class="flex gap-4 mb-2">
+                    <label class="inline-flex items-center cursor-pointer">
+                        <input type="radio" name="participant_medical_${participantIndex}" value="no" checked class="participant-yesno-radio">
+                        <span class="ml-2">No</span>
+                    </label>
+                    <label class="inline-flex items-center cursor-pointer">
+                        <input type="radio" name="participant_medical_${participantIndex}" value="yes" class="participant-yesno-radio">
+                        <span class="ml-2">Yes</span>
+                    </label>
+                </div>
+                <div class="yesno-details hidden mt-2">
+                    <label class="block text-sm text-gray-700 mb-1">If yes, please explain:</label>
+                    <input type="text" name="participant_medical_${participantIndex}_details" 
+                        class="w-full min-w-0 participant-yesno-details-input" 
+                        placeholder="e.g. medical conditions">
                 </div>
             </div>
         `;
@@ -844,15 +1384,15 @@
             window.tripData.custom_questions.forEach((question, qIndex) => {
                 const fieldName = `participant_question_${question.id}_${participantIndex}`;
                 const requiredAttr = question.required ? 'required' : '';
-                const requiredMark = question.required ? '<span class="text-red-500 ml-1">*</span>' : '';
+                const requiredMark = question.required ? '<span class="required-asterisk">*</span>' : '';
                 
                 // 根据问题类型生成对应的输入字段
                 if (question.type === 'textarea') {
                     fieldsHtml += `
                         <div class="mt-4">
-                            <label class="block text-sm font-medium mb-2">${question.label}${requiredMark}</label>
+                            <label class="text-sm font-medium mb-1">${question.label}${requiredMark}</label>
                             <textarea name="${fieldName}" 
-                                class="px-2 py-2 w-full border border-zinc-400 rounded-xs" rows="4" ${requiredAttr}></textarea>
+                                class="w-full min-w-0" rows="4" ${requiredAttr}></textarea>
                         </div>
                     `;
                 } else if ((question.type === 'select' || question.type === 'choice') && question.options) {
@@ -863,19 +1403,50 @@
                     });
                     fieldsHtml += `
                         <div class="mt-4">
-                            <label class="block text-sm font-medium mb-2">${question.label}${requiredMark}</label>
+                            <label class="text-sm font-medium mb-1">${question.label}${requiredMark}</label>
                             <select name="${fieldName}" 
-                                class="px-2 py-2 w-full border border-zinc-400 rounded-xs" ${requiredAttr}>
+                                class="w-full min-w-0" ${requiredAttr}>
                                 ${optionsHtml}
                             </select>
+                        </div>
+                    `;
+                } else if (question.type === 'number') {
+                    fieldsHtml += `
+                        <div class="mt-4">
+                            <label class="text-sm font-medium mb-1">${question.label}${requiredMark}</label>
+                            <input type="number" name="${fieldName}" 
+                                class="w-full min-w-0" ${requiredAttr}>
                         </div>
                     `;
                 } else if (question.type === 'date') {
                     fieldsHtml += `
                         <div class="mt-4">
-                            <label class="block text-sm font-medium mb-2">${question.label}${requiredMark}</label>
-                            <input type="date" name="${fieldName}" 
-                                class="px-2 py-2 w-full border border-zinc-400 rounded-xs" ${requiredAttr}>
+                            <label class="text-sm font-medium mb-1">${question.label}${requiredMark}</label>
+                            <input type="text" name="${fieldName}" 
+                                class="fp-date w-full min-w-0" 
+                                placeholder="YYYY-MM-DD" ${requiredAttr}>
+                        </div>
+                    `;
+                } else if (question.type === 'yesno_text') {
+                    fieldsHtml += `
+                        <div class="mt-4 participant-yesno-field" data-question-id="${question.id}">
+                            <label class="text-sm font-medium mb-1">${question.label}${requiredMark}</label>
+                            <div class="flex gap-4 mb-2">
+                                <label class="inline-flex items-center cursor-pointer">
+                                    <input type="radio" name="${fieldName}" value="no" checked class="participant-yesno-radio">
+                                    <span class="ml-2">No</span>
+                                </label>
+                                <label class="inline-flex items-center cursor-pointer">
+                                    <input type="radio" name="${fieldName}" value="yes" class="participant-yesno-radio">
+                                    <span class="ml-2">Yes</span>
+                                </label>
+                            </div>
+                            <div class="yesno-details hidden mt-2">
+                                <label class="block text-sm text-gray-700 mb-1">If yes, please explain:</label>
+                                <input type="text" name="${fieldName}_details" 
+                                    class="w-full min-w-0 participant-yesno-details-input" 
+                                    placeholder="e.g. Allergens, dietary restrictions">
+                            </div>
                         </div>
                     `;
                 } else {
@@ -883,33 +1454,47 @@
                     const inputType = question.type === 'email' ? 'email' : (question.type === 'phone' ? 'tel' : 'text');
                     fieldsHtml += `
                         <div class="mt-4">
-                            <label class="block text-sm font-medium mb-2">${question.label}${requiredMark}</label>
+                            <label class="text-sm font-medium mb-1">${question.label}${requiredMark}</label>
                             <input type="${inputType}" name="${fieldName}" 
-                                class="px-2 py-2 w-full border border-zinc-400 rounded-xs" ${requiredAttr}>
+                                class="w-full min-w-0" ${requiredAttr}>
                         </div>
                     `;
                 }
             });
         }
         
+        const chevronSvg = '<svg class="participant-chevron w-5 h-5 text-gray-500 flex-shrink-0 transition-transform" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>';
         const participantHtml = `
-            <div class="participant-form border border-zinc-300 p-6 mb-4" data-index="${participantIndex}">
-                <div class="flex justify-between items-center mb-6">
-                    <h3 class="text-lg font-medium text-zinc-800 uppercase tracking-wide">Participant ${participantIndex}</h3>
-                    ${participantIndex > 1 ? `<button type="button" class="remove-participant px-4 py-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-xs text-sm font-medium transition-colors">Remove</button>` : ''}
+            <div class="participant-form mb-4" data-index="${participantIndex}">
+                <div class="flex justify-between items-center mb-4">
+                    <div class="participant-section-header flex items-center gap-2 cursor-pointer flex-1" role="button" tabindex="0" aria-expanded="true">
+                        <span class="participant-num-badge">${participantIndex}</span>
+                        <span>Participant Information</span>
+                        ${chevronSvg}
+                    </div>
                 </div>
-                ${fieldsHtml}
+                <div class="participant-form-body">${fieldsHtml}</div>
             </div>
         `;
         
         participantsContainer.insertAdjacentHTML('beforeend', participantHtml);
         
-        // 绑定删除按钮
-        const removeBtn = participantsContainer.querySelector(`.participant-form[data-index="${participantIndex}"] .remove-participant`);
-        if (removeBtn) {
-            removeBtn.addEventListener('click', function() {
-                this.closest('.participant-form').remove();
-                updateParticipantNumbers();
+        // 对动态添加的日期字段初始化 Flatpickr（与 trip basics 一致）
+        if (typeof window.initFlatpickrOnDates === 'function') {
+            window.initFlatpickrOnDates();
+        }
+        
+        // 第二章风格：折叠/展开 Participant Information
+        const formEl = participantsContainer.querySelector(`.participant-form[data-index="${participantIndex}"]`);
+        const headerEl = formEl && formEl.querySelector('.participant-section-header');
+        const bodyEl = formEl && formEl.querySelector('.participant-form-body');
+        if (headerEl && bodyEl) {
+            headerEl.addEventListener('click', function(e) {
+                const collapsed = headerEl.getAttribute('aria-expanded') !== 'true';
+                headerEl.setAttribute('aria-expanded', collapsed ? 'true' : 'false');
+                bodyEl.style.display = collapsed ? '' : 'none';
+                const chevron = headerEl.querySelector('.participant-chevron');
+                if (chevron) chevron.style.transform = collapsed ? 'rotate(0deg)' : 'rotate(-180deg)';
             });
         }
     }
@@ -920,10 +1505,9 @@
     function updateParticipantNumbers() {
         const forms = participantsContainer.querySelectorAll('.participant-form');
         forms.forEach((form, index) => {
-            const title = form.querySelector('h3');
-            if (title) {
-                title.textContent = `Participant ${index + 1}`;
-            }
+            form.setAttribute('data-index', String(index + 1));
+            const badge = form.querySelector('.participant-num-badge');
+            if (badge) badge.textContent = String(index + 1);
         });
     }
 
@@ -958,228 +1542,219 @@
                 if (participant) {
                     // 恢复默认字段
                     const firstNameInput = form.querySelector('[name*="participant_first_name"]');
+                    const middleNameInput = form.querySelector('[name*="participant_middle_name"]');
                     const lastNameInput = form.querySelector('[name*="participant_last_name"]');
-                    const emailInput = form.querySelector('[name*="participant_email"]');
+                    const genderSelect = form.querySelector('[name*="participant_gender"]');
+                    const dobInput = form.querySelector('[name*="participant_dob"]');
+                    const regTypeSelect = form.querySelector('[name*="participant_registration_type"]');
                     
                     if (firstNameInput) firstNameInput.value = participant.first_name || '';
+                    if (middleNameInput) middleNameInput.value = participant.middle_name || '';
                     if (lastNameInput) lastNameInput.value = participant.last_name || '';
-                    if (emailInput) emailInput.value = participant.email || '';
+                    if (genderSelect) genderSelect.value = participant.gender || '';
+                    if (dobInput) dobInput.value = participant.dob || '';
+                    if (regTypeSelect) regTypeSelect.value = participant.registration_type || '';
+                    
+                    // 恢复 Dietary / Medical (yesno)
+                    const dataIndex = form.getAttribute('data-index');
+                    ['dietary', 'medical'].forEach(field => {
+                        const data = participant[field === 'dietary' ? 'dietary_restrictions_or_allergies' : 'medical_conditions'];
+                        if (data && typeof data === 'object') {
+                            const isYes = (data.value || 'no') === 'yes';
+                            const radio = form.querySelector(`input[name="participant_${field}_${dataIndex}"][value="${data.value || 'no'}"]`);
+                            const detailsInput = form.querySelector(`input[name="participant_${field}_${dataIndex}_details"]`);
+                            const detailsDiv = form.querySelector(`.participant-default-yesno[data-field="${field}"] .yesno-details`);
+                            if (radio) radio.checked = true;
+                            if (detailsInput) {
+                                detailsInput.value = data.details || '';
+                                detailsInput.required = isYes;
+                            }
+                            if (detailsDiv) detailsDiv.classList.toggle('hidden', !isYes);
+                        }
+                    });
                     
                     // 恢复自定义问题答案
                     if (participant.custom_answers && window.tripData && window.tripData.custom_questions) {
+                        const dataIndex = (index + 1).toString();
                         window.tripData.custom_questions.forEach(question => {
-                            const fieldName = `participant_question_${question.id}_${index + 1}`;
-                            const input = form.querySelector(`[name="${fieldName}"]`);
-                            if (input && participant.custom_answers[question.id]) {
-                                input.value = participant.custom_answers[question.id].value || '';
+                            const answer = participant.custom_answers[question.id];
+                            if (!answer) return;
+                            if (question.type === 'yesno_text') {
+                                const radio = form.querySelector(`input[name="participant_question_${question.id}_${dataIndex}"][value="${answer.value || 'no'}"]`);
+                                const detailsInput = form.querySelector(`input[name="participant_question_${question.id}_${dataIndex}_details"]`);
+                                const detailsDiv = form.querySelector(`.participant-yesno-field[data-question-id="${question.id}"] .yesno-details`);
+                                if (radio) radio.checked = true;
+                                if (detailsInput) detailsInput.value = answer.details || '';
+                                if (detailsDiv) detailsDiv.classList.toggle('hidden', (answer.value || 'no') !== 'yes');
+                            } else {
+                                const input = form.querySelector(`[name="participant_question_${question.id}_${dataIndex}"]`);
+                                if (input) input.value = answer.value || '';
                             }
                         });
                     }
                 }
             });
         }
+
+        convertAllModalSelects();
     }
 
     /**
-     * 更新订单总结
+     * 从 DOM 同步当前套餐与附加项到 bookingData，保证 Your Booking 与页面选择一致
+     */
+    function syncBookingDataFromDOM() {
+        const step1 = document.querySelector('.booking-step[data-step="1"]');
+        const step3 = document.querySelector('.booking-step[data-step="3"]');
+        tripData = window.tripData || tripData || {};
+        if (step1) {
+            bookingData.packages = [];
+            step1.querySelectorAll('input.package-quantity').forEach(function(el) {
+                var packageId = parseInt(el.getAttribute('data-package-id'), 10);
+                var quantity = parseInt(el.value, 10) || 0;
+                if (quantity <= 0 || !packageId) return;
+                var pkgInfo = tripData.packages && tripData.packages.find(function(p) { return Number(p.id) === Number(packageId); });
+                var payment_plan_type = (pkgInfo && pkgInfo.payment_plan_config && pkgInfo.payment_plan_config.enabled) ? 'deposit_installment' : 'full';
+                bookingData.packages.push({ package_id: packageId, quantity: quantity, payment_plan_type: payment_plan_type });
+            });
+        }
+        if (step3) {
+            bookingData.addons = [];
+            step3.querySelectorAll('.addon-quantity').forEach(function(el) {
+                var addonId = parseInt(el.getAttribute('data-addon-id'), 10);
+                var quantity = parseInt(el.value, 10) || 0;
+                if (quantity <= 0 || !addonId) return;
+                bookingData.addons.push({ addon_id: addonId, quantity: quantity });
+            });
+        }
+    }
+
+    /**
+     * 更新订单总结（Your Booking 价格计算）
+     * 与后端对齐：Trip Total 对应 calculate_booking_total 的 subtotal（全价合计）；
+     * Due at Booking 对应 calculate_initial_payment_amount（deposit×数量 + 逾期分期 + 附加项）- 折扣 + 手续费。
+     * 逾期判定与 payments.py 一致：installments[].date 格式 YYYY-MM-DD，仅当 due_date < today 计入。
+     * 有 lastQuote.final_amount 时优先用后端金额，保证 Due at Booking 与后台一致。
      */
     function updateOrderSummary() {
-        // 重新获取DOM元素，确保它们存在
-        if (!orderSummaryEl) {
-            orderSummaryEl = document.getElementById('order-summary');
-        }
-        if (!totalAmountEl) {
-            totalAmountEl = document.getElementById('total-amount');
-        }
-        
-        if (!orderSummaryEl || !totalAmountEl) {
-            console.warn('Order summary elements not found');
-            return;
-        }
-        
-        // 确保 tripData 已初始化
-        if (!tripData || !window.tripData) {
-            tripData = window.tripData || {};
-            console.warn('tripData not initialized, using window.tripData:', tripData);
-        } else {
-            // 同步 tripData
-            tripData = window.tripData || tripData;
-        }
-        
-        console.log('updateOrderSummary: tripData', tripData);
-        console.log('updateOrderSummary: tripData.packages', tripData.packages);
-        console.log('updateOrderSummary: tripData.addons', tripData.addons);
-        
-        let total = 0;
-        let html = '';
-        
-        // 确保 bookingData.packages 存在
-        if (!bookingData.packages) {
-            bookingData.packages = [];
-        }
-        
-        // 计算套餐金额
-        // 对于分期付款，使用押金金额；对于全款，使用全价
-        console.log('updateOrderSummary: bookingData.packages', bookingData.packages);
-        console.log('updateOrderSummary: tripData.packages', tripData.packages);
-        
-        bookingData.packages.forEach(pkg => {
-            console.log('Processing package:', pkg);
-            const packageData = tripData.packages?.find(p => p.id === pkg.package_id);
-            console.log('Found package data:', packageData);
-            
-            if (packageData) {
-                let subtotal = 0;
-                let displayName = packageData.name;
-                
-                // 如果是分期付款，使用押金金额
-                if (pkg.payment_plan_type === 'deposit_installment' && 
-                    packageData.payment_plan_config && 
-                    packageData.payment_plan_config.enabled) {
-                    const depositAmount = parseFloat(packageData.payment_plan_config.deposit_amount || 0);
-                    subtotal = depositAmount * pkg.quantity;
-                    displayName = `${packageData.name} (Deposit)`;
-                    
-                    // 检查是否有过期分期（需要合并到首付款）
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    const installments = packageData.payment_plan_config.installments || [];
-                    let overdueTotal = 0;
-                    
-                    installments.forEach(inst => {
-                        if (inst.date) {
-                            const dueDate = new Date(inst.date);
-                            dueDate.setHours(0, 0, 0, 0);
-                            if (dueDate < today) {
-                                overdueTotal += parseFloat(inst.amount || 0) * pkg.quantity;
-                            }
-                        }
-                    });
-                    
-                    if (overdueTotal > 0) {
-                        subtotal += overdueTotal;
-                        displayName = `${packageData.name} (Deposit + Overdue)`;
+        if (!orderSummaryEl) orderSummaryEl = document.getElementById('order-summary');
+        if (!totalAmountEl) totalAmountEl = document.getElementById('total-amount');
+        if (!orderSummaryEl || !totalAmountEl) return;
+        tripData = window.tripData || tripData || {};
+
+        syncBookingDataFromDOM();
+        if (!bookingData.packages) bookingData.packages = [];
+        if (!bookingData.addons) bookingData.addons = [];
+
+        // 按 package_id 合并并汇总 quantity，避免同一套餐多行时重复计费
+        var mergedPackages = [];
+        bookingData.packages.forEach(function(pkg) {
+            var id = Number(pkg.package_id);
+            var existing = mergedPackages.find(function(m) { return m.package_id === id; });
+            if (existing) {
+                existing.quantity = (parseInt(existing.quantity, 10) || 0) + (parseInt(pkg.quantity, 10) || 0);
+            } else {
+                mergedPackages.push({ package_id: pkg.package_id, quantity: pkg.quantity, payment_plan_type: pkg.payment_plan_type });
+            }
+        });
+        bookingData.packages = mergedPackages;
+
+        var tripTotalFull = 0;   // Trip Total = 全价合计（单价×数量）
+        var dueNowTotal = 0;     // Due at Booking 的 subtotal = deposit×数量 + 逾期金额（分期）或 全价（全款）
+        var html = '';
+
+        bookingData.packages.forEach(function(pkg) {
+            var packageData = tripData.packages && tripData.packages.find(function(p) { return Number(p.id) === Number(pkg.package_id); });
+            if (!packageData) return;
+            var price = parseFloat(packageData.price) || 0;
+            var qty = Math.max(0, parseInt(pkg.quantity, 10) || 0);
+            if (qty <= 0) return;
+            tripTotalFull += price * qty;
+            var lineDueNow = 0;
+            var displayName = packageData.name;
+            var ppc = packageData.payment_plan_config;
+
+            if (pkg.payment_plan_type === 'deposit_installment' && ppc && ppc.enabled) {
+                var depositAmount = parseFloat(ppc.deposit_amount || ppc.deposit || 0) || 0;
+                lineDueNow = depositAmount * qty;
+                displayName = packageData.name + ' (Deposit)';
+                // 当今日期 YYYY-MM-DD，用于判断分期是否逾期（due_date < today 则计入 Due at Booking）
+                var now = new Date();
+                var todayStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+                var installments = ppc.installments || [];
+                for (var i = 0; i < installments.length; i++) {
+                    var inst = installments[i];
+                    if (inst && inst.date) {
+                        var dueStr = String(inst.date).substring(0, 10);
+                        if (dueStr.length === 10 && dueStr < todayStr) lineDueNow += (parseFloat(inst.amount) || 0) * qty;
                     }
-                } else {
-                    // 全款支付：使用套餐全价
-                    subtotal = packageData.price * pkg.quantity;
                 }
-                
-                total += subtotal;
-                html += `
-                    <div class="flex justify-between">
-                        <span>${displayName} x${pkg.quantity}</span>
-                        <span>$${subtotal.toFixed(2)}</span>
-                    </div>
-                `;
+                if (lineDueNow !== depositAmount * qty) displayName = packageData.name + ' (Deposit + Overdue)';
             } else {
-                console.warn('Package data not found for package_id:', pkg.package_id);
+                lineDueNow = price * qty;
             }
+            dueNowTotal += lineDueNow;
+            html += '<div class="flex justify-between"><span>' + displayName + ' x' + qty + '</span><span>$' + formatCurrency(lineDueNow) + '</span></div>';
         });
-        
-        // 确保 bookingData.addons 存在
-        if (!bookingData.addons) {
-            bookingData.addons = [];
-        }
-        
-        // 计算附加项金额
-        console.log('updateOrderSummary: bookingData.addons', bookingData.addons);
-        console.log('updateOrderSummary: tripData.addons', tripData.addons);
-        
-        bookingData.addons.forEach(addon => {
-            console.log('Processing addon:', addon);
-            const addonData = tripData.addons?.find(a => a.id === addon.addon_id);
-            console.log('Found addon data:', addonData);
-            
-            if (addonData) {
-                const subtotal = addonData.price * addon.quantity;
-                total += subtotal;
-                html += `
-                    <div class="flex justify-between text-sm text-gray-600">
-                        <span>+ ${addonData.name} x${addon.quantity}</span>
-                        <span>$${subtotal.toFixed(2)}</span>
-                    </div>
-                `;
-            } else {
-                console.warn('Addon data not found for addon_id:', addon.addon_id);
-            }
+
+        bookingData.addons.forEach(function(addon) {
+            var addonData = tripData.addons && tripData.addons.find(function(a) { return Number(a.id) === Number(addon.addon_id); });
+            if (!addonData) return;
+            var lineTotal = (parseFloat(addonData.price) || 0) * (Math.max(0, parseInt(addon.quantity, 10)) || 0);
+            tripTotalFull += lineTotal;
+            dueNowTotal += lineTotal;
+            html += '<div class="flex justify-between text-sm text-gray-600"><span>' + addonData.name + ' x' + addon.quantity + '</span><span>$' + formatCurrency(lineTotal) + '</span></div>';
         });
-        
-        // 计算 subtotal（折扣前、fee前的金额）
-        const subtotal = total;
-        
-        // 应用折扣（仅在计算 total 时减去，UI 由单独的元素显示）
-        if (bookingData.discount_code && bookingData.discount_amount > 0) {
-            total -= bookingData.discount_amount;
-        }
+
+        tripTotalFull = Math.round(tripTotalFull * 100) / 100;
+        dueNowTotal = Math.round(dueNowTotal * 100) / 100;
+        var discountAmount = (bookingData.discount_code && bookingData.discount_amount > 0) ? parseFloat(bookingData.discount_amount) : 0;
+        var totalAfterDiscount = Math.max(0, Math.round((dueNowTotal - discountAmount) * 100) / 100);
 
         if (html === '') {
-            html = '<p class="text-gray-500">No items selected</p>';
+            html = '<p class="text-gray-500">Select packages to see total.</p>';
         }
-        
-        // 确保更新DOM
-        if (orderSummaryEl) {
-            orderSummaryEl.innerHTML = html;
-        }
-        
-        // 更新 subtotal 显示
-        const subtotalEl = document.getElementById('subtotal-amount');
-        if (subtotalEl) {
-            subtotalEl.textContent = '$' + subtotal.toFixed(2);
-        }
-        
-        // 更新折扣显示状态
-        const discountInputSection = document.getElementById('discount-input-section');
-        const discountApplied = document.getElementById('discount-applied');
-        const discountAmountDisplay = document.getElementById('discount-amount-display');
-        
-        if (bookingData.discount_code && bookingData.discount_amount > 0) {
+        orderSummaryEl.innerHTML = html;
+
+        // 弹窗内：仅当该套餐数量 > 0 时显示 Payment plan 明细（含 Deposit 金额），否则隐藏
+        document.querySelectorAll('#booking-modal .package-card').forEach(function(card) {
+            var pid = card.getAttribute('data-package-id');
+            var input = document.querySelector('input.package-quantity[data-package-id="' + pid + '"]');
+            var qty = input ? (parseInt(input.value, 10) || 0) : 0;
+            var detailEl = card.querySelector('.package-installment-detail');
+            if (detailEl) {
+                if (qty > 0) detailEl.classList.remove('hidden');
+                else detailEl.classList.add('hidden');
+            }
+        });
+
+        var tripTotalEl = document.getElementById('trip-total-amount');
+        if (tripTotalEl) tripTotalEl.textContent = '$' + formatCurrency(tripTotalFull);
+
+        var discountInputSection = document.getElementById('discount-input-section');
+        var discountApplied = document.getElementById('discount-applied');
+        var discountAmountDisplay = document.getElementById('discount-amount-display');
+        if (bookingData.discount_code && discountAmount > 0) {
             if (discountInputSection) discountInputSection.classList.add('hidden');
             if (discountApplied) discountApplied.classList.remove('hidden');
-            if (discountAmountDisplay) {
-                discountAmountDisplay.textContent = `-$${bookingData.discount_amount.toFixed(2)}`;
-            }
+            if (discountAmountDisplay) discountAmountDisplay.textContent = '-$' + formatCurrency(discountAmount);
         } else {
             if (discountInputSection) discountInputSection.classList.remove('hidden');
             if (discountApplied) discountApplied.classList.add('hidden');
         }
-        
-        // 更新 fee 显示
-        const feeAmountEl = document.getElementById('fee-amount');
-        const feeCents = (lastQuote && typeof lastQuote.fee === 'number') ? lastQuote.fee : 0;
+
+        var feeAmountEl = document.getElementById('fee-amount');
+        var feeCents = (lastQuote && typeof lastQuote.fee === 'number') ? lastQuote.fee : 0;
+        var feeDollars = feeCents / 100;
         if (feeAmountEl) {
-            feeAmountEl.textContent = '$' + (feeCents / 100).toFixed(2);
-            // fee 大于 0 时显示为深色
-            if (feeCents > 0) {
-                feeAmountEl.classList.remove('text-zinc-500');
-                feeAmountEl.classList.add('text-zinc-900');
-            } else {
-                feeAmountEl.classList.add('text-zinc-500');
-                feeAmountEl.classList.remove('text-zinc-900');
-            }
+            feeAmountEl.textContent = '$' + formatCurrency(feeDollars);
+            feeAmountEl.classList.toggle('text-zinc-900', feeCents > 0);
+            feeAmountEl.classList.toggle('text-zinc-500', feeCents <= 0);
         }
-        
-        if (totalAmountEl) {
-            // 优先使用后端返回的金额（包含追缴模式计算和折扣）
-            let displayTotal = total;
-            if (lastQuote && typeof lastQuote.final_amount === 'number') {
-                // 后端已计算折扣后的 final_amount
-                displayTotal = lastQuote.final_amount / 100;
-            } else {
-                // 无后端数据时，前端计算：(subtotal - discount) + fee
-                const feeAmount = feeCents / 100;
-                displayTotal = Math.max(0, total) + feeAmount;
-            }
-            totalAmountEl.textContent = '$' + displayTotal.toFixed(2);
-        }
-        
-        console.log('Order summary updated:', { 
-            packages: bookingData.packages, 
-            addons: bookingData.addons, 
-            total,
-            packagesCount: bookingData.packages?.length || 0,
-            addonsCount: bookingData.addons?.length || 0
-        });
+
+        // Due at Booking：与后端一致。有 lastQuote 时用后端 final_amount（已含折扣+手续费），保证与后台对上；一律两位小数
+        var displayTotal = totalAfterDiscount + feeDollars;
+        if (lastQuote && typeof lastQuote.final_amount === 'number') displayTotal = lastQuote.final_amount / 100;
+        totalAmountEl.textContent = '$' + formatCurrency(Math.round(displayTotal * 100) / 100);
     }
 
     function updateEmbeddedSummary(quote) {
@@ -1187,7 +1762,7 @@
             return;
         }
         if (totalAmountEl) {
-            totalAmountEl.textContent = '$' + (quote.final_amount / 100).toFixed(2);
+            totalAmountEl.textContent = '$' + formatCurrency(quote.final_amount / 100);
         }
     }
 
@@ -1214,18 +1789,29 @@
         
         const code = codeInput.value.trim().toUpperCase();
         
-        // 计算订单原价
+        // 计算订单金额（与 updateOrderSummary / Due at Booking 一致：分期时 = 定金×数量 + 逾期分期×数量）
         let orderAmount = 0;
+        var now = new Date();
+        var todayStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
         for (const pkg of (bookingData.packages || [])) {
             const pkgData = tripData.packages?.find(p => p.id === pkg.package_id);
-            if (pkgData && pkgData.price) {
-                // 如果是分期付款，使用定金作为计算基础
-                if (pkg.payment_plan_type === 'deposit_installment' && pkgData.payment_plan_config?.enabled) {
-                    const deposit = pkgData.payment_plan_config.deposit_amount || pkgData.payment_plan_config.deposit || pkgData.price;
-                    orderAmount += deposit * (pkg.quantity || 1);
-                } else {
-                    orderAmount += pkgData.price * (pkg.quantity || 1);
+            if (!pkgData || !pkgData.price) continue;
+            var qty = Math.max(0, parseInt(pkg.quantity, 10) || 0);
+            if (qty <= 0) continue;
+            var ppc = pkgData.payment_plan_config;
+            if (pkg.payment_plan_type === 'deposit_installment' && ppc && ppc.enabled) {
+                var depositAmount = parseFloat(ppc.deposit_amount || ppc.deposit || 0) || 0;
+                orderAmount += depositAmount * qty;
+                var installments = ppc.installments || [];
+                for (var i = 0; i < installments.length; i++) {
+                    var inst = installments[i];
+                    if (inst && inst.date) {
+                        var dueStr = String(inst.date).substring(0, 10);
+                        if (dueStr.length === 10 && dueStr < todayStr) orderAmount += (parseFloat(inst.amount) || 0) * qty;
+                    }
                 }
+            } else {
+                orderAmount += (parseFloat(pkgData.price) || 0) * qty;
             }
         }
         for (const addon of (bookingData.addons || [])) {
@@ -1266,7 +1852,7 @@
                     discountApplied.classList.remove('hidden');
                     if (discountCodeDisplay) discountCodeDisplay.textContent = result.discount.code;
                     if (discountAmountDisplay) {
-                        discountAmountDisplay.textContent = `-$${result.discount.discount_amount.toFixed(2)}`;
+                        discountAmountDisplay.textContent = '-$' + formatCurrency(result.discount.discount_amount);
                     }
                 }
                 
@@ -1389,10 +1975,11 @@
         // 保存最后一步数据
         saveCurrentStepData();
 
-        // 显示加载状态
-        if (submitButton) {
-            submitButton.disabled = true;
-            submitButton.textContent = 'Processing...';
+        // 显示加载状态（最后一步唯一按钮为 nextButton）
+        var confirmBtn = submitButton || nextButton;
+        if (confirmBtn) {
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = 'Processing...';
         }
 
         if (document.getElementById('payment-element')) {
@@ -1433,18 +2020,14 @@
                 }
             } else {
                 showCustomAlert(result.error || 'Booking submission failed. Please try again.');
-                if (submitButton) {
-                    submitButton.disabled = false;
-                    submitButton.textContent = 'Place Order';
-                }
+                var btn = submitButton || nextButton;
+                if (btn) { btn.disabled = false; btn.textContent = 'Confirm Booking'; }
             }
         } catch (error) {
             console.error('Booking submission error:', error);
             showCustomAlert('An error occurred. Please try again.');
-            if (submitButton) {
-                submitButton.disabled = false;
-                submitButton.textContent = 'Place Order';
-            }
+            var btn = submitButton || nextButton;
+            if (btn) { btn.disabled = false; btn.textContent = 'Confirm Booking'; }
         }
     }
 
@@ -1469,11 +2052,13 @@
         saveCurrentStepData();
         const signature = getBookingSignature();
         if (embeddedPaymentSession && embeddedPaymentSignature === signature) {
+            setPaymentElementLoading(false);
             return;
         }
 
         resetEmbeddedPaymentSession();
         embeddedPaymentSignature = signature;
+        setPaymentElementLoading(true);
 
         try {
             const response = await fetch(window.location.href, {
@@ -1517,6 +2102,11 @@
             elementsInstance = stripeInstance.elements({
                 clientSecret: embeddedPaymentSession.client_secret,
                 paymentMethodCreation: "manual",
+                appearance: {
+                    variables: {
+                        fontFamily: '"Source Sans Pro", sans-serif',
+                    },
+                },
             });
             paymentElementInstance = elementsInstance.create("payment", {
                 paymentMethodOrder: ["card"],
@@ -1532,6 +2122,9 @@
                         address: "auto",
                     },
                 },
+            });
+            paymentElementInstance.on("ready", () => {
+                setPaymentElementLoading(false);
             });
             paymentElementInstance.mount("#payment-element");
 
@@ -1551,6 +2144,7 @@
             });
         } catch (error) {
             console.error('Embedded payment init error:', error);
+            setPaymentElementLoading(false);
             showCustomAlert(error.message || 'Payment is not ready. Please try again.');
             resetEmbeddedPaymentSession();
         }
@@ -1661,10 +2255,8 @@
         if (!embeddedPaymentSession) {
             await initEmbeddedPaymentSession();
             if (!embeddedPaymentSession) {
-                if (submitButton) {
-                    submitButton.disabled = false;
-                    submitButton.textContent = 'Place Order';
-                }
+                var btn = submitButton || nextButton;
+                if (btn) { btn.disabled = false; btn.textContent = 'Confirm Booking'; }
                 return;
             }
         }
@@ -1702,6 +2294,7 @@
         // 如果付款金额为 0，直接创建订单，不通过 Stripe
         if (actualPaymentAmount <= 0 && embeddedPaymentSession.payment_intent_id) {
             console.log('$0 payment detected, creating booking directly...');
+            showBookingModalResult('loading');
             try {
                 const response = await fetch('/api/booking/create-free', {
                     method: 'POST',
@@ -1712,20 +2305,20 @@
                 });
                 const result = await response.json();
                 
-                if (result.success && result.redirect_url) {
+                if (result.success && result.booking_id) {
                     console.log('Free booking created successfully:', result);
-                    window.location.href = result.redirect_url;
+                    showBookingModalResult('success', { booking_id: result.booking_id });
+                    var btn = submitButton || nextButton;
+                    if (btn) { btn.disabled = false; btn.textContent = 'Confirm Booking'; }
                     return;
                 } else {
                     throw new Error(result.message || 'Failed to create booking');
                 }
             } catch (error) {
                 console.error('Error creating free booking:', error);
-                showPaymentMessage(error.message || 'Failed to create booking. Please try again.');
-                if (submitButton) {
-                    submitButton.disabled = false;
-                    submitButton.textContent = 'Place Order';
-                }
+                showBookingModalResult('failure');
+                var btn = submitButton || nextButton;
+                if (btn) { btn.disabled = false; btn.textContent = 'Confirm Booking'; }
                 return;
             }
         }
@@ -1733,14 +2326,13 @@
         if (!lastQuote) {
             await requestEmbeddedQuote(false);
             if (!lastQuote) {
-                if (submitButton) {
-                    submitButton.disabled = false;
-                    submitButton.textContent = 'Place Order';
-                }
+                var btn = submitButton || nextButton;
+                if (btn) { btn.disabled = false; btn.textContent = 'Confirm Booking'; }
                 return;
             }
         }
 
+        showBookingModalResult('loading');
         try {
             // 新流程：使用 payment_intent_id（还没有创建Booking）
             const requestBody = {
@@ -1776,16 +2368,28 @@
                 },
             });
             if (error) {
-                showPaymentMessage("Payment failed. Please try again.");
+                showBookingModalResult('failure');
+            } else {
+                // 无重定向（无 3DS）时在当前页轮询状态并在弹窗内显示结果
+                const pi = embeddedPaymentSession.payment_intent_id;
+                if (pi) {
+                    pollPaymentStatusThenShowResult(pi);
+                } else {
+                    showBookingModalResult('failure');
+                }
             }
         } catch (err) {
-            showPaymentMessage(err.message || "Payment failed. Please try again.");
+            showBookingModalResult('failure');
         } finally {
-            if (submitButton) {
-                submitButton.disabled = false;
-                submitButton.textContent = 'Place Order';
-            }
+            var btn = submitButton || nextButton;
+            if (btn) { btn.disabled = false; btn.textContent = 'Confirm Booking'; }
         }
+    }
+
+    function setPaymentElementLoading(show) {
+        const el = document.getElementById('payment-element-loading');
+        if (!el) return;
+        el.setAttribute('aria-hidden', show ? 'false' : 'true');
     }
 
     function resetEmbeddedPaymentSession() {
@@ -1803,6 +2407,157 @@
         paymentElementInstance = null;
         lastPaymentMethodId = null;
         lastQuote = null;
+        setPaymentElementLoading(false);
+    }
+
+    /**
+     * 桌面端（lg）下将 #booking-modal-scroll 的 minHeight 设为
+     * max(#booking-modal-left-inner, #booking-modal-right)，避免右侧 Your Booking 被折叠。
+     * 先清空 minHeight 让左右列按内容自然高度 reflow，再测量并设置，否则会量到被撑高后的值导致越设越高。
+     * 仅当 viewport >= 1024px 时设置；否则清空 minHeight。
+     */
+    function syncBookingModalBodyMinHeight() {
+        var scrollEl = document.getElementById('booking-modal-scroll');
+        var leftInner = document.getElementById('booking-modal-left-inner');
+        var rightEl = document.getElementById('booking-modal-right');
+        if (!scrollEl) return;
+        if (!leftInner || !rightEl) {
+            scrollEl.style.minHeight = '';
+            return;
+        }
+        if (window.innerWidth < 1024) {
+            scrollEl.style.minHeight = '';
+            return;
+        }
+        scrollEl.style.minHeight = '';
+        requestAnimationFrame(function() {
+            var h = Math.max(leftInner.offsetHeight, rightEl.offsetHeight);
+            scrollEl.style.minHeight = h + 'px';
+        });
+    }
+
+    /**
+     * 在弹窗左侧显示付款结果：loading | success | failure，传 null 则恢复表单
+     * data: { booking_id, receipt_url }
+     */
+    function showBookingModalResult(state, data) {
+        const resultWrap = document.getElementById('booking-modal-result');
+        const formArea = document.getElementById('modal-form-area');
+        const btnBar = document.getElementById('booking-modal-btn-bar');
+        const loadingEl = document.getElementById('booking-result-loading');
+        const successEl = document.getElementById('booking-result-success');
+        const failureEl = document.getElementById('booking-result-failure');
+        const receiptLink = document.getElementById('booking-result-receipt-link');
+        const receiptWrap = document.getElementById('booking-result-receipt-wrap');
+        if (!resultWrap || !formArea || !btnBar) return;
+
+        if (state === null) {
+            resultWrap.classList.add('hidden');
+            resultWrap.setAttribute('aria-hidden', 'true');
+            formArea.classList.remove('hidden');
+            btnBar.classList.remove('hidden');
+            if (loadingEl) loadingEl.classList.add('hidden');
+            if (successEl) successEl.classList.add('hidden');
+            if (failureEl) failureEl.classList.add('hidden');
+            var amountPaidRow = document.getElementById('amount-paid-row');
+            if (amountPaidRow) amountPaidRow.classList.add('hidden');
+            requestAnimationFrame(function() { syncBookingModalBodyMinHeight(); });
+            return;
+        }
+
+        formArea.classList.add('hidden');
+        btnBar.classList.add('hidden');
+        resultWrap.classList.remove('hidden');
+        resultWrap.setAttribute('aria-hidden', 'false');
+        if (loadingEl) loadingEl.classList.add('hidden');
+        if (successEl) successEl.classList.add('hidden');
+        if (failureEl) failureEl.classList.add('hidden');
+
+        if (state === 'loading') {
+            if (loadingEl) loadingEl.classList.remove('hidden');
+        } else if (state === 'success') {
+            if (successEl) successEl.classList.remove('hidden');
+            const bid = data && data.booking_id;
+            if (receiptLink && bid) {
+                receiptLink.href = '/booking/' + bid + '/receipt';
+                receiptLink.target = '_blank';
+                if (receiptWrap) receiptWrap.classList.remove('hidden');
+            } else if (receiptWrap) {
+                receiptWrap.classList.add('hidden');
+            }
+        } else if (state === 'failure') {
+            if (failureEl) failureEl.classList.remove('hidden');
+        }
+        // 付款结果页：有 booking_id 时用接口拉取金额填充 Your Booking，否则用 updateOrderSummary；高亮 Payment 步骤
+        requestAnimationFrame(function() {
+            syncBookingModalBodyMinHeight();
+            var bid = state === 'success' && data && data.booking_id ? data.booking_id : null;
+            if (bid) {
+                fetch('/api/booking/' + bid + '/summary')
+                    .then(function(r) { return r.ok ? r.json() : null; })
+                    .then(function(summary) {
+                        if (!summary) return;
+                        var orderSummaryEl = document.getElementById('order-summary');
+                        var tripTotalEl = document.getElementById('trip-total-amount');
+                        var feeAmountEl = document.getElementById('fee-amount');
+                        var totalAmountEl = document.getElementById('total-amount');
+                        if (orderSummaryEl && summary.order_summary_lines && summary.order_summary_lines.length) {
+                            var html = summary.order_summary_lines.map(function(line) {
+                                return '<div class="flex justify-between"><span>' + (line.label || '') + '</span><span>$' + formatCurrency(line.amount) + '</span></div>';
+                            }).join('');
+                            orderSummaryEl.innerHTML = html;
+                        } else if (orderSummaryEl) {
+                            orderSummaryEl.innerHTML = '<p class="text-gray-500">Booking total below.</p>';
+                        }
+                        if (tripTotalEl) tripTotalEl.textContent = '$' + formatCurrency(summary.trip_total);
+                        if (feeAmountEl) {
+                            feeAmountEl.textContent = '$' + formatCurrency(summary.fee);
+                            feeAmountEl.classList.toggle('text-zinc-900', (summary.fee || 0) > 0);
+                            feeAmountEl.classList.toggle('text-zinc-500', !(summary.fee > 0));
+                        }
+                        if (totalAmountEl) totalAmountEl.textContent = '$' + formatCurrency(summary.due_at_booking);
+                        var amountPaidEl = document.getElementById('amount-paid');
+                        var amountPaidRow = document.getElementById('amount-paid-row');
+                        if (amountPaidEl) amountPaidEl.textContent = '$' + formatCurrency(summary.due_at_booking);
+                        if (amountPaidRow) amountPaidRow.classList.remove('hidden');
+                    })
+                    .catch(function() { if (typeof updateOrderSummary === 'function') updateOrderSummary(); });
+            } else {
+                if (typeof updateOrderSummary === 'function') updateOrderSummary();
+            }
+            var paymentStep = stepContainers.length;
+            document.querySelectorAll('.modal-step-tab').forEach(function(tab) {
+                var tabStep = parseInt(tab.getAttribute('data-step'), 10);
+                tab.style.color = (tabStep === paymentStep) ? '#1f2937' : '#9ca3af';
+                tab.setAttribute('aria-selected', tabStep === paymentStep ? 'true' : 'false');
+            });
+        });
+    }
+
+    /** 轮询支付状态，成功后显示结果在弹窗内 */
+    function pollPaymentStatusThenShowResult(paymentIntentId) {
+        const statusUrl = '/api/payment/status?payment_intent_id=' + encodeURIComponent(paymentIntentId);
+        function poll() {
+            fetch(statusUrl)
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    if (data.status === 'succeeded') {
+                        showBookingModalResult('success', { booking_id: data.booking_id });
+                        var btn = submitButton || nextButton;
+                        if (btn) { btn.disabled = false; btn.textContent = 'Confirm Booking'; }
+                        return;
+                    }
+                    if (data.status === 'failed') {
+                        showBookingModalResult('failure');
+                        var btn = submitButton || nextButton;
+                        if (btn) { btn.disabled = false; btn.textContent = 'Confirm Booking'; }
+                        return;
+                    }
+                    setTimeout(poll, 2000);
+                })
+                .catch(function() { setTimeout(poll, 2000); });
+        }
+        poll();
     }
 
     function showPaymentMessage(text) {
@@ -1890,7 +2645,8 @@
     window.BookingWizard = {
         getBookingData: () => bookingData,
         goToStep: (step) => showStep(step),
-        getCurrentStep: () => currentStep
+        getCurrentStep: () => currentStep,
+        syncModalBodyMinHeight: syncBookingModalBodyMinHeight
     };
 
 })();

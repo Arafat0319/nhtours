@@ -58,7 +58,7 @@
                                 class="block w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-wetravel-cyan focus:border-wetravel-cyan">
                         </div>
                         <div class="flex items-center space-x-2">
-                            <select name="status" class="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-wetravel-cyan">
+                            <select name="status" class="admin-select px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-wetravel-cyan">
                                 <option value="">All Status</option>
                                 <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending</option>
                                 <option value="succeeded" {% if status_filter == 'succeeded' %}selected{% endif %}>Succeeded</option>
@@ -131,7 +131,7 @@
                                         <span class="text-gray-400">-</span>
                                     {% endif %}
                                 </td>
-                                <td class="px-4 py-3 text-sm font-semibold">${{ "%.2f"|format(payment.amount or 0.0) }}</td>
+                                <td class="px-4 py-3 text-sm font-semibold">${{ (payment.amount or 0)|format_price }}</td>
                                 <td class="px-4 py-3 text-sm">
                                     <span class="px-2 py-1 text-xs rounded-full
                                         {% if payment.status == 'succeeded' %}bg-green-100 text-green-800
@@ -173,7 +173,7 @@
                                 class="block w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-wetravel-cyan">
                         </div>
                         <div class="flex items-center space-x-2">
-                            <select name="status" class="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-wetravel-cyan">
+                            <select name="status" class="admin-select px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-wetravel-cyan">
                                 <option value="">All Status</option>
                                 <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending</option>
                                 <option value="paid" {% if status_filter == 'paid' %}selected{% endif %}>Paid</option>
@@ -250,7 +250,7 @@
                                 <td class="px-4 py-3 text-sm">
                                     <span class="font-medium">Deposit</span>
                                 </td>
-                                <td class="px-4 py-3 text-sm font-semibold">${{ "%.2f"|format(deposit.amount or 0.0) }}</td>
+                                <td class="px-4 py-3 text-sm font-semibold">${{ (deposit.amount or 0)|format_price }}</td>
                                 <td class="px-4 py-3 text-sm">
                                     {% if deposit.due_date %}
                                         {{ deposit.due_date.strftime('%Y-%m-%d') }}
@@ -329,7 +329,7 @@
                                         Payoff
                                     </span>
                                 </td>
-                                <td class="px-4 py-2.5 text-sm font-semibold text-purple-700">${{ "%.2f"|format(item.payment.amount or 0.0) }}</td>
+                                <td class="px-4 py-2.5 text-sm font-semibold text-purple-700">${{ (item.payment.amount or 0)|format_price }}</td>
                                 <td class="px-4 py-2.5 text-sm text-gray-600">
                                     {% if item.payment.paid_at %}
                                         {{ item.payment.paid_at.strftime('%Y-%m-%d %H:%M') }}
@@ -368,7 +368,7 @@
                                 <td class="px-4 py-2.5 text-sm">
                                     <span class="text-indigo-700 font-medium">#{{ installment.installment_number }}</span>
                                 </td>
-                                <td class="px-4 py-2.5 text-sm font-semibold text-gray-700">${{ "%.2f"|format(installment.amount or 0.0) }}</td>
+                                <td class="px-4 py-2.5 text-sm font-semibold text-gray-700">${{ (installment.amount or 0)|format_price }}</td>
                                 <td class="px-4 py-2.5 text-sm text-gray-600">
                                     {% if installment.status == 'paid' and inst_payment and inst_payment.paid_at %}
                                         {{ inst_payment.paid_at.strftime('%Y-%m-%d %H:%M') }}

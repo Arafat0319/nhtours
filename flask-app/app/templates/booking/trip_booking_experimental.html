@@ -1,0 +1,16 @@
+{# 设计预览 · 实验页：继承正式行程详情页（原版主页），仅增加顶部横幅，便于在独立 URL 上安全测试。 #}
+{# 正式页：/trips/<slug> ；本实验页：/trips/<slug>/design-preview #}
+{# 若要用设计稿生成的代码替换本页，可改为 extends "booking/base.html" 并在下方 block content 中粘贴新 HTML。 #}
+{% extends "booking/trip_booking.html" %}
+
+{% block title %}（设计预览）Nexus Horizons | {{ trip.title }}{% endblock %}
+
+{% block content %}
+{# ========== 设计预览横幅（仅实验页显示） ========== #}
+<div class="design-preview-banner" style="position: sticky; top: 0; z-index: 9998; background: #1e3a5f; color: #fff; padding: 10px 16px; text-align: center; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+    <strong>设计预览 · 实验页面</strong>
+    <span style="opacity: 0.9;"> — 本页为临时预览，与正式页内容一致（原版主页）。</span>
+    <a href="{{ url_for('main.trip_detail', slug=trip.slug) }}" style="color: #93c5fd; margin-left: 12px;">返回正式页 /trips/{{ trip.slug }}</a>
+</div>
+{{ super() }}
+{% endblock %}

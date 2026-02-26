@@ -1,7 +1,11 @@
 {% extends "admin/trips/builder/base_builder.html" %}
 
+{% block head_extra %}
+{{ super() }}
+{% endblock %}
+
 {% block builder_step_content %}
-<form method="post" enctype="multipart/form-data" class="space-y-8 max-w-4xl">
+<form method="post" enctype="multipart/form-data" class="space-y-8 max-w-4xl" id="tripBasicsForm" onsubmit="return validateFormBeforeSubmit(event)">
     {{ form.hidden_tag() }}
 
     <!-- Section 1: Basic Details (Horizontal Layout) -->
@@ -46,26 +50,16 @@
             {% endfor %}
         </div>
 
-        <!-- Trip Dates -->
+        <!-- Trip Dates (Flatpickr for Safari/Chrome 一致体验) -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6 items-center">
             <label class="block text-sm font-semibold text-gray-700 md:col-span-1">Trip Dates</label>
             <div class="md:col-span-3">
-                <!-- Date Range -->
-                <style>
-                    /* Hide native calendar picker indicator */
-                    input[type="date"]::-webkit-calendar-picker-indicator {
-                        display: none;
-                        -webkit-appearance: none;
-                    }
-                </style>
                 <div
                     class="flex items-center border border-gray-200 rounded-md px-3 py-0.5 bg-white shadow-sm focus-within:ring-1 focus-within:ring-wetravel-cyan focus-within:border-wetravel-cyan">
-                    <!-- Start Date: Left Aligned Group -->
+                    <!-- Start Date -->
                     <div class="flex-1 flex justify-start items-center">
-                        {{ form.start_date(class="w-[8rem] border-0 focus:ring-0 focus:outline-none text-sm py-2
-                        text-gray-900 placeholder-gray-400 bg-transparent p-0 text-left", type="date", min=min_date) }}
-                        <svg onclick="this.previousElementSibling.showPicker()"
-                            class="h-4 w-4 text-gray-400 flex-shrink-0 ml-2 cursor-pointer hover:text-wetravel-cyan transition-colors"
+                        {{ form.start_date(class="fp-start w-[8rem] border-0 focus:ring-0 focus:outline-none text-sm py-2 text-gray-900 placeholder-gray-400 bg-transparent p-0 text-left", type="text", placeholder="YYYY-MM-DD") }}
+                        <svg id="fp-start-trigger" class="h-4 w-4 text-gray-400 flex-shrink-0 ml-2 cursor-pointer hover:text-wetravel-cyan transition-colors"
                             fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z">
@@ -73,19 +67,16 @@
                         </svg>
                     </div>
 
-                    <!-- Center Arrow -->
                     <svg class="h-4 w-4 text-gray-400 flex-shrink-0 mx-4" fill="none" stroke="currentColor"
                         viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                             d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
                     </svg>
 
-                    <!-- End Date: Right Aligned Group -->
+                    <!-- End Date -->
                     <div class="flex-1 flex justify-end items-center">
-                        {{ form.end_date(class="w-[8rem] border-0 focus:ring-0 focus:outline-none text-sm py-2
-                        text-gray-900 placeholder-gray-400 bg-transparent p-0 text-left", type="date", min=min_date) }}
-                        <svg onclick="this.previousElementSibling.showPicker()"
-                            class="h-4 w-4 text-gray-400 flex-shrink-0 ml-2 cursor-pointer hover:text-wetravel-cyan transition-colors"
+                        {{ form.end_date(class="fp-end w-[8rem] border-0 focus:ring-0 focus:outline-none text-sm py-2 text-gray-900 placeholder-gray-400 bg-transparent p-0 text-left", type="text", placeholder="YYYY-MM-DD") }}
+                        <svg id="fp-end-trigger" class="h-4 w-4 text-gray-400 flex-shrink-0 ml-2 cursor-pointer hover:text-wetravel-cyan transition-colors"
                             fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z">
@@ -99,6 +90,31 @@
             <div class="md:col-start-2 md:col-span-3">
                 <p class="text-sm text-red-600">{{ form.start_date.errors[0] if form.start_date.errors else '' }} {{
                     form.end_date.errors[0] if form.end_date.errors else '' }}</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Registration Date (optional: when customers can start booking) -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 items-center">
+            <label for="registration_date" class="block text-sm font-semibold text-gray-700 md:col-span-1">Registration opens on</label>
+            <div class="md:col-span-3">
+                <div class="flex items-center gap-2">
+                    <div class="flex items-center border border-gray-200 rounded-md px-3 py-0.5 bg-white shadow-sm focus-within:ring-1 focus-within:ring-wetravel-cyan focus-within:border-wetravel-cyan max-w-xs">
+                        {{ form.registration_date(class="fp-registration w-[8rem] border-0 focus:ring-0 focus:outline-none text-sm py-2 text-gray-900 placeholder-gray-400 bg-transparent p-0 text-left", type="text") }}
+                        <svg id="fp-registration-trigger" class="h-4 w-4 text-gray-400 flex-shrink-0 ml-2 cursor-pointer hover:text-wetravel-cyan transition-colors"
+                            fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z">
+                            </path>
+                        </svg>
+                    </div>
+                    <button type="button" id="clear-registration-date" class="text-xs text-gray-500 hover:text-gray-700 underline">Clear</button>
+                </div>
+                <p class="mt-2 text-xs text-gray-500">Date when customers can start booking. Leave empty for no restriction.</p>
+            </div>
+            {% if form.registration_date.errors %}
+            <div class="md:col-start-2 md:col-span-3">
+                <p class="text-sm text-red-600">{{ form.registration_date.errors[0] }}</p>
             </div>
             {% endif %}
         </div>
@@ -125,12 +141,16 @@
                     <button type="button" onclick="selectColor('#A78BFA')"
                         class="w-8 h-8 rounded-full bg-[#A78BFA] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#A78BFA] color-swatch"
                         data-color="#A78BFA"></button>
-                    <!-- Custom Input fallback -->
-                    <div class="relative">
-                        <input type="color" onchange="selectColor(this.value)"
-                            class="w-8 h-8 p-0 border-0 rounded-full overflow-hidden cursor-pointer"
-                            id="custom_color_picker">
-                    </div>
+                    <!-- Custom color: 圆形渐变 + 隐藏原生 input -->
+                    <label class="custom-color-btn relative inline-flex items-center justify-center w-8 h-8 rounded-full cursor-pointer border-2 border-gray-200 hover:border-wetravel-cyan transition-colors overflow-hidden"
+                        title="Custom color">
+                        <span class="absolute inset-0 rounded-full bg-gradient-to-br from-cyan-400 via-pink-400 to-amber-400 opacity-90"></span>
+                        <svg class="relative w-4 h-4 text-white drop-shadow-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                        </svg>
+                        <input type="color" onchange="selectColor(this.value)" id="custom_color_picker"
+                            class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                    </label>
                 </div>
                 <p class="mt-2 text-xs text-gray-500">Pick a color to distinguish this trip in the dashboard calendar.
                 </p>
@@ -139,24 +159,27 @@
 
         <script>
             function selectColor(color) {
-                // unexpected case handling
                 if (!color) return;
 
                 document.getElementById('trip_color').value = color;
 
-                // Update visual state
+                const presetColors = Array.from(document.querySelectorAll('.color-swatch')).map(btn => btn.dataset.color.toLowerCase());
+                const isPreset = presetColors.includes(color.toLowerCase());
+
                 document.querySelectorAll('.color-swatch').forEach(btn => {
-                    // Reset rings
                     btn.classList.remove('ring-2', 'ring-offset-2', 'ring-gray-400');
                     if (btn.dataset.color.toLowerCase() === color.toLowerCase()) {
                         btn.classList.add('ring-2', 'ring-offset-2', 'ring-gray-400');
                     }
                 });
-                // Also update the custom color picker if the selected color is not one of the presets
+
+                const customBtn = document.querySelector('.custom-color-btn');
                 const customPicker = document.getElementById('custom_color_picker');
-                const presetColors = Array.from(document.querySelectorAll('.color-swatch')).map(btn => btn.dataset.color.toLowerCase());
-                if (!presetColors.includes(color.toLowerCase())) {
+                if (!isPreset) {
                     customPicker.value = color;
+                    customBtn?.classList.add('ring-2', 'ring-offset-2', 'ring-gray-400');
+                } else {
+                    customBtn?.classList.remove('ring-2', 'ring-offset-2', 'ring-gray-400');
                 }
             }
 
@@ -195,12 +218,19 @@
                 <img id="existing-hero-image" src="{{ url_for('static', filename=trip.hero_image) }}" alt="Hero"
                     class="object-cover w-full h-full">
             </div>
-            <div class="flex justify-center">
+            <p class="text-xs text-gray-500 mb-2">建议尺寸：1920×600 或更大；高分辨率屏 3840×1200。</p>
+            <div class="flex justify-center gap-3">
                 <label for="hero_image"
                     class="cursor-pointer bg-white py-2 px-4 border border-gray-200 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-wetravel-cyan">
                     <span>Change Cover Photo</span>
                     {{ form.hero_image(class="sr-only", id="hero_image", onchange="handleImagePreview(event)") }}
                 </label>
+                <input type="hidden" name="remove_hero_image" id="remove_hero_image" value="">
+                <button type="button"
+                    class="py-2 px-4 border border-red-200 rounded-md shadow-sm text-sm font-medium text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                    onclick="customConfirm('Remove the current cover photo?', 'Remove Cover Photo', 'danger').then(ok => { if(ok) { document.getElementById('remove_hero_image').value='1'; document.getElementById('tripBasicsForm').requestSubmit(); } });">
+                    Remove Cover Photo
+                </button>
             </div>
             <div id="preview-container" class="hidden"></div>
             {% else %}
@@ -219,7 +249,7 @@
                     <p class="pl-1">or drag and drop</p>
                 </div>
                 <p class="text-xs text-gray-500">
-                    PNG, JPG up to 10MB
+                    PNG, JPG up to 10MB. 为保持顶部大图清晰，建议上传至少 1920×600 像素（宽×高）；高分辨率屏建议 3840×1200。
                 </p>
             </div>
             <div id="preview-container" class="hidden"></div>
@@ -250,13 +280,14 @@
                 <button type="button"
                     class="bg-wetravel-cyan text-white px-4 py-2 rounded-md text-sm font-medium shadow-sm">Yes</button>
                 <button type="button"
-                    class="bg-white text-gray-700 border border-gray-200 px-4 py-2 rounded-md text-sm font-medium shadow-sm hover:bg-gray-50">No</button>
+                    class="bg-white text-gray-700 border border-gray-200 px-4 py-2 rounded-md text-sm font-medium shadow-sm">No</button>
             </div>
         </div>
     </div>
 
     <!-- Actions -->
     <div class="mt-8 flex items-center justify-end gap-x-6 border-t border-gray-200 pt-6">
+        <span id="basics-autosave-indicator" class="text-xs text-gray-400 mr-auto"></span>
         <button type="submit"
             class="rounded-md bg-wetravel-cyan px-6 py-2 text-sm font-semibold text-white shadow-sm hover:bg-wetravel-cyan-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wetravel-cyan">
             Save & Continue
@@ -265,21 +296,85 @@
 </form>
 
 <script>
+    // Image validation constants
+    const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+    const VALID_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png'];
+    const VALID_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png'];
+
+    // Validate image file
+    function validateImageFile(file) {
+        if (!file) return { valid: true }; // No file is OK (optional)
+        
+        // Check file type by MIME type
+        if (!VALID_IMAGE_TYPES.includes(file.type)) {
+            return { 
+                valid: false, 
+                message: 'Please upload a valid image file (JPG or PNG)',
+                title: 'Invalid File Type'
+            };
+        }
+        
+        // Check file extension as backup
+        const fileName = file.name.toLowerCase();
+        const hasValidExtension = VALID_IMAGE_EXTENSIONS.some(ext => fileName.endsWith(ext));
+        if (!hasValidExtension) {
+            return { 
+                valid: false, 
+                message: 'Please upload a valid image file (JPG or PNG)',
+                title: 'Invalid File Type'
+            };
+        }
+        
+        // Check file size
+        if (file.size > MAX_IMAGE_SIZE) {
+            const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+            return { 
+                valid: false, 
+                message: `File size (${sizeMB}MB) exceeds the maximum limit of 10MB. Please choose a smaller image.`,
+                title: 'File Too Large'
+            };
+        }
+        
+        return { valid: true };
+    }
+
+    // Clear file input
+    function clearFileInput(input) {
+        input.value = '';
+        // For some browsers, we need to create a new input
+        if (input.value) {
+            input.type = 'text';
+            input.type = 'file';
+        }
+    }
+
+    // Validate form before submit
+    function validateFormBeforeSubmit(event) {
+        const heroImageInput = document.getElementById('hero_image');
+        
+        if (heroImageInput && heroImageInput.files && heroImageInput.files[0]) {
+            const validation = validateImageFile(heroImageInput.files[0]);
+            if (!validation.valid) {
+                event.preventDefault();
+                customAlert(validation.message, validation.title);
+                clearFileInput(heroImageInput);
+                return false;
+            }
+        }
+        
+        return true;
+    }
+
     // Handle image preview when file is selected
     function handleImagePreview(event) {
         const file = event.target.files[0];
         if (!file) return;
 
-        // Validate file type
-        const validTypes = ['image/jpeg', 'image/jpg', 'image/png'];
-        if (!validTypes.includes(file.type)) {
-            customAlert('Please upload a valid image file (JPG or PNG)', 'Invalid File Type');
-            return;
-        }
-
-        // Validate file size (10MB)
-        if (file.size > 10 * 1024 * 1024) {
-            customAlert('File size must be less than 10MB', 'File Too Large');
+        // Validate image file
+        const validation = validateImageFile(file);
+        if (!validation.valid) {
+            customAlert(validation.message, validation.title);
+            clearFileInput(event.target);
             return;
         }
 
@@ -329,19 +424,96 @@
     }
 
     document.addEventListener('DOMContentLoaded', function () {
-        // Use ID selectors (WTForms default ID is field name)
         const startInput = document.getElementById('start_date');
         const endInput = document.getElementById('end_date');
+        const regInput = document.getElementById('registration_date');
+        const minDate = {{ min_date|tojson if min_date is defined else 'null' }};
 
-        if (startInput && endInput) {
+        // Flatpickr: 跨浏览器一致体验，解决 Safari 日历过小、点击外部不关闭等问题
+        if (typeof flatpickr !== 'undefined' && startInput && endInput) {
+            const fpStart = flatpickr(startInput, {
+                dateFormat: 'Y-m-d',
+                minDate: minDate || 'today',
+                allowInput: false,
+                static: false,  // 弹出层，点击外部自动关闭（Safari/Chrome 均正常）
+                onChange: function(sel, dateStr) {
+                    fpEnd.set('minDate', dateStr || minDate);
+                    if (endInput.value && dateStr && endInput.value < dateStr) {
+                        fpEnd.setDate(dateStr);
+                    }
+                }
+            });
+            const fpEnd = flatpickr(endInput, {
+                dateFormat: 'Y-m-d',
+                minDate: startInput.value || minDate || 'today',
+                allowInput: false,
+                static: false
+            });
+            document.getElementById('fp-start-trigger').addEventListener('click', () => fpStart.open());
+            document.getElementById('fp-end-trigger').addEventListener('click', () => fpEnd.open());
+
+            // Registration Date (optional)
+            if (typeof flatpickr !== 'undefined' && regInput) {
+                const fpReg = flatpickr(regInput, {
+                    dateFormat: 'Y-m-d',
+                    allowInput: true,
+                    static: false
+                });
+                document.getElementById('fp-registration-trigger').addEventListener('click', () => fpReg.open());
+            document.getElementById('clear-registration-date').addEventListener('click', () => {
+                fpReg.clear();
+            });
+        }
+        } else if (startInput && endInput) {
+            // 无 Flatpickr 时保留原有逻辑
             startInput.addEventListener('change', function () {
-                // Ensure End Date min is at least Start Date
-                endInput.min = this.value;
                 if (endInput.value && endInput.value < this.value) {
                     endInput.value = this.value;
                 }
             });
         }
+
+        // Basics Autosave (text fields only, no image)
+        const basicsAutosaveUrl = "{{ url_for('admin.trip_builder', id=trip.id, step='basics') }}";
+        let basicsAutosaveTimer = null;
+        let basicsAutosavePending = false;
+        function doBasicsAutosave() {
+            if (basicsAutosavePending) return;
+            basicsAutosavePending = true;
+            const fd = new FormData();
+            fd.append('title', document.getElementById('title')?.value || '');
+            fd.append('slug', document.getElementById('slug')?.value || '');
+            fd.append('destination_text', document.getElementById('destination_text')?.value || '');
+            fd.append('start_date', document.getElementById('start_date')?.value || '');
+            fd.append('end_date', document.getElementById('end_date')?.value || '');
+            fd.append('registration_date', document.getElementById('registration_date')?.value || '');
+            fd.append('color', document.getElementById('trip_color')?.value || '#00D1C1');
+            fd.append('capacity', document.getElementById('capacity')?.value || '');
+            fd.append('min_capacity', document.getElementById('min_capacity')?.value || '');
+            fd.append('csrf_token', document.querySelector('input[name=csrf_token]').value);
+            fetch(basicsAutosaveUrl, { method: 'POST', body: fd, headers: { 'X-Autosave': '1' } })
+                .then(r => r.json())
+                .then(d => {
+                    basicsAutosavePending = false;
+                    const el = document.getElementById('basics-autosave-indicator');
+                    if (el && d.success) { el.textContent = 'Saved'; el.className = 'text-xs text-green-600 mr-auto'; }
+                })
+                .catch(() => { basicsAutosavePending = false; });
+        }
+        function scheduleBasicsAutosave() {
+            if (basicsAutosaveTimer) clearTimeout(basicsAutosaveTimer);
+            const el = document.getElementById('basics-autosave-indicator');
+            if (el) { el.textContent = 'Saving...'; el.className = 'text-xs text-amber-600 mr-auto'; }
+            basicsAutosaveTimer = setTimeout(doBasicsAutosave, 1500);
+        }
+        ['title','slug','destination_text','capacity'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) { el.addEventListener('input', scheduleBasicsAutosave); el.addEventListener('change', scheduleBasicsAutosave); }
+        });
+        ['start_date','end_date','registration_date','trip_color'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('change', scheduleBasicsAutosave);
+        });
 
         // Disable mouse wheel and middle button for capacity input
         const capacityInput = document.getElementById('capacity');

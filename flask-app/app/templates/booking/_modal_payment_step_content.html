@@ -1,0 +1,18 @@
+{# 与报名页 Payment 步骤完全一致的左侧内容：标题、卡费说明、#payment-element、错误信息；可选的 preview 占位 #}
+<section class="relative w-full min-w-0 pt-0 px-4 pb-4 lg:px-8 lg:pb-8">
+    <div class="mb-6 flex flex-col">
+        <h3 class="booking-step-title text-[16px] font-medium leading-[26px] text-gray-900 mb-2">Payment</h3>
+    </div>
+    <p class="text-sm text-gray-600 mb-4 pt-2" style="color: #4b5563;">A card fee applies to credit cards only: Visa/Mastercard 2.9%, AmEx 3.5%. Debit and prepaid cards are not charged.</p>
+    <div class="payment-element-wrapper">
+        <div id="payment-element-loading" class="payment-loading-placeholder {{ 'hidden' if preview_only|default(false) else '' }}" aria-hidden="{{ 'true' if preview_only|default(false) else 'false' }}"><span class="payment-loading-spinner" aria-hidden="true"></span><span>Loading payment form…</span></div>
+        <div id="payment-element" class="payment-element-box border rounded-lg p-4" style="border-color: #d1d5db;">
+            {% if preview_only|default(false) %}
+            <div id="payment-preview-placeholder" class="py-6 px-4 text-center rounded-lg border border-gray-200 bg-gray-50/50">
+                <p class="text-gray-400 text-sm">Card details will appear here</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    <div id="payment-message" class="text-sm text-red-600 mt-2 hidden"></div>
+</section>

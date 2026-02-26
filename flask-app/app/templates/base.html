@@ -3,10 +3,11 @@
 
 <head>
 	{% include 'includes/meta.html' %}
+	{% block extra_head %}{% endblock %}
 </head>
 
-<body>
-	{% include 'includes/nav.html' %}
+<body class="{% block body_class %}{% endblock %}">
+	{% block nav %}{% include 'includes/nav.html' %}{% endblock %}
 	
 	<main>
 		{% block content %}{% endblock %}

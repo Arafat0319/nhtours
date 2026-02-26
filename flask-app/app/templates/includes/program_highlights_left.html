@@ -1,0 +1,9 @@
+{% macro program_highlights_left() %}
+<div class="relative overflow-visible bg-zinc-100 p-8 md:self-start">
+	<img alt="" class="absolute w-[50%] min-w-[200px] max-w-[280px] h-auto opacity-50 pointer-events-none" style="right:0;bottom:0;object-fit:contain;object-position:100% 100%;" aria-hidden="true"
+		src="{{ url_for('static', filename='images/icons/highlight_bg.svg') }}"/>
+	<div class="relative z-10">
+		{{ caller() }}
+	</div>
+</div>
+{% endmacro %}

@@ -34,7 +34,7 @@
                                     clip-rule="evenodd" />
                             </svg>
                             <span class="text-sm font-medium text-gray-900">First Name <span
-                                    class="text-red-500">*</span></span>
+                                    class="required-asterisk">*</span></span>
                         </div>
                         <span class="text-sm text-gray-400 italic">Required by default</span>
                     </li>
@@ -46,7 +46,7 @@
                                     clip-rule="evenodd" />
                             </svg>
                             <span class="text-sm font-medium text-gray-900">Last Name <span
-                                    class="text-red-500">*</span></span>
+                                    class="required-asterisk">*</span></span>
                         </div>
                         <span class="text-sm text-gray-400 italic">Required by default</span>
                     </li>
@@ -58,7 +58,7 @@
                                     clip-rule="evenodd" />
                             </svg>
                             <span class="text-sm font-medium text-gray-900">Email <span
-                                    class="text-red-500">*</span></span>
+                                    class="required-asterisk">*</span></span>
                         </div>
                         <span class="text-sm text-gray-400 italic">Required by default</span>
                     </li>
@@ -70,7 +70,7 @@
                                     clip-rule="evenodd" />
                             </svg>
                             <span class="text-sm font-medium text-gray-900">Phone <span
-                                    class="text-red-500">*</span></span>
+                                    class="required-asterisk">*</span></span>
                         </div>
                         <span class="text-sm text-gray-400 italic">Required by default</span>
                     </li>
@@ -206,14 +206,22 @@
                                 <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Field
                                     Type</label>
                                 <select id="f_type" onchange="toggleOptionField()"
-                                    class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
-                                    <option value="text">Text</option>
-                                    <option value="textarea">Long Text</option>
-                                    <option value="email">Email</option>
-                                    <option value="phone">Phone</option>
-                                    <option value="address">Address</option>
-                                    <option value="date">Date</option>
-                                    <option value="select">Multiple Choice (Dropdown)</option>
+                                    class="admin-select block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
+                                    <optgroup label="Text">
+                                        <option value="text">Text</option>
+                                        <option value="textarea">Long Text</option>
+                                        <option value="number">Number</option>
+                                        <option value="address">Address</option>
+                                    </optgroup>
+                                    <optgroup label="Contact">
+                                        <option value="email">Email</option>
+                                        <option value="phone">Phone</option>
+                                    </optgroup>
+                                    <optgroup label="Choice &amp; Other">
+                                        <option value="select">Dropdown</option>
+                                        <option value="yesno_text">Yes/No with Details</option>
+                                        <option value="date">Date</option>
+                                    </optgroup>
                                 </select>
                             </div>
 
@@ -222,11 +230,11 @@
                                 <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Required?</label>
                                 <div class="flex rounded-md shadow-sm" role="group">
                                     <button type="button" onclick="toggleRequired(true)" id="btn-req-yes"
-                                        class="px-3 py-1.5 text-sm font-medium rounded-l-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
+                                        class="px-3 py-1.5 text-sm font-medium rounded-l-md border border-gray-300 bg-white text-gray-700 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
                                         Yes
                                     </button>
                                     <button type="button" onclick="toggleRequired(false)" id="btn-req-no"
-                                        class="px-3 py-1.5 text-sm font-medium rounded-r-md border border-l-0 border-gray-300 bg-gray-100 text-gray-900 hover:bg-gray-200 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
+                                        class="px-3 py-1.5 text-sm font-medium rounded-r-md border border-l-0 border-gray-300 bg-gray-100 text-gray-900 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
                                         No
                                     </button>
                                 </div>
@@ -242,13 +250,18 @@
                                 placeholder="e.g. Address, Emergency Contact">
                         </div>
 
-                        <!-- Options (Conditional) -->
+                        <!-- Options (Conditional) - 逐项添加，更友好 -->
                         <div id="options_container" class="hidden border-t border-gray-200 pt-5">
-                            <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Options (Comma
-                                separated)</label>
-                            <textarea id="f_options" rows="3"
-                                class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6"
-                                placeholder="Option A, Option B"></textarea>
+                            <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Options</label>
+                            <p class="text-xs text-gray-500 mb-3">Add options one by one. Users will pick one from the dropdown.</p>
+                            <div id="options_list" class="space-y-2 mb-3"></div>
+                            <button type="button" onclick="addOptionRow()"
+                                class="inline-flex items-center text-wetravel-cyan hover:text-wetravel-cyan-dark font-medium text-sm">
+                                <svg class="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd"/>
+                                </svg>
+                                Add option
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -315,10 +328,36 @@
     initializeFields();
 
     // Field Logic
+    function addOptionRow(value) {
+        const list = document.getElementById('options_list');
+        const row = document.createElement('div');
+        row.className = 'flex gap-2 items-center option-row';
+        row.innerHTML = `
+            <input type="text" class="option-input flex-1 rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6" placeholder="Enter option">
+            <button type="button" onclick="this.parentElement.remove()" class="text-gray-400 hover:text-red-600 p-1" title="Remove">×</button>
+        `;
+        if (value) row.querySelector('.option-input').value = value;
+        list.appendChild(row);
+    }
+    function getOptionsFromList() {
+        return Array.from(document.querySelectorAll('#options_list .option-input'))
+            .map(i => i.value.trim()).filter(s => s.length > 0);
+    }
+    function renderOptionsList(opts) {
+        const list = document.getElementById('options_list');
+        if (!list) return;
+        list.innerHTML = '';
+        if (opts && opts.length > 0) {
+            opts.forEach(o => addOptionRow(o));
+        } else {
+            addOptionRow();
+        }
+    }
     function toggleOptionField() {
         const type = document.getElementById('f_type').value;
         if (type === 'select') {
             optionsContainer.classList.remove('hidden');
+            if (document.getElementById('options_list').children.length === 0) addOptionRow();
         } else {
             optionsContainer.classList.add('hidden');
         }
@@ -330,11 +369,11 @@
         const btnNo = document.getElementById('btn-req-no');
 
         if (val) {
-            btnYes.className = "px-3 py-1.5 text-sm font-medium rounded-l-md border border-gray-300 bg-wetravel-cyan text-white hover:bg-cyan-600 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan";
-            btnNo.className = "px-3 py-1.5 text-sm font-medium rounded-r-md border border-l-0 border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan";
+            btnYes.className = "px-3 py-1.5 text-sm font-medium rounded-l-md border border-gray-300 bg-wetravel-cyan text-white focus:z-10 focus:ring-1 focus:ring-wetravel-cyan";
+            btnNo.className = "px-3 py-1.5 text-sm font-medium rounded-r-md border border-l-0 border-gray-300 bg-white text-gray-700 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan";
         } else {
-            btnYes.className = "px-3 py-1.5 text-sm font-medium rounded-l-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan";
-            btnNo.className = "px-3 py-1.5 text-sm font-medium rounded-r-md border border-l-0 border-gray-300 bg-gray-100 text-gray-900 hover:bg-gray-200 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan";
+            btnYes.className = "px-3 py-1.5 text-sm font-medium rounded-l-md border border-gray-300 bg-white text-gray-700 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan";
+            btnNo.className = "px-3 py-1.5 text-sm font-medium rounded-r-md border border-l-0 border-gray-300 bg-gray-100 text-gray-900 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan";
         }
     }
 
@@ -470,8 +509,8 @@
                         <path fill-rule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" />
                     </svg>
                     <div>
-                        <span class="text-sm font-medium text-gray-900">${item.field_name} ${item.is_required ? '<span class="text-red-500">*</span>' : ''}</span>
-                        <p class="text-xs text-gray-500 capitalize">${item.field_type}</p>
+                        <span class="text-sm font-medium text-gray-900">${item.field_name} ${item.is_required ? '<span class="required-asterisk">*</span>' : ''}</span>
+                        <p class="text-xs text-gray-500">${({'text':'Text','textarea':'Long Text','number':'Number','email':'Email','phone':'Phone','select':'Dropdown','address':'Address','date':'Date','yesno_text':'Yes/No with Details'}[item.field_type] || item.field_type.replace(/_/g, ' '))}</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -502,7 +541,7 @@
         document.getElementById('f_id').value = '';
         document.getElementById('f_name').value = '';
         document.getElementById('f_type').value = 'text';
-        document.getElementById('f_options').value = '';
+        renderOptionsList([]);
         toggleRequired(false);
 
         toggleOptionField();
@@ -519,8 +558,8 @@
         document.getElementById('f_type').value = item.field_type;
 
         let opts = item.options;
-        if (Array.isArray(opts)) opts = opts.join(', ');
-        document.getElementById('f_options').value = opts || '';
+        if (!Array.isArray(opts)) opts = opts ? String(opts).split(',').map(s => s.trim()).filter(s => s) : [];
+        renderOptionsList(opts);
 
         toggleRequired(item.is_required);
 
@@ -543,9 +582,10 @@
 
         let options = null;
         if (fieldType === 'select') {
-            const rawOpts = document.getElementById('f_options').value;
-            if (rawOpts) {
-                options = rawOpts.split(',').map(s => s.trim()).filter(s => s.length > 0);
+            options = getOptionsFromList();
+            if (options.length === 0) {
+                await customAlert('Please add at least one option for Dropdown type.', 'Validation Error');
+                return;
             }
         }
 

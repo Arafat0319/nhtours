@@ -104,17 +104,17 @@
 
 	<h2>Program Highlights</h2>
 	<div class="md:grid grid-cols-[3fr_1fr] gap-2">
-		<div class="bg-zinc-100 p-8 bg-position-[8em_50%] bg-no-repeat"
-			style="background-image:url({{ url_for('static', filename='images/icons/cloud-white.svg') }})">
-			<span class="block font-medium uppercase tracking-wide text-xl">Cultural Immersion​</span>
+		{% from 'includes/program_highlights_left.html' import program_highlights_left %}
+		{% call program_highlights_left() %}
+				<span class="block font-medium uppercase tracking-wide text-xl">Cultural Immersion​</span>
 			<p class="content overview nopad nom">Experience Vancouver's rich blend of Asian heritage and Canadian culture through engaging activities and meaningful encounters.</p>
 			<span class="block mt-4 font-medium uppercase tracking-wide text-xl">Youthful Connection</span>
 			<p class="content overview nopad nom">Build friendships, enjoy local flavors, and connect with diverse communities in a fun, welcoming environment.​</p>
 			<span class="block mt-4 font-medium uppercase tracking-wide text-xl">Nature & Exploration​</span>
 			<p class="content overview nopad nom">Discover the beauty of Canada's West Coast through outdoor adventures and scenic excursions.​</p>
-		</div>
+		{% endcall %}
 		<div class="h-[400px] md:h-auto bg-no-repeat bg-top bg-cover"
-			style="background-image:url({{ url_for('static', filename='images/content/vancouver-highlight.Bh9OKfCx.jpg') }})"></div>
+			style="background-image:url({{ url_for('static', filename='images/content/north-america/vancouver/vancouver-highlight.Bh9OKfCx.jpg') }})"></div>
 		<div></div>
 		<div>
 			<span class="text-sm text-zinc-500 italic">Day 4, UBC Campus visit</span>
@@ -154,9 +154,9 @@
 	</table>
 	<br/><br/>
 
-	<img class="md:hidden mb-8 w-full" src="{{ url_for('static', filename='images/content/vancouver-map.DWJyK-HP.png') }}"/>
+	<img class="md:hidden mb-8 w-full" src="{{ url_for('static', filename='images/content/north-america/vancouver/vancouver-map.DWJyK-HP.png') }}"/>
 	<div class="map-section md:grid grid-cols-2 items-center bg-no-repeat bg-size-[100%] md:bg-size-[80%] bg-right md:h-[800px]"
-		style="background-image:url({{ url_for('static', filename='images/content/vancouver-map.DWJyK-HP.png') }})">
+		style="background-image:url({{ url_for('static', filename='images/content/north-america/vancouver/vancouver-map.DWJyK-HP.png') }})">
 		<div>
 			<h2>Options</h2>
 			<ul class="content text-xl font-light">
@@ -179,7 +179,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 1" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/05d2db68-89e9-4fc2-8a8d-c198483edeab.py-3XE9p.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/north-america/vancouver/05d2db68-89e9-4fc2-8a8d-c198483edeab.py-3XE9p.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -187,7 +187,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 2" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/0e6195f6-acfc-44e1-95af-44c6d02b189c.DpQAiQ-i.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/north-america/vancouver/0e6195f6-acfc-44e1-95af-44c6d02b189c.DpQAiQ-i.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -195,7 +195,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 3" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/19f0a24d-befe-4c21-ad23-fdcf28158105.D5NSXtxC.png') }}"/>
+						src="{{ url_for('static', filename='images/content/north-america/vancouver/19f0a24d-befe-4c21-ad23-fdcf28158105.D5NSXtxC.png') }}"/>
 				</div>
 			</div>
 		</div>
@@ -203,7 +203,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 4" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/59006fe5-ebb9-4b58-bfbf-c26210b37e52.B8jqVvAS.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/north-america/vancouver/59006fe5-ebb9-4b58-bfbf-c26210b37e52.B8jqVvAS.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -211,7 +211,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 5" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/5ddabbbb-b03f-41c5-82db-2e1327b0c90c.BfRQSGvV.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/north-america/vancouver/5ddabbbb-b03f-41c5-82db-2e1327b0c90c.BfRQSGvV.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -219,7 +219,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 6" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/6693dd71-f82e-4935-9b74-73caec83c0a6.BcQsjlpX.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/north-america/vancouver/6693dd71-f82e-4935-9b74-73caec83c0a6.BcQsjlpX.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -227,7 +227,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 7" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/7294dce0-ba96-40ca-80ea-bf2aca24b9d5.DxDa0LKv.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/north-america/vancouver/7294dce0-ba96-40ca-80ea-bf2aca24b9d5.DxDa0LKv.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -235,7 +235,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 8" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/98533cd0-26cf-448b-909d-7dcd1432b75c.DUPgyp7t.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/north-america/vancouver/98533cd0-26cf-448b-909d-7dcd1432b75c.DUPgyp7t.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -243,7 +243,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 9" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/a0a0f4fe-9f3f-42b2-a911-40cd5e1624c0.CMDLncbr.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/north-america/vancouver/a0a0f4fe-9f3f-42b2-a911-40cd5e1624c0.CMDLncbr.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -251,7 +251,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 10" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/a8222061-7ec3-42d0-a2b6-58754dbbc7fb.CVnCOKXl.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/north-america/vancouver/a8222061-7ec3-42d0-a2b6-58754dbbc7fb.CVnCOKXl.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -259,7 +259,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 11" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/b658b641-cd93-447e-8395-cb163cb2a96c.DCq60TeE.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/north-america/vancouver/b658b641-cd93-447e-8395-cb163cb2a96c.DCq60TeE.jpeg') }}"/>
 				</div>
 			</div>
 		</div>
@@ -267,7 +267,7 @@
 			<div class="overflow-hidden rounded-xs rounded-full">
 				<div class="aspect-[3/2]">
 					<img alt="Photo 12" class="w-full h-full object-cover"
-						src="{{ url_for('static', filename='images/content/d6134cff-4e75-4b2a-aff8-5642d28bf5ad.BQjenUUC.jpeg') }}"/>
+						src="{{ url_for('static', filename='images/content/north-america/vancouver/d6134cff-4e75-4b2a-aff8-5642d28bf5ad.BQjenUUC.jpeg') }}"/>
 				</div>
 			</div>
 		</div>

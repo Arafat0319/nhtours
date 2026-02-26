@@ -17,6 +17,7 @@ class TripBasicsForm(FlaskForm):
     destination_text = StringField('Destination', validators=[DataRequired(), Length(max=128)])
     start_date = DateField('Start Date', validators=[DataRequired()])
     end_date = DateField('End Date', validators=[DataRequired()])
+    registration_date = DateField('Registration Date', validators=[Optional()])
     capacity = IntegerField('Max Group Size', validators=[Optional()])
     min_capacity = IntegerField('Min Group Size', validators=[Optional()])
     hero_image = FileField('Hero Image', validators=[FileAllowed(['jpg', 'png', 'jpeg'], 'Images only!')])

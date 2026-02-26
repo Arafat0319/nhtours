@@ -23,16 +23,29 @@ let quoteTimer = null;
 let lastQuote = null;
 let isPayoffMode = false;
 
-const formatMoney = (cents) => `$${(cents / 100).toFixed(2)}`;
+function formatMoneyAmount(num) {
+    const n = typeof num === 'number' ? num : parseFloat(num);
+    if (isNaN(n)) return '0';
+    if (Math.abs(n - Math.round(n * 100) / 100) < 1e-9) return String(Math.round(n));
+    const s = n.toFixed(2);
+    return s.replace(/\.?0+$/, '');
+}
+/** 客户可见金额一律两位小数，避免被误认为多收 */
+function formatCurrency(cents) {
+    const n = typeof cents === 'number' ? cents : parseFloat(cents);
+    if (isNaN(n)) return '$0.00';
+    return '$' + (Math.round(n) / 100).toFixed(2);
+}
+const formatMoney = (cents) => '$' + formatMoneyAmount(cents / 100);
 
 const updateSummary = (quote) => {
     const summaryBase = document.getElementById("summary-base");
     const summaryFee = document.getElementById("summary-fee");
     const summaryTotal = document.getElementById("summary-total");
     
-    if (summaryBase) summaryBase.textContent = formatMoney(quote.base_amount);
-    if (summaryFee) summaryFee.textContent = formatMoney(quote.fee);
-    if (summaryTotal) summaryTotal.textContent = formatMoney(quote.final_amount);
+    if (summaryBase) summaryBase.textContent = formatCurrency(quote.base_amount);
+    if (summaryFee) summaryFee.textContent = formatCurrency(quote.fee);
+    if (summaryTotal) summaryTotal.textContent = formatCurrency(quote.final_amount);
 };
 
 const showMessage = (text) => {
@@ -64,6 +77,11 @@ if (clientSecret && publishableKey) {
         elements = stripe.elements({
             clientSecret,
             paymentMethodCreation: "manual",
+            appearance: {
+                variables: {
+                    fontFamily: '"Source Sans Pro", sans-serif',
+                },
+            },
         });
         paymentElement = elements.create("payment", {
             paymentMethodOrder: ["card"],

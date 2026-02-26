@@ -21,7 +21,7 @@
         </div>
     </div>
 
-    <form method="POST" id="packagesForm">
+    <form method="POST" id="packagesForm" onsubmit="return validatePackagesBeforeSubmit(event)">
         {{ form.hidden_tag() }}
         <!-- Hidden field to store JSON data -->
         {{ form.packages_json(id="packages_json") }}
@@ -122,7 +122,7 @@
                                     <label
                                         class="block text-sm font-medium leading-6 text-gray-900 mb-2">Currency</label>
                                     <select id="pkg_currency" onchange="updateCurrencySymbol()"
-                                        class="mt-1 block w-full rounded-md border-0 h-9 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
+                                        class="admin-select mt-1 block w-full rounded-md border-0 h-9 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
                                         <option value="USD">USD ($)</option>
                                         <option value="CNY">CNY (¥)</option>
                                         <option value="CAD">CAD (C$)</option>
@@ -138,11 +138,11 @@
                                     <label class="text-sm font-medium text-gray-900">Add Deposit / Payment Plan</label>
                                     <div class="flex rounded-md shadow-sm" role="group">
                                         <button type="button" onclick="togglePaymentPlan(true)" id="btn-pp-yes"
-                                            class="px-3 py-1 text-sm font-medium rounded-l-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
+                                            class="px-3 py-1 text-sm font-medium rounded-l-lg border border-gray-300 bg-white text-gray-700 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
                                             Yes
                                         </button>
                                         <button type="button" onclick="togglePaymentPlan(false)" id="btn-pp-no"
-                                            class="px-3 py-1 text-sm font-medium rounded-r-lg border border-l-0 border-gray-300 bg-wetravel-cyan text-white hover:bg-wetravel-cyan-dark focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
+                                            class="px-3 py-1 text-sm font-medium rounded-r-lg border border-l-0 border-gray-300 bg-wetravel-cyan text-white focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
                                             No
                                         </button>
                                     </div>
@@ -159,7 +159,7 @@
                                             {% for i in range(1, 13) %}
                                             <button type="button" onclick="setInstallments({{ i }})"
                                                 id="inst-btn-{{ i }}"
-                                                class="inst-btn px-2 py-1.5 text-sm border border-gray-300 rounded hover:border-wetravel-cyan focus:outline-none transition-colors bg-white">
+                                                class="inst-btn px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none transition-colors bg-white">
                                                 {{ i }}
                                             </button>
                                             {% endfor %}
@@ -176,11 +176,11 @@
                                         </div>
                                         <div class="flex rounded-md shadow-sm" role="group">
                                             <button type="button" onclick="toggleAutoBalance(true)" id="btn-auto-yes"
-                                                class="px-3 py-1 text-sm font-medium rounded-l-lg border border-gray-300 bg-wetravel-cyan text-white hover:bg-wetravel-cyan-dark focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
+                                                class="px-3 py-1 text-sm font-medium rounded-l-lg border border-gray-300 bg-wetravel-cyan text-white focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
                                                 On
                                             </button>
                                             <button type="button" onclick="toggleAutoBalance(false)" id="btn-auto-no"
-                                                class="px-3 py-1 text-sm font-medium rounded-r-lg border border-l-0 border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
+                                                class="px-3 py-1 text-sm font-medium rounded-r-lg border border-l-0 border-gray-300 bg-white text-gray-700 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
                                                 Off
                                             </button>
                                         </div>
@@ -246,7 +246,7 @@
                                         class="block text-sm font-medium leading-6 text-gray-900">Availability</label>
                                     <div class="grid grid-cols-2 gap-4">
                                         <select id="pkg_availability_type" onchange="toggleCapacityInput()"
-                                            class="block w-full rounded-md border-0 h-9 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
+                                            class="admin-select block w-full rounded-md border-0 h-9 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
                                             <option value="unlimited">Unlimited</option>
                                             <option value="limited">Limited</option>
                                         </select>
@@ -267,17 +267,18 @@
                                 <div class="flex items-center gap-4">
                                     <div class="flex rounded-md shadow-sm" role="group">
                                         <button type="button" onclick="toggleDeadline(true)" id="btn-deadline-yes"
-                                            class="px-3 py-1 text-sm font-medium rounded-l-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
+                                            class="px-3 py-1 text-sm font-medium rounded-l-lg border border-gray-300 bg-white text-gray-700 focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
                                             Yes
                                         </button>
                                         <button type="button" onclick="toggleDeadline(false)" id="btn-deadline-no"
-                                            class="px-3 py-1 text-sm font-medium rounded-r-lg border border-l-0 border-gray-300 bg-wetravel-cyan text-white hover:bg-wetravel-cyan-dark focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
+                                            class="px-3 py-1 text-sm font-medium rounded-r-lg border border-l-0 border-gray-300 bg-wetravel-cyan text-white focus:z-10 focus:ring-1 focus:ring-wetravel-cyan">
                                             No
                                         </button>
                                     </div>
                                     <div id="deadline-input-container" class="hidden flex-1">
-                                        <input type="date" id="pkg_deadline"
-                                            class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-black ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
+                                        <input type="text" id="pkg_deadline"
+                                            class="fp-date block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-black ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6"
+                                            placeholder="YYYY-MM-DD">
                                     </div>
                                 </div>
                             </div>
@@ -316,6 +317,15 @@
         let isAutoBalancing = false; // Flag to prevent infinite loops during auto-balance
         let autoBalanceEnabled = true; // Auto-balance mode: true = auto, false = manual
         let hasDeadline = false;
+
+        // Flatpickr: 与 trip basics 一致的日历
+        function initFlatpickrOnDates() {
+            if (typeof flatpickr === 'undefined') return;
+            document.querySelectorAll('.fp-date:not([data-fp-init])').forEach(function(el) {
+                el.dataset.fpInit = '1';
+                flatpickr(el, { dateFormat: 'Y-m-d', allowInput: false, static: false });
+            });
+        }
 
         // --- DOM Elements ---
         const listContainer = document.getElementById('packages-list');
@@ -507,6 +517,9 @@
                 });
                 isAutoBalancing = false;
 
+                // Restore auto-balance toggle (default true for legacy packages without this field)
+                toggleAutoBalance(pkg.payment_plan_config.auto_balance_enabled !== false);
+
             } else {
                 togglePaymentPlan(false);
             }
@@ -577,6 +590,7 @@
                 btnYes.classList.add('bg-wetravel-cyan', 'text-white');
                 btnNo.classList.remove('bg-wetravel-cyan', 'text-white');
                 btnNo.classList.add('bg-white', 'text-gray-700');
+                initFlatpickrOnDates();
             } else {
                 container.classList.add('hidden');
                 btnYes.classList.remove('bg-wetravel-cyan', 'text-white');
@@ -701,7 +715,7 @@
                 row.innerHTML = `
                 <div class="col-span-4 font-medium text-gray-900">${label}</div>
                 <div class="col-span-4 pr-2">
-                    <input type="date" class="date-input block w-full rounded-md border-0 h-8 py-0 text-gray-900 ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-xs">
+                    <input type="text" class="fp-date date-input block w-full rounded-md border-0 h-8 py-0 text-gray-900 ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-xs" placeholder="YYYY-MM-DD">
                 </div>
                 <div class="col-span-4 pl-4">
                         <input type="text" inputmode="numeric" pattern="[0-9]*\.?[0-9]*" class="amount-input block w-full rounded-md border-0 h-8 py-0 text-gray-900 text-right ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-xs" placeholder="0.00">
@@ -743,7 +757,7 @@
                         document.execCommand('insertText', false, finalPaste);
                         e.preventDefault();
                     });
-                    installmentInput.addEventListener('blur', function() {
+                        installmentInput.addEventListener('blur', function() {
                         if (!isAutoBalancing && autoBalanceEnabled) {
                             autoBalanceAmounts(i);
                         } else if (!autoBalanceEnabled) {
@@ -752,6 +766,7 @@
                     });
                 }
             }
+            initFlatpickrOnDates();
         }
 
         function recalculatePlan() {
@@ -913,6 +928,47 @@
         }
 
         /**
+         * Validate all packages with payment plans before form submit.
+         * Uses preventDefault + manual submit for async compatibility.
+         */
+        async function validatePackagesBeforeSubmit(event) {
+            event.preventDefault();
+            let parsed = [];
+            try {
+                parsed = JSON.parse(hiddenInput.value || '[]');
+            } catch (e) {
+                event.target.submit();
+                return;
+            }
+            if (!Array.isArray(parsed)) {
+                event.target.submit();
+                return;
+            }
+
+            const symbols = { 'USD': '$', 'CNY': '¥', 'CAD': 'C$' };
+            for (let i = 0; i < parsed.length; i++) {
+                const pkg = parsed[i];
+                const ppc = pkg.payment_plan_config || {};
+                if (!ppc.enabled) continue;
+
+                const price = parseFloat(pkg.price) || 0;
+                const deposit = parseFloat(ppc.deposit_amount) || 0;
+                const installments = ppc.installments || [];
+                const instTotal = installments.reduce((s, inst) => s + (parseFloat(inst.amount) || 0), 0);
+                const planTotal = deposit + instTotal;
+                const diff = Math.abs(price - planTotal);
+
+                if (diff > 0.01) {
+                    const symbol = symbols[pkg.currency] || '$';
+                    await customAlert(`Package "${pkg.name}": payment plan total (${symbol}${planTotal.toFixed(2)}) does not match price (${symbol}${price.toFixed(2)}). Please edit and correct.`, 'Amount Mismatch');
+                    editPackage(i);
+                    return;
+                }
+            }
+            event.target.submit();
+        }
+
+        /**
          * Validate that total of all amounts equals package price
          */
         function validateTotal() {
@@ -998,8 +1054,18 @@
                     deposit_amount: depositAmt,
                     allow_partial: document.getElementById('allow_partial').checked,
                     enable_auto_billing: document.getElementById('enable_auto_billing').checked,
+                    auto_balance_enabled: autoBalanceEnabled,
                     installments: installments
                 };
+                // Validate: deposit + installments must equal package price
+                const instTotal = installments.reduce((s, i) => s + i.amount, 0);
+                const planTotal = depositAmt + instTotal;
+                const diff = Math.abs(price - planTotal);
+                if (diff > 0.01) {
+                    const symbol = { 'USD': '$', 'CNY': '¥', 'CAD': 'C$' }[pkgData.currency] || '$';
+                    await customAlert(`Payment plan total (${symbol}${planTotal.toFixed(2)}) does not match package price (${symbol}${price.toFixed(2)}). Please adjust amounts.`, 'Amount Mismatch');
+                    return;
+                }
             } else {
                 pkgData.payment_plan_config = {
                     enabled: false,

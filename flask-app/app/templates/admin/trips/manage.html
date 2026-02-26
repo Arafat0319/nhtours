@@ -3,6 +3,7 @@
 {% block title %}Manage Trip: {{ trip.title }}{% endblock %}
 
 {% block head_extra %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <style>
     /* Hide spin buttons on number inputs */
     input[type=number].no-spin::-webkit-inner-spin-button,
@@ -13,7 +14,14 @@
     input[type=number].no-spin {
         -moz-appearance: textfield;
     }
+    /* Flatpickr: 与 trip basics 一致的日历样式 */
+    .flatpickr-calendar { font-size: 16px !important; }
+    .flatpickr-day { min-width: 38px; height: 38px; line-height: 38px; font-size: 14px; }
+    .flatpickr-month { height: 40px; }
+    .flatpickr-current-month { font-size: 115%; }
+    .flatpickr-weekdays { font-size: 13px; }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 {% endblock %}
 
 {% block content %}
@@ -77,23 +85,23 @@
             <div class="text-right text-sm space-y-1">
                 <div class="flex justify-between w-64">
                     <span class="text-gray-500">Gross amount</span>
-                    <span id="financialGross" class="font-medium text-gray-700 font-mono">${{ "%.2f"|format(total_gross) }}</span>
+                    <span id="financialGross" class="font-medium text-gray-700 font-mono">${{ (total_gross)|format_price }}</span>
                 </div>
                 <div id="discountRow" class="flex justify-between w-64 {% if total_discount <= 0 %}hidden{% endif %}">
                     <span class="text-gray-500">Total discount</span>
-                    <span id="financialDiscount" class="font-medium text-green-600 font-mono">-${{ "%.2f"|format(total_discount) }}</span>
+                    <span id="financialDiscount" class="font-medium text-green-600 font-mono">-${{ (total_discount)|format_price }}</span>
                 </div>
                 <div class="flex justify-between w-64 pt-1 border-t border-gray-200">
                     <span class="text-gray-500">Expected amount</span>
-                    <span id="financialExpected" class="font-medium text-gray-700 font-mono">${{ "%.2f"|format(total_expected) }}</span>
+                    <span id="financialExpected" class="font-medium text-gray-700 font-mono">${{ (total_expected)|format_price }}</span>
                 </div>
                 <div class="flex justify-between w-64">
                     <span class="text-gray-500">Amount paid</span>
-                    <span id="financialPaid" class="font-medium text-gray-700 font-mono">${{ "%.2f"|format(total_paid) }}</span>
+                    <span id="financialPaid" class="font-medium text-gray-700 font-mono">${{ (total_paid)|format_price }}</span>
                 </div>
                 <div class="flex justify-between w-64">
                     <span class="text-gray-500">Amount pending</span>
-                    <span id="financialPending" class="font-medium {% if total_pending > 0 %}text-amber-600{% else %}text-green-600{% endif %} font-mono">${{ "%.2f"|format(total_pending) }}</span>
+                    <span id="financialPending" class="font-medium {% if total_pending > 0 %}text-amber-600{% else %}text-green-600{% endif %} font-mono">${{ (total_pending)|format_price }}</span>
                 </div>
             </div>
         </div>
@@ -124,7 +132,7 @@
                         </svg>
                     </button>
                 </div>
-                <div class="flex items-center pb-4" id="bookingsActions">
+                <div class="flex items-center gap-2 pb-4" id="bookingsActions">
                     <a href="{{ url_for('admin.export_bookings', id=trip.id) }}"
                         class="text-wetravel-cyan border border-wetravel-cyan px-4 py-2 rounded text-sm hover:bg-gray-50 flex items-center">
                         Download Excel <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -132,6 +140,10 @@
                                 d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
                         </svg>
                     </a>
+                    <button type="button" id="dataSourceUrlBtn" title="在浏览器中打开数据源链接，验证后台是否返回最新 Participants 数据"
+                        class="text-gray-500 border border-gray-300 px-3 py-2 rounded text-xs hover:bg-gray-50 flex items-center">
+                        验证数据源
+                    </button>
                 </div>
             </div>
         </div>
@@ -159,7 +171,7 @@
                     </div>
 
                     <select id="statusFilter"
-                        class="border border-gray-300 rounded text-sm px-3 py-2 focus:outline-none focus:border-wetravel-cyan text-gray-600">
+                        class="admin-select border border-gray-300 rounded text-sm px-3 py-2 focus:outline-none focus:border-wetravel-cyan text-gray-600">
                         <option value="all">All Statuses</option>
                         <option value="pending">Pending</option>
                         <option value="deposit_paid">Deposit Paid</option>
@@ -285,7 +297,7 @@
                     </div>
 
                     <select id="participantStatusFilter"
-                        class="border border-gray-300 rounded text-sm px-3 py-2 focus:outline-none focus:border-wetravel-cyan text-gray-600">
+                        class="admin-select border border-gray-300 rounded text-sm px-3 py-2 focus:outline-none focus:border-wetravel-cyan text-gray-600">
                         <option value="all">All Statuses</option>
                         <option value="pending">Pending</option>
                         <option value="deposit_paid">Deposit Paid</option>
@@ -307,7 +319,7 @@
                             <th class="px-6 py-3 whitespace-nowrap">Email</th>
                             {# All custom questions from trip builder (in order) #}
                             {% for question in custom_questions %}
-                            <th class="px-6 py-3 whitespace-nowrap">{{ question.label }}{% if question.required %} <span class="text-red-500">*</span>{% endif %}</th>
+                            <th class="px-6 py-3 whitespace-nowrap">{{ question.label }}{% if question.required %} <span class="required-asterisk">*</span>{% endif %}</th>
                             {% endfor %}
                             {# Other system fields #}
                             <th class="px-6 py-3 whitespace-nowrap">Buyer</th>
@@ -610,7 +622,7 @@
                     {% for pkg in trip.packages %}
                     <div class="flex justify-between items-center bg-white border p-4 rounded mb-2 hover:bg-gray-50">
                         <div class="flex items-center space-x-4">
-                            <select class="pkg-qty-select border rounded p-1 w-20" data-price="{{ pkg.price }}"
+                            <select class="admin-select pkg-qty-select border rounded p-1 w-20" data-price="{{ pkg.price }}"
                                 data-id="{{ pkg.id }}" data-name="{{ pkg.name }}" data-currency="{{ pkg.currency or 'USD' }}">
                                 <option value="0">0</option>
                                 {% for i in range(1, 21) %}
@@ -710,7 +722,11 @@
         </div>
 
         <!-- Footer -->
-        <div class="p-5 border-t bg-gray-50 rounded-b-md flex justify-end">
+        <div class="p-5 border-t bg-gray-50 rounded-b-md flex justify-between items-center">
+            <button type="button" id="backStepBtn" class="hidden border border-gray-300 text-gray-700 px-4 py-2 rounded text-sm font-medium hover:bg-gray-100 focus:outline-none">
+                ← Back
+            </button>
+            <div class="flex-1"></div>
             <button type="button" id="mainActionBtn"
                 class="bg-wetravel-cyan text-white px-6 py-2 rounded text-base font-medium hover:bg-cyan-400 w-full md:w-auto focus:outline-none">
                 Continue
@@ -946,10 +962,36 @@
         {% endfor %}
     };
 
+    // Flatpickr: 与 trip basics 一致的日历（统一项目内日期选择）
+    function initFlatpickrOnDates() {
+        if (typeof flatpickr === 'undefined') return;
+        document.querySelectorAll('.fp-date:not([data-fp-init])').forEach(function(el) {
+            el.dataset.fpInit = '1';
+            flatpickr(el, { dateFormat: 'Y-m-d', allowInput: false, static: false });
+        });
+    }
+    window.initFlatpickrOnDates = initFlatpickrOnDates;
+
+    // Yes/No with details: show text input when Yes is selected (participant dietary/medical)
+    document.addEventListener('change', function(e) {
+        if (e.target.matches('input.participant-yesno-radio')) {
+            const field = e.target.closest('.participant-default-yesno, .participant-yesno-field');
+            if (field) {
+                const detailsDiv = field.querySelector('.yesno-details');
+                const detailsInput = field.querySelector('.yesno-details input');
+                if (detailsDiv) {
+                    const isYes = e.target.value === 'yes';
+                    detailsDiv.classList.toggle('hidden', !isYes);
+                    if (detailsInput) detailsInput.required = isYes;
+                }
+            }
+        }
+    });
+
     // Global state and functions (accessible before DOMContentLoaded)
     let currentStep = 1;
     let selectedPackages = []; // Changed to support multiple packages
-    let modal, actionBtn, grandTotalEl, summaryContainer, manualAmountInput, paymentTotalDisplay;
+    let modal, actionBtn, backStepBtn, grandTotalEl, summaryContainer, manualAmountInput, paymentTotalDisplay;
     
     // Global function references (will be assigned in DOMContentLoaded)
     let goToStep, updateSummary;
@@ -1077,6 +1119,28 @@
         
         console.log('Tab switching initialized successfully');
         
+        // --- 验证数据源：在浏览器中打开可验证后台是否返回最新数据 ---
+        const dataSourceUrlBtn = document.getElementById('dataSourceUrlBtn');
+        if (dataSourceUrlBtn) {
+            dataSourceUrlBtn.addEventListener('click', async function() {
+                try {
+                    const res = await fetch("{{ url_for('admin.get_export_data_source_url', id=trip.id) }}");
+                    const data = await res.json();
+                    if (data.success && data.url) {
+                        window.open(data.url, '_blank');
+                        try {
+                            await navigator.clipboard.writeText(data.url);
+                            if (typeof showToast === 'function') showToast('已复制到剪贴板并打开', 'success');
+                        } catch (e) {
+                            if (typeof showToast === 'function') showToast('已在新窗口打开', 'success');
+                        }
+                    }
+                } catch (e) {
+                    if (typeof showToast === 'function') showToast('获取失败', 'error');
+                }
+            });
+        }
+        
         // --- Participants Search and Filter Logic ---
         const participantSearchInput = document.getElementById('participantSearchInput');
         const participantStatusFilter = document.getElementById('participantStatusFilter');
@@ -1156,6 +1220,7 @@
         // --- Elements ---
         modal = document.getElementById('addParticipantModal');
         actionBtn = document.getElementById('mainActionBtn');
+        backStepBtn = document.getElementById('backStepBtn');
         grandTotalEl = document.getElementById('grandTotal');
         summaryContainer = document.getElementById('bookingSummary');
         manualAmountInput = document.getElementById('manualAmount');
@@ -1337,6 +1402,9 @@
 
             currentStep = step;
             if (actionBtn) actionBtn.innerText = (step === 4) ? 'Confirm Booking' : 'Continue';
+            if (backStepBtn) {
+                if (step > 1) { backStepBtn.classList.remove('hidden'); } else { backStepBtn.classList.add('hidden'); }
+            }
             
             // When entering step 4 (Payment), update payment amount based on selected option and payment plans
             if (step === 4) {
@@ -1378,13 +1446,15 @@
                     return false;
                 }
                 
-                // Validate participant fields
-                const participantRows = document.querySelectorAll('.participant-row');
+                // Validate participant fields（仅验证 Manual Booking 弹窗内的参与者，排除主列表的 participant-row）
+                const participantsContainer = document.getElementById('participantsContainer');
+                const participantRows = participantsContainer ? participantsContainer.querySelectorAll('.participant-row') : [];
                 for (let idx = 0; idx < participantRows.length; idx++) {
                     const row = participantRows[idx];
                     const firstName = row.querySelector('[data-field="first_name"]');
                     const lastName = row.querySelector('[data-field="last_name"]');
-                    const email = row.querySelector('[data-field="email"]');
+                    const gender = row.querySelector('[data-field="gender"]');
+                    const dob = row.querySelector('[data-field="dob"]');
                     
                     if (!firstName || !firstName.value.trim()) {
                         showToast(`Participant ${idx + 1}: First name is required`, 'warning');
@@ -1394,8 +1464,25 @@
                         showToast(`Participant ${idx + 1}: Last name is required`, 'warning');
                         return false;
                     }
-                    if (!email || !email.value.trim()) {
-                        showToast(`Participant ${idx + 1}: Email is required`, 'warning');
+                    if (!gender || !gender.value.trim()) {
+                        showToast(`Participant ${idx + 1}: Gender is required`, 'warning');
+                        return false;
+                    }
+                    if (!dob || !dob.value.trim()) {
+                        showToast(`Participant ${idx + 1}: Date of Birth is required`, 'warning');
+                        return false;
+                    }
+                    const pIndex = parseInt(row.getAttribute('data-index') || idx) + 1;
+                    const dietaryRadio = row.querySelector('input[name="p-dietary-' + pIndex + '"]:checked');
+                    const dietaryDetails = row.querySelector('[data-field="dietary_details"]');
+                    const medicalRadio = row.querySelector('input[name="p-medical-' + pIndex + '"]:checked');
+                    const medicalDetails = row.querySelector('[data-field="medical_details"]');
+                    if (dietaryRadio && dietaryRadio.value === 'yes' && (!dietaryDetails || !dietaryDetails.value.trim())) {
+                        showToast(`Participant ${idx + 1}: Please explain dietary restrictions or allergies when Yes is selected`, 'warning');
+                        return false;
+                    }
+                    if (medicalRadio && medicalRadio.value === 'yes' && (!medicalDetails || !medicalDetails.value.trim())) {
+                        showToast(`Participant ${idx + 1}: Please explain medical conditions when Yes is selected`, 'warning');
                         return false;
                     }
                 }
@@ -1555,6 +1642,14 @@
             });
         }, 100);
 
+        // Back Button Logic
+        if (backStepBtn) {
+            backStepBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                if (currentStep > 1) goToStep(currentStep - 1);
+            });
+        }
+
         // Main Button Logic
         if (actionBtn) {
             actionBtn.addEventListener('click', function(e) {
@@ -1597,21 +1692,68 @@
                     participantIndex++;
                 let fieldsHtml = '';
                 
-                // Default mandatory fields (matching builder)
+                // Default mandatory fields (matching booking form)
                 fieldsHtml += `
-                    <div class="grid grid-cols-2 gap-2 mb-2">
+                    <div class="grid grid-cols-3 gap-2 mb-2">
                         <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">First Name <span class="text-red-500">*</span></label>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">First Name <span class="required-asterisk">*</span></label>
                             <input type="text" placeholder="First Name" class="p-field border rounded p-1 text-sm w-full" data-field="first_name" required>
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Last Name <span class="text-red-500">*</span></label>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Middle Name</label>
+                            <input type="text" placeholder="Optional" class="p-field border rounded p-1 text-sm w-full" data-field="middle_name">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Last Name <span class="required-asterisk">*</span></label>
                             <input type="text" placeholder="Last Name" class="p-field border rounded p-1 text-sm w-full" data-field="last_name" required>
                         </div>
                     </div>
-                    <div class="mb-2">
-                        <label class="block text-xs font-medium text-gray-700 mb-1">Email <span class="text-red-500">*</span></label>
-                        <input type="email" placeholder="Email" class="p-field border rounded p-1 text-sm w-full" data-field="email" required>
+                    <div class="grid grid-cols-2 gap-2 mb-2">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Gender <span class="required-asterisk">*</span></label>
+                            <select class="admin-select p-field border rounded p-1 text-sm w-full" data-field="gender" required>
+                                <option value="">Select...</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Other">Other</option>
+                                <option value="Prefer not to say">Prefer not to say</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Date of Birth <span class="required-asterisk">*</span></label>
+                            <input type="text" placeholder="YYYY-MM-DD" class="fp-date p-field border rounded p-1 text-sm w-full" data-field="dob" required>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Registration Type <span class="required-asterisk">*</span></label>
+                            <select class="admin-select p-field border rounded p-1 text-sm w-full" data-field="registration_type" required>
+                                <option value="">Select...</option>
+                                <option value="Student">Student</option>
+                                <option value="Faculty">Faculty</option>
+                                <option value="Parent">Parent</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-2 participant-default-yesno p-field" data-field="dietary">
+                        <label class="block text-xs font-medium text-gray-700 mb-1">Dietary restrictions or allergies <span class="required-asterisk">*</span></label>
+                        <div class="flex gap-4 mb-1">
+                            <label class="inline-flex items-center cursor-pointer"><input type="radio" name="p-dietary-${participantIndex}" value="no" checked class="participant-yesno-radio"><span class="ml-2">No</span></label>
+                            <label class="inline-flex items-center cursor-pointer"><input type="radio" name="p-dietary-${participantIndex}" value="yes" class="participant-yesno-radio"><span class="ml-2">Yes</span></label>
+                        </div>
+                        <div class="yesno-details hidden mt-1">
+                            <label class="block text-xs text-gray-600 mb-0.5">If yes, please explain:</label>
+                            <input type="text" class="p-field border rounded p-1 text-sm w-full" data-field="dietary_details" placeholder="e.g. allergies, dietary restrictions">
+                        </div>
+                    </div>
+                    <div class="mb-2 participant-default-yesno p-field" data-field="medical">
+                        <label class="block text-xs font-medium text-gray-700 mb-1">Medical conditions <span class="required-asterisk">*</span></label>
+                        <div class="flex gap-4 mb-1">
+                            <label class="inline-flex items-center cursor-pointer"><input type="radio" name="p-medical-${participantIndex}" value="no" checked class="participant-yesno-radio"><span class="ml-2">No</span></label>
+                            <label class="inline-flex items-center cursor-pointer"><input type="radio" name="p-medical-${participantIndex}" value="yes" class="participant-yesno-radio"><span class="ml-2">Yes</span></label>
+                        </div>
+                        <div class="yesno-details hidden mt-1">
+                            <label class="block text-xs text-gray-600 mb-0.5">If yes, please explain:</label>
+                            <input type="text" class="p-field border rounded p-1 text-sm w-full" data-field="medical_details" placeholder="e.g. medical conditions">
+                        </div>
                     </div>
                 `;
                 
@@ -1630,11 +1772,11 @@
                                 inputHtml = `<input type="text" inputmode="numeric" pattern="[0-9]*\.?[0-9]*" id="${fieldId}" name="${fieldName}" class="p-field border rounded p-1 text-sm w-full" data-field="${fieldName}" data-question-id="${q.id}" placeholder="${q.label}" ${q.required ? 'required' : ''}>`;
                                 break;
                             case 'date':
-                                inputHtml = `<input type="date" id="${fieldId}" name="${fieldName}" class="p-field border rounded p-1 text-sm w-full" data-field="${fieldName}" data-question-id="${q.id}" ${q.required ? 'required' : ''}>`;
+                                inputHtml = `<input type="text" id="${fieldId}" name="${fieldName}" class="fp-date p-field border rounded p-1 text-sm w-full" placeholder="YYYY-MM-DD" data-field="${fieldName}" data-question-id="${q.id}" ${q.required ? 'required' : ''}>`;
                                 break;
                             case 'choice':
                                 if (q.options && Array.isArray(q.options) && q.options.length > 0) {
-                                    inputHtml = `<select id="${fieldId}" name="${fieldName}" class="p-field border rounded p-1 text-sm w-full" data-field="${fieldName}" data-question-id="${q.id}" ${q.required ? 'required' : ''}><option value="">Select...</option>`;
+                                    inputHtml = `<select id="${fieldId}" name="${fieldName}" class="admin-select p-field border rounded p-1 text-sm w-full" data-field="${fieldName}" data-question-id="${q.id}" ${q.required ? 'required' : ''}><option value="">Select...</option>`;
                                     q.options.forEach(opt => {
                                         inputHtml += `<option value="${opt}">${opt}</option>`;
                                     });
@@ -1652,7 +1794,7 @@
                         
                         fieldsHtml += `
                             <div class="mb-2">
-                                <label class="block text-xs font-medium text-gray-700 mb-1">${q.label}${q.required ? ' <span class="text-red-500">*</span>' : ''}</label>
+                                <label class="block text-xs font-medium text-gray-700 mb-1">${q.label}${q.required ? ' <span class="required-asterisk">*</span>' : ''}</label>
                                 ${inputHtml}
                             </div>
                         `;
@@ -1667,14 +1809,16 @@
                     `;
                 }
             }
+            initFlatpickrOnDates();
         }
 
         function renderStep3() {
             const container = document.getElementById('addonsContainer');
             if (!container) return;
             
-            // Same logic, check if needs update
-            const pInputs = document.querySelectorAll('.participant-row');
+            // Same logic, check if needs update（仅统计弹窗内的参与者）
+            const participantsContainerEl = document.getElementById('participantsContainer');
+            const pInputs = participantsContainerEl ? participantsContainerEl.querySelectorAll('.participant-row') : [];
             if (container.children.length === pInputs.length) return; // Assume same count means safe (ignoring addon changes)
 
             container.innerHTML = '';
@@ -1782,8 +1926,10 @@
                 }
             };
 
-            // Collect Participants
-            document.querySelectorAll('.participant-row').forEach((row, idx) => {
+            // Collect Participants（仅从 Manual Booking 弹窗内的 participantsContainer 收集）
+            const participantsContainer = document.getElementById('participantsContainer');
+            const modalParticipantRows = participantsContainer ? participantsContainer.querySelectorAll('.participant-row') : [];
+            modalParticipantRows.forEach((row, idx) => {
                 const addons = {};
                 document.querySelectorAll(`.addon-qty-input[data-p-index="${idx}"]`).forEach(inp => {
                     if (parseInt(inp.value) > 0) {
@@ -1791,10 +1937,18 @@
                     }
                 });
 
-                // Collect default fields (matching builder)
+                // Collect default fields (matching booking form)
+                const participantIndex = parseInt(row.getAttribute('data-index') || idx) + 1;
                 const firstName = row.querySelector('[data-field="first_name"]')?.value || '';
+                const middleName = row.querySelector('[data-field="middle_name"]')?.value || '';
                 const lastName = row.querySelector('[data-field="last_name"]')?.value || '';
-                const email = row.querySelector('[data-field="email"]')?.value || '';
+                const gender = row.querySelector('[data-field="gender"]')?.value || '';
+                const dob = row.querySelector('[data-field="dob"]')?.value || '';
+                const registrationType = row.querySelector('[data-field="registration_type"]')?.value || '';
+                const dietaryRadio = row.querySelector('input[name="p-dietary-' + participantIndex + '"]:checked');
+                const dietaryDetails = row.querySelector('[data-field="dietary_details"]');
+                const medicalRadio = row.querySelector('input[name="p-medical-' + participantIndex + '"]:checked');
+                const medicalDetails = row.querySelector('[data-field="medical_details"]');
                 
                 // Collect custom question answers
                 const questionAnswers = {};
@@ -1804,12 +1958,23 @@
                         questionAnswers[questionId] = field.value;
                     }
                 });
+                questionAnswers.dietary_restrictions_or_allergies = {
+                    value: dietaryRadio ? dietaryRadio.value : 'no',
+                    details: dietaryDetails ? dietaryDetails.value.trim() : ''
+                };
+                questionAnswers.medical_conditions = {
+                    value: medicalRadio ? medicalRadio.value : 'no',
+                    details: medicalDetails ? medicalDetails.value.trim() : ''
+                };
 
                 payload.participants.push({
-                    name: `${firstName} ${lastName}`.trim() || 'Unknown',
-                    email: email,
+                    name: [firstName, middleName, lastName].filter(Boolean).join(' ').trim() || 'Unknown',
                     first_name: firstName,
+                    middle_name: middleName,
                     last_name: lastName,
+                    gender: gender,
+                    dob: dob,
+                    registration_type: registrationType,
                     question_answers: questionAnswers,
                     addons: addons
                 });
@@ -1975,8 +2140,9 @@
                 : 'Nexus Horizons Tour';
             document.getElementById('emailSubject').value = `Regarding Your Booking - ${firstPackageName}`;
             
-            // Calculate pending amount
-            const pendingAmount = booking.pending_amount || (booking.expected_amount - booking.amount_paid);
+            // Amount paid: prefer display value from payment records to avoid wrong DB value (e.g. 2500)
+            const amountPaidDisplay = booking.amount_paid_display != null ? Number(booking.amount_paid_display) : (Number(booking.amount_paid) || 0);
+            const pendingAmount = booking.pending_amount != null ? booking.pending_amount : (booking.expected_amount - amountPaidDisplay);
             
             // Generate packages display HTML
             let packagesHtml = '';
@@ -2145,13 +2311,30 @@
                     </div>
                     ` : ''}
                     
-                    <!-- Total -->
+                    <!-- Order total (expected amount) -->
                     <div class="bg-gray-100 rounded-lg p-3">
                         <div class="flex justify-between items-center">
-                            <span class="text-base font-medium text-gray-900">Total</span>
+                            <span class="text-base font-medium text-gray-900">Trip Total (Expected)</span>
                             <span class="text-lg font-bold text-gray-900">$${booking.expected_amount.toFixed(2)}</span>
                         </div>
                     </div>
+                    
+                    ${(booking.payment_summary && booking.payment_summary.total_charged > 0) ? `
+                    <div class="mt-3 pt-3 border-t border-gray-200 space-y-1.5 text-sm">
+                        <div class="flex justify-between text-gray-700">
+                            <span>Total Charged (incl. card fee)</span>
+                            <span class="font-medium">$${(booking.payment_summary.total_charged || 0).toFixed(2)}</span>
+                        </div>
+                        <div class="flex justify-between text-gray-600">
+                            <span>Card Fee</span>
+                            <span>$${(booking.payment_summary.card_fee || 0).toFixed(2)}</span>
+                        </div>
+                        <div class="flex justify-between text-gray-900 font-medium pt-1">
+                            <span>Net Received</span>
+                            <span>$${(booking.payment_summary.net_received || 0).toFixed(2)}</span>
+                        </div>
+                    </div>
+                    ` : ''}
                     
                     <div class="grid grid-cols-2 gap-4 mt-4 text-sm">
                         <div>
@@ -2171,7 +2354,7 @@
                     <div class="space-y-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
-                            <select id="bookingStatus" class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm">
+                            <select id="bookingStatus" class="admin-select block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm">
                                 <option value="pending" ${booking.status === 'pending' ? 'selected' : ''}>Pending</option>
                                 <option value="deposit_paid" ${booking.status === 'deposit_paid' ? 'selected' : ''}>Deposit Paid</option>
                                 <option value="fully_paid" ${booking.status === 'fully_paid' ? 'selected' : ''}>Fully Paid</option>
@@ -2185,8 +2368,8 @@
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">Amount Paid</label>
-                                <input type="text" id="bookingAmountPaid" inputmode="numeric" pattern="[0-9]*\.?[0-9]*" value="${booking.amount_paid}" 
-                                    class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm">
+                                <input type="text" id="bookingAmountPaid" inputmode="decimal" pattern="[0-9]*\.?[0-9]*" value="${typeof booking.amount_paid_display !== 'undefined' ? Number(booking.amount_paid_display).toFixed(2) : (Number(booking.amount_paid) || 0).toFixed(2)}" 
+                                    class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm" placeholder="0.00">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">Pending Amount</label>
@@ -2219,49 +2402,101 @@
                     ${booking.participants.length > 0 ? `
                         <div class="space-y-3">
                             ${booking.participants.map((p, idx) => {
-                                // Parse name into first_name and last_name (try to split by space)
-                                const nameParts = (p.name || '').trim().split(/\s+/);
-                                const firstName = nameParts.length > 0 ? nameParts[0] : '';
-                                const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+                                const firstName = (p.first_name || '').trim();
+                                const middleName = (p.middle_name || '').trim();
+                                const lastName = (p.last_name || '').trim();
                                 
                                 // Get question answers (if stored, otherwise empty object)
                                 const questionAnswers = p.question_answers || {};
+                                const dietaryData = questionAnswers.dietary_restrictions_or_allergies || { value: 'no', details: '' };
+                                const medicalData = questionAnswers.medical_conditions || { value: 'no', details: '' };
                                 
                                 let fieldsHtml = '';
                                 
-                                // Default mandatory fields (matching builder: First Name, Last Name, Email)
+                                // Default mandatory fields (matching booking form)
                                 fieldsHtml += `
-                                    <div class="grid grid-cols-2 gap-2 mb-2">
+                                    <div class="grid grid-cols-3 gap-2 mb-2">
                                         <div>
-                                            <label class="block text-xs font-medium text-gray-700 mb-1">First Name <span class="text-red-500">*</span></label>
-                                            <input type="text" 
-                                                id="participant-first-name-${p.id}" 
-                                                value="${firstName}" 
+                                            <label class="block text-xs font-medium text-gray-700 mb-1">First Name <span class="required-asterisk">*</span></label>
+                                            <input type="text" id="participant-first-name-${p.id}" value="${firstName}"
                                                 class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm"
-                                                placeholder="First Name"
-                                                data-field="first_name"
-                                                required>
+                                                placeholder="First Name" data-field="first_name" required>
                                         </div>
                                         <div>
-                                            <label class="block text-xs font-medium text-gray-700 mb-1">Last Name <span class="text-red-500">*</span></label>
-                                            <input type="text" 
-                                                id="participant-last-name-${p.id}" 
-                                                value="${lastName}" 
+                                            <label class="block text-xs font-medium text-gray-700 mb-1">Middle Name</label>
+                                            <input type="text" id="participant-middle-name-${p.id}" value="${middleName}"
                                                 class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm"
-                                                placeholder="Last Name"
-                                                data-field="last_name"
-                                                required>
+                                                placeholder="Optional" data-field="middle_name">
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-700 mb-1">Last Name <span class="required-asterisk">*</span></label>
+                                            <input type="text" id="participant-last-name-${p.id}" value="${lastName}"
+                                                class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm"
+                                                placeholder="Last Name" data-field="last_name" required>
                                         </div>
                                     </div>
-                                    <div class="mb-2">
-                                        <label class="block text-xs font-medium text-gray-700 mb-1">Email <span class="text-red-500">*</span></label>
-                                        <input type="email" 
-                                            id="participant-email-${p.id}" 
-                                            value="${p.email || ''}" 
-                                            class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm"
-                                            placeholder="participant@example.com"
-                                            data-field="email"
-                                            required>
+                                    <div class="grid grid-cols-2 gap-2 mb-2">
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-700 mb-1">Gender <span class="required-asterisk">*</span></label>
+                                            <select id="participant-gender-${p.id}" class="admin-select block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 sm:text-sm" data-field="gender" required>
+                                                <option value="">Select...</option>
+                                                <option value="Male" ${(p.gender||'')==='Male'?'selected':''}>Male</option>
+                                                <option value="Female" ${(p.gender||'')==='Female'?'selected':''}>Female</option>
+                                                <option value="Other" ${(p.gender||'')==='Other'?'selected':''}>Other</option>
+                                                <option value="Prefer not to say" ${(p.gender||'')==='Prefer not to say'?'selected':''}>Prefer not to say</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-700 mb-1">Date of Birth <span class="required-asterisk">*</span></label>
+                                            <input type="text" id="participant-dob-${p.id}" value="${p.dob || ''}"
+                                                class="fp-date block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm"
+                                                placeholder="YYYY-MM-DD" data-field="dob" required>
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-700 mb-1">Registration Type <span class="required-asterisk">*</span></label>
+                                            <select id="participant-registration-type-${p.id}" class="admin-select block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 sm:text-sm" data-field="registration_type">
+                                                <option value="">Select...</option>
+                                                <option value="Student" ${(p.registration_type||'')==='Student'?'selected':''}>Student</option>
+                                                <option value="Faculty" ${(p.registration_type||'')==='Faculty'?'selected':''}>Faculty</option>
+                                                <option value="Parent" ${(p.registration_type||'')==='Parent'?'selected':''}>Parent</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="mb-2 participant-default-yesno" data-field="dietary" data-p-id="${p.id}">
+                                        <label class="block text-xs font-medium text-gray-700 mb-1">Dietary restrictions or allergies <span class="required-asterisk">*</span></label>
+                                        <div class="flex gap-4 mb-1">
+                                            <label class="inline-flex items-center cursor-pointer">
+                                                <input type="radio" name="participant-dietary-${p.id}" value="no" ${(dietaryData.value||'no')==='no'?'checked':''} class="participant-yesno-radio">
+                                                <span class="ml-2">No</span>
+                                            </label>
+                                            <label class="inline-flex items-center cursor-pointer">
+                                                <input type="radio" name="participant-dietary-${p.id}" value="yes" ${(dietaryData.value||'no')==='yes'?'checked':''} class="participant-yesno-radio">
+                                                <span class="ml-2">Yes</span>
+                                            </label>
+                                        </div>
+                                        <div class="yesno-details mt-1 ${(dietaryData.value||'no')==='yes'?'':'hidden'}">
+                                            <label class="block text-xs text-gray-600 mb-0.5">If yes, please explain:</label>
+                                            <input type="text" id="participant-dietary-details-${p.id}" value="${(dietaryData.details||'').replace(/"/g, '&quot;')}"
+                                                class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 sm:text-sm" ${(dietaryData.value||'no')==='yes'?'required':''}>
+                                        </div>
+                                    </div>
+                                    <div class="mb-2 participant-default-yesno" data-field="medical" data-p-id="${p.id}">
+                                        <label class="block text-xs font-medium text-gray-700 mb-1">Medical conditions <span class="required-asterisk">*</span></label>
+                                        <div class="flex gap-4 mb-1">
+                                            <label class="inline-flex items-center cursor-pointer">
+                                                <input type="radio" name="participant-medical-${p.id}" value="no" ${(medicalData.value||'no')==='no'?'checked':''} class="participant-yesno-radio">
+                                                <span class="ml-2">No</span>
+                                            </label>
+                                            <label class="inline-flex items-center cursor-pointer">
+                                                <input type="radio" name="participant-medical-${p.id}" value="yes" ${(medicalData.value||'no')==='yes'?'checked':''} class="participant-yesno-radio">
+                                                <span class="ml-2">Yes</span>
+                                            </label>
+                                        </div>
+                                        <div class="yesno-details mt-1 ${(medicalData.value||'no')==='yes'?'':'hidden'}">
+                                            <label class="block text-xs text-gray-600 mb-0.5">If yes, please explain:</label>
+                                            <input type="text" id="participant-medical-details-${p.id}" value="${(medicalData.details||'').replace(/"/g, '&quot;')}"
+                                                class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 sm:text-sm" ${(medicalData.value||'no')==='yes'?'required':''}>
+                                        </div>
                                     </div>
                                 `;
                                 
@@ -2281,11 +2516,11 @@
                                                 inputHtml = `<input type="text" inputmode="numeric" pattern="[0-9]*\\.?[0-9]*" id="${fieldId}" name="${fieldName}" class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm" placeholder="${q.label}" data-field="${fieldName}" data-question-id="${q.id}" value="${existingValue}" ${q.required ? 'required' : ''}>`;
                                                 break;
                                             case 'date':
-                                                inputHtml = `<input type="date" id="${fieldId}" name="${fieldName}" class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm" data-field="${fieldName}" data-question-id="${q.id}" value="${existingValue}" ${q.required ? 'required' : ''}>`;
+                                                inputHtml = `<input type="text" id="${fieldId}" name="${fieldName}" class="fp-date block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm" placeholder="YYYY-MM-DD" data-field="${fieldName}" data-question-id="${q.id}" value="${existingValue}" ${q.required ? 'required' : ''}>`;
                                                 break;
                                             case 'choice':
                                                 if (q.options && Array.isArray(q.options) && q.options.length > 0) {
-                                                    inputHtml = `<select id="${fieldId}" name="${fieldName}" class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm" data-field="${fieldName}" data-question-id="${q.id}" ${q.required ? 'required' : ''}><option value="">Select...</option>`;
+                                                    inputHtml = `<select id="${fieldId}" name="${fieldName}" class="admin-select block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm" data-field="${fieldName}" data-question-id="${q.id}" ${q.required ? 'required' : ''}><option value="">Select...</option>`;
                                                     q.options.forEach(opt => {
                                                         inputHtml += `<option value="${opt}" ${existingValue === opt ? 'selected' : ''}>${opt}</option>`;
                                                     });
@@ -2293,6 +2528,11 @@
                                                 } else {
                                                     inputHtml = `<input type="text" id="${fieldId}" name="${fieldName}" class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm" placeholder="${q.label}" data-field="${fieldName}" data-question-id="${q.id}" value="${existingValue}" ${q.required ? 'required' : ''}>`;
                                                 }
+                                                break;
+                                            case 'yesno_text':
+                                                const qYesno = (typeof existingValue === 'object' && existingValue) ? existingValue : { value: 'no', details: '' };
+                                                const yesnoName = `participant-${p.id}-question-${q.id}`;
+                                                inputHtml = `<div class="participant-yesno-field participant-default-yesno"><div class="flex gap-4 mb-1"><label class="inline-flex items-center cursor-pointer"><input type="radio" name="${yesnoName}" value="no" ${(qYesno.value||'no')==='no'?'checked':''} class="participant-yesno-radio"><span class="ml-2">No</span></label><label class="inline-flex items-center cursor-pointer"><input type="radio" name="${yesnoName}" value="yes" ${(qYesno.value||'no')==='yes'?'checked':''} class="participant-yesno-radio"><span class="ml-2">Yes</span></label></div><div class="yesno-details mt-1 ${(qYesno.value||'no')==='yes'?'':'hidden'}"><label class="block text-xs text-gray-600 mb-0.5">If yes, please explain:</label><input type="text" id="${fieldId}-details" data-question-id="${q.id}" class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 sm:text-sm" value="${(qYesno.details||'').replace(/"/g,'&quot;')}"></div></div>`;
                                                 break;
                                             case 'file':
                                                 inputHtml = `<input type="file" id="${fieldId}" name="${fieldName}" class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm" data-field="${fieldName}" data-question-id="${q.id}" ${q.required ? 'required' : ''}>`;
@@ -2303,7 +2543,7 @@
                                         
                                         fieldsHtml += `
                                             <div class="mb-2">
-                                                <label class="block text-xs font-medium text-gray-700 mb-1">${q.label}${q.required ? ' <span class="text-red-500">*</span>' : ''}</label>
+                                                <label class="block text-xs font-medium text-gray-700 mb-1">${q.label}${q.required ? ' <span class="required-asterisk">*</span>' : ''}</label>
                                                 ${inputHtml}
                                             </div>
                                         `;
@@ -2311,7 +2551,7 @@
                                 }
                                 
                                 return `
-                                <div class="border border-gray-200 rounded p-4">
+                                <div class="border border-gray-200 rounded p-4" data-participant-id="${p.id}">
                                     <h5 class="text-sm font-semibold text-gray-900 mb-3">Participant ${idx + 1}</h5>
                                     <div class="space-y-3">
                                         ${fieldsHtml}
@@ -2337,6 +2577,7 @@
             // Attach event listener to Amount Paid input for real-time update
             // Use setTimeout to ensure DOM is updated after innerHTML
             setTimeout(() => {
+                initFlatpickrOnDates();
                 const amountPaidInput = document.getElementById('bookingAmountPaid');
                 if (amountPaidInput) {
                     // Remove old listeners by cloning the element
@@ -2390,31 +2631,55 @@
                         currentBookingData.participants.forEach(p => {
                             const firstNameInput = document.getElementById(`participant-first-name-${p.id}`);
                             const lastNameInput = document.getElementById(`participant-last-name-${p.id}`);
-                            const emailInput = document.getElementById(`participant-email-${p.id}`);
                             
-                            if (firstNameInput && lastNameInput && emailInput) {
-                                const firstName = firstNameInput.value.trim();
-                                const lastName = lastNameInput.value.trim();
-                                const email = emailInput.value.trim();
-                                
-                                // Collect custom question answers
+                            const firstName = (firstNameInput && firstNameInput.value.trim()) || '';
+                            const lastName = (lastNameInput && lastNameInput.value.trim()) || '';
+                            const middleNameInput = document.getElementById(`participant-middle-name-${p.id}`);
+                            const genderSelect = document.getElementById(`participant-gender-${p.id}`);
+                            const dobInput = document.getElementById(`participant-dob-${p.id}`);
+                            const regTypeSelect = document.getElementById(`participant-registration-type-${p.id}`);
+                            const dietaryRadio = document.querySelector(`input[name="participant-dietary-${p.id}"]:checked`);
+                            const dietaryDetails = document.getElementById(`participant-dietary-details-${p.id}`);
+                            const medicalRadio = document.querySelector(`input[name="participant-medical-${p.id}"]:checked`);
+                            const medicalDetails = document.getElementById(`participant-medical-details-${p.id}`);
+                            
+                            if (firstNameInput && lastNameInput) {
                                 const questionAnswers = {};
+                                const participantBlock = document.querySelector(`[data-participant-id="${p.id}"]`);
                                 if (tripCustomQuestions && tripCustomQuestions.length > 0) {
                                     tripCustomQuestions.forEach(q => {
                                         const fieldId = `participant-${p.id}-q-${q.id}`;
-                                        const field = document.getElementById(fieldId);
-                                        if (field && field.value) {
-                                            questionAnswers[q.id] = field.value;
+                                        if (q.type === 'yesno_text' && participantBlock) {
+                                            const radio = participantBlock.querySelector(`input[name="participant-${p.id}-question-${q.id}"]:checked`);
+                                            const detailsEl = document.getElementById(fieldId + '-details');
+                                            questionAnswers[q.id] = {
+                                                value: radio ? radio.value : 'no',
+                                                details: detailsEl ? detailsEl.value.trim() : ''
+                                            };
+                                        } else {
+                                            const field = document.getElementById(fieldId);
+                                            if (field && field.value) questionAnswers[q.id] = field.value;
                                         }
                                     });
                                 }
+                                questionAnswers.dietary_restrictions_or_allergies = {
+                                    value: dietaryRadio ? dietaryRadio.value : 'no',
+                                    details: dietaryDetails ? dietaryDetails.value.trim() : ''
+                                };
+                                questionAnswers.medical_conditions = {
+                                    value: medicalRadio ? medicalRadio.value : 'no',
+                                    details: medicalDetails ? medicalDetails.value.trim() : ''
+                                };
                                 
                                 participants.push({
                                     id: p.id,
-                                    name: `${firstName} ${lastName}`.trim() || 'Unknown',
+                                    name: [firstName, (middleNameInput && middleNameInput.value.trim()) || '', lastName].filter(Boolean).join(' ').trim() || 'Unknown',
                                     first_name: firstName,
+                                    middle_name: (middleNameInput && middleNameInput.value.trim()) || '',
                                     last_name: lastName,
-                                    email: email,
+                                    gender: (genderSelect && genderSelect.value) || '',
+                                    dob: (dobInput && dobInput.value.trim()) || '',
+                                    registration_type: (regTypeSelect && regTypeSelect.value) || '',
                                     question_answers: questionAnswers
                                 });
                             }
@@ -2705,9 +2970,10 @@
             refundBookingBtn.addEventListener('click', function() {
                 if (!currentBookingId || !currentBookingData) return;
                 
+                const paidForRefund = (currentBookingData.amount_paid_display != null ? currentBookingData.amount_paid_display : currentBookingData.amount_paid) || 0;
                 document.getElementById('refundBookingId').textContent = currentBookingId;
                 document.getElementById('refundAmountPaid').textContent = '$' + parseFloat(currentBookingData.expected_amount || 0).toFixed(2);
-                document.getElementById('refundFullAmount').textContent = '$' + parseFloat(currentBookingData.amount_paid || 0).toFixed(2);
+                document.getElementById('refundFullAmount').textContent = '$' + parseFloat(paidForRefund).toFixed(2);
                 
                 // Reset form
                 document.querySelector('input[name="refundType"][value="full"]').checked = true;
@@ -2740,15 +3006,16 @@
                 const refundType = document.querySelector('input[name="refundType"]:checked').value;
                 let refundAmount = 0;
                 
+                const maxRefund = (currentBookingData.amount_paid_display != null ? currentBookingData.amount_paid_display : currentBookingData.amount_paid) || 0;
                 if (refundType === 'full') {
-                    refundAmount = parseFloat(currentBookingData.amount_paid || 0);
+                    refundAmount = parseFloat(maxRefund);
                 } else {
                     refundAmount = parseFloat(refundAmountInput.value);
                     if (!refundAmount || refundAmount <= 0) {
                         showToast('Please enter a valid refund amount', 'warning');
                         return;
                     }
-                    if (refundAmount > parseFloat(currentBookingData.amount_paid || 0)) {
+                    if (refundAmount > parseFloat(maxRefund)) {
                         showToast('Refund amount cannot exceed amount paid', 'error');
                         return;
                     }
@@ -2947,7 +3214,7 @@
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Send to</label>
                     <select name="recipient_type" id="recipientType" 
-                        class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6" required>
+                        class="admin-select block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6" required>
                         <option value="">Please select the recipients</option>
                         <option value="all">Everyone on this trip ({{ total_participants_count }})</option>
                         <option value="package">Everyone with a specific package or add-on</option>
@@ -2959,7 +3226,7 @@
                     <!-- Specific Recipients (hidden by default) -->
                     <div id="specificRecipients" class="mt-2 hidden">
                         <select name="specific_recipients" multiple 
-                            class="block w-full rounded-md border-0 h-32 px-3 py-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm">
+                            class="admin-select block w-full rounded-md border-0 h-32 px-3 py-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm">
                             {% for participant in all_participants %}
                             <option value="{{ participant.email }}">{{ participant.name }} ({{ participant.email }})</option>
                             {% endfor %}

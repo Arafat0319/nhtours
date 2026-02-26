@@ -16,10 +16,8 @@
 
 | 蓝图 | 前缀 | 说明 |
 |------|------|------|
-| admin | `/admin` | 后台管理功能 |
-| auth | `/auth` | 用户认证 |
-| main | `/` | 前台公共页面 |
-| (routes.py) | `/api`, `/webhook` | API 和 Webhook |
+| admin | `/admin` | 后台管理功能（含认证） |
+| main | `/` | 前台公共页面、API、Webhook |
 
 ---
 
@@ -48,17 +46,17 @@
 
 | 路由 | 方法 | 说明 |
 |------|------|------|
-| `/admin/trips/<id>/edit/step/<n>` | GET | 显示步骤 n 表单 |
-| `/admin/trips/<id>/edit/step/<n>` | POST | 保存步骤 n 数据 |
+| `/admin/trips/<id>/builder/<step>` | GET | 显示步骤表单 |
+| `/admin/trips/<id>/builder/<step>` | POST | 保存步骤数据 |
 
-步骤说明：
-- Step 1: 基础信息
-- Step 2: 描述
-- Step 3: 套餐管理
-- Step 4: 附加选项
-- Step 5: 购买者信息
-- Step 6: 参与者问卷
-- Step 7: 折扣码
+**step 参数值**：
+- `basics`: 基础信息
+- `description`: 描述
+- `packages`: 套餐管理
+- `addons`: 附加选项
+- `buyer_info`: 购买者信息
+- `participants`: 参与者问卷
+- `coupons`: 折扣码
 
 ### 订单管理
 
@@ -81,7 +79,8 @@
 
 | 路由 | 方法 | 说明 |
 |------|------|------|
-| `/admin/trips/<id>/export` | GET | 导出订单 Excel |
+| `/admin/trips/<id>/bookings/export` | GET | 导出订单 Excel（需登录，xlsx 内含 Web 连接，打开时自动刷新） |
+| `/admin/trips/bookings/export/csv` | GET | 按 token 导出 Participants：`?token=xxx` CSV；`?token=xxx&format=html` HTML（供 Excel 刷新用，无需登录） |
 | `/admin/trips/<id>/financials` | GET | 获取财务统计 JSON |
 
 ---
@@ -92,41 +91,42 @@
 
 | 路由 | 方法 | 说明 |
 |------|------|------|
-| `/api/payment/intent` | POST | 创建 PaymentIntent |
+| `/api/payment/intent` | POST | 更新已有 PaymentIntent 的金额与 metadata（用于确认前写入手续费等） |
 | `/api/payment/status` | GET | 查询支付状态 |
 | `/api/payment/fee` | POST | 计算手续费 |
 
 #### POST /api/payment/intent
 
-创建或更新 Stripe PaymentIntent。
+更新已有 Stripe PaymentIntent 的金额与 metadata（不创建新 PI；首步创建在报名提交 `POST /trips/<slug>` 的 JSON 流程中完成）。前端在用户填写卡信息后、确认支付前调用，用于按卡种计算手续费并更新 PI 金额。
 
-**请求体**:
+**请求体**（三选一标识支付对象）:
+
+- `payment_method_id`（必填）：Stripe PaymentMethod ID（由前端 Stripe Elements 创建）
+- 以下其一（必填）：`payment_intent_id`（新流程，首次支付）、`booking_id`（已有订单）、`installment_id`（分期单期）
+- `payment_plan`（可选）：`full` \| `deposit_installment`，默认 `full`
+- `payment_step`（可选）：`initial` \| `payoff` 等
 
 ```json
 {
-  "trip_id": 1,
-  "payment_type": "deposit",
-  "amount": 500,
-  "booking_data": {
-    "packages": [...],
-    "participants": [...],
-    "buyer_info": {...}
-  },
-  "payment_intent_id": null,
-  "booking_id": null,
-  "installment_id": null
+  "payment_intent_id": "pi_xxx",
+  "payment_method_id": "pm_xxx",
+  "payment_plan": "full",
+  "payment_step": "initial"
 }
 ```
+
+或使用已有订单：`"booking_id": 123`；或分期：`"installment_id": 456`。
 
 **响应**:
 
 ```json
 {
-  "clientSecret": "pi_xxx_secret_xxx",
-  "paymentIntentId": "pi_xxx",
-  "pendingBookingId": 123
+  "payment_intent_id": "pi_xxx",
+  "final_amount": 5029
 }
 ```
+
+- `final_amount`: 更新后的应付金额（分，含手续费）。
 
 #### GET /api/payment/status
 
@@ -246,7 +246,8 @@ def stripe_webhook():
 | 路由 | 方法 | 说明 |
 |------|------|------|
 | `/trips` | GET | 行程列表页 |
-| `/trips/<slug>` | GET | 行程详情页 |
+| `/trips/<slug>` | GET/POST | 行程详情页（GET 展示；POST 为 AJAX 报名提交，创建 PendingBooking + PaymentIntent） |
+| `/trips/<slug>/design-preview` | GET/POST | 设计预览实验页（与正式页同数据，渲染实验模板；POST 为 AJAX 报名提交，逻辑同正式页） |
 | `/trips/<slug>/book` | GET | 报名页面（5步向导） |
 
 ### 支付页面
@@ -255,6 +256,8 @@ def stripe_webhook():
 |------|------|------|
 | `/payment/pending` | GET | 支付处理中页面 |
 | `/booking/success` | GET | 支付成功页面 |
+| `/pay-installment/<id>` | GET | 分期付款弹窗页（query: token=，模板 installment_modal_page.html） |
+| `/pay-installment/<id>/payoff` | GET | 一次性付清页（query: token=） |
 
 ### 其他页面
 
@@ -269,8 +272,8 @@ def stripe_webhook():
 
 | 路由 | 方法 | 说明 |
 |------|------|------|
-| `/auth/login` | GET/POST | 登录页面 |
-| `/auth/logout` | GET | 退出登录 |
+| `/admin/login` | GET/POST | 登录页面 |
+| `/admin/logout` | GET | 退出登录 |
 
 ---
 
@@ -310,4 +313,4 @@ def stripe_webhook():
 
 ## 更新日期
 
-**最后更新**: 2026-01-21
+**最后更新**: 2026-02-09

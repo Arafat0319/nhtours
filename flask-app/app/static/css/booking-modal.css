@@ -1,0 +1,886 @@
+/**
+ * 报名弹窗设计稿样式：布局、套餐卡片、Stepper、分期表格、底部按钮
+ * 作用域：仅 #booking-modal 内
+ */
+
+/* 0. 点击穿透 + 隐藏滚动条（保留滚轮/触摸滚动） */
+#booking-modal #booking-modal-scroll-viewport {
+  pointer-events: none !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+#booking-modal #booking-modal-scroll-viewport::-webkit-scrollbar {
+  display: none !important;
+}
+/* 弹窗内所有可滚动区域都不显示滚动条 */
+#booking-modal .booking-main-content,
+#booking-modal .booking-sidebar {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+#booking-modal .booking-main-content::-webkit-scrollbar,
+#booking-modal .booking-sidebar::-webkit-scrollbar {
+  display: none !important;
+}
+/* 卡片内部（左侧、右侧、底部）所有可滚动区域都不显示滚动条 */
+#booking-modal #booking-modal-card,
+#booking-modal #booking-modal-card * {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+#booking-modal #booking-modal-card::-webkit-scrollbar,
+#booking-modal #booking-modal-card *::-webkit-scrollbar {
+  display: none !important;
+}
+#booking-modal #booking-modal-inner,
+#booking-modal #booking-modal-card {
+  pointer-events: auto !important;
+}
+
+/* 0.1 步骤条（Package > Participant info > …）：字号略大、与 > 间距、当前页加粗 */
+#booking-modal .modal-step-tab {
+  font-size: 0.875rem !important;
+  font-weight: 400;
+}
+#booking-modal .modal-step-tab[aria-selected="true"] {
+  font-weight: 600 !important;
+  color: #1f2937 !important;
+}
+#booking-modal .modal-step-sep {
+  font-size: 0.875rem;
+  color: #9ca3af;
+  margin: 0 0.5rem;
+  user-select: none;
+}
+
+/* 1. 基础布局：卡片高度由内容撑开，溢出时由 #booking-modal 整层滚动（浏览器级滚动条） */
+#booking-modal .booking-modal-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+/* 左侧主内容区顶部留白与右侧 Your Booking 对齐（步骤标题同一高度）；左下角圆角与卡片一致 */
+#booking-modal .booking-main-content {
+  padding-top: 16px;
+  border-bottom-left-radius: 0.5rem;
+}
+#booking-modal #booking-modal-scroll,
+#booking-modal #booking-modal-left-col {
+  border-bottom-left-radius: 0.5rem;
+}
+
+@media (min-width: 1024px) {
+  #booking-modal .booking-modal-body,
+  #booking-modal #booking-modal-scroll {
+    display: flex !important;
+    flex-direction: row !important;
+    overflow: visible;
+  }
+  /* 覆盖 beijing.css 的 .w-full，否则左列始终 100% 导致右列被挤到下一行（报名页与分期页均需） */
+  #booking-modal #booking-modal-left-col {
+    width: 0 !important;
+    min-width: 0 !important;
+    flex: 1 1 0% !important;
+  }
+  #booking-modal #booking-modal-left-inner {
+    max-width: 535px;
+  }
+  #booking-modal .booking-main-content {
+    flex: 1;
+    overflow: visible;
+    padding: 16px 2rem 2rem 2rem;
+  }
+  #booking-modal .booking-sidebar,
+  #booking-modal #booking-modal-right {
+    width: 335px !important;
+    min-width: 335px !important;
+    flex-shrink: 0 !important;
+    background-color: #f8fafc;
+    border-left: 1px solid #e2e8f0;
+    padding: 16px 2rem 2rem 2rem;
+    overflow: visible;
+  }
+}
+
+/* 1.1 弹窗内统一文本框样式（参考设计，配色用 #0066ff） */
+#booking-modal input[type="text"],
+#booking-modal input[type="email"],
+#booking-modal input[type="tel"],
+#booking-modal input[type="number"],
+#booking-modal textarea,
+#booking-modal select {
+  background-color: #f8fafc;
+  padding: 10px;
+  border: 2px solid #e2e8f0;
+  border-radius: 5px;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 26px;
+  color: #111827;
+  transition: box-shadow 0.1s ease, border-color 0.1s ease;
+  min-width: 0;
+}
+#booking-modal input[type="text"],
+#booking-modal input[type="email"],
+#booking-modal input[type="tel"],
+#booking-modal input[type="number"] {
+  height: 40px;
+  box-sizing: border-box;
+}
+#booking-modal input[type="text"]:focus,
+#booking-modal input[type="email"]:focus,
+#booking-modal input[type="tel"]:focus,
+#booking-modal input[type="number"]:focus,
+#booking-modal textarea:focus,
+#booking-modal select:focus {
+  color: #111827;
+  background-color: #f8fafc;
+  outline: none;
+  border-color: #0066ff;
+  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.2);
+  transition: box-shadow 0.1s ease, border-color 0.1s ease;
+}
+#booking-modal textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+#booking-modal select {
+  height: 40px;
+  cursor: pointer;
+  appearance: auto;
+}
+
+/* Yes/No 详情框（Dietary / Medical / 自定义 yesno_text）：与弹窗内其他输入一致 */
+#booking-modal .participant-yesno-details-input,
+#booking-modal .yesno-details input[type="text"] {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  box-sizing: border-box;
+  background-color: #f8fafc;
+  padding: 10px;
+  border: 2px solid #e2e8f0;
+  border-radius: 5px;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 26px;
+  color: #111827;
+  transition: box-shadow 0.1s ease, border-color 0.1s ease;
+}
+#booking-modal .participant-yesno-details-input:focus,
+#booking-modal .yesno-details input[type="text"]:focus {
+  outline: none;
+  border-color: #0066ff;
+  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.2);
+  background-color: #f8fafc;
+}
+/* 填完后与下拉/日期一致的淡蓝背景（JS 会加 .booking-input-filled，含姓名/邮箱/电话/YesNo 说明等） */
+#booking-modal input[type="text"]:not(.fp-date).booking-input-filled,
+#booking-modal input[type="email"].booking-input-filled,
+#booking-modal input[type="tel"].booking-input-filled,
+#booking-modal textarea.booking-input-filled,
+#booking-modal .participant-yesno-details-input.booking-input-filled,
+#booking-modal .yesno-details input[type="text"].booking-input-filled {
+  background-color: rgba(0, 102, 255, 0.1) !important;
+}
+#booking-modal input[type="text"]:not(.fp-date).booking-input-filled:focus,
+#booking-modal input[type="email"].booking-input-filled:focus,
+#booking-modal input[type="tel"].booking-input-filled:focus,
+#booking-modal textarea.booking-input-filled:focus,
+#booking-modal .participant-yesno-details-input.booking-input-filled:focus,
+#booking-modal .yesno-details input[type="text"].booking-input-filled:focus {
+  background-color: rgba(0, 102, 255, 0.1) !important;
+}
+
+/* Date of Birth：选定日期后淡蓝背景（JS 会加 .fp-date-filled 并设 inline style） */
+#booking-modal input.fp-date.fp-date-filled,
+#booking-modal input.fp-date:not(:placeholder-shown) {
+  background-color: rgba(0, 102, 255, 0.1) !important;
+}
+#booking-modal input.fp-date.fp-date-filled:focus,
+#booking-modal input.fp-date:not(:placeholder-shown):focus {
+  background-color: rgba(0, 102, 255, 0.1) !important;
+}
+/* 被 Uiverse 包裹的原生 select：仅用于提交值，不显示 */
+#booking-modal select.booking-select-native-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+}
+/* 弹窗内 Uiverse 下拉（Gender、Registration Type 等）：与 pkg-stepper-wrapper 同款外观 */
+#booking-modal .booking-select-uiverse {
+  position: relative;
+  min-width: 0;
+  flex-shrink: 0;
+}
+#booking-modal .booking-select-uiverse .selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  height: 40px;
+  padding: 0 10px;
+  background-color: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 26px;
+  color: #111827;
+  cursor: pointer;
+  transition: box-shadow 0.1s ease, border-color 0.1s ease;
+  box-sizing: border-box;
+  overflow: hidden;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+#booking-modal .booking-select-uiverse .selected .selected-value {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+#booking-modal .booking-select-uiverse .selected .arrow {
+  flex-shrink: 0;
+  margin-left: 0.5rem;
+  color: #64748b;
+}
+#booking-modal .booking-select-uiverse.is-open .selected,
+#booking-modal .booking-select-uiverse .selected:focus {
+  border-color: #0066ff;
+  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.2);
+  outline: none;
+}
+/* 下拉框选定选项后淡蓝背景（JS 会加 .booking-select-has-value 并设 inline style） */
+#booking-modal .booking-select-uiverse.booking-select-has-value .selected,
+#booking-modal .booking-select-uiverse:has(select:valid) .selected {
+  background-color: rgba(0, 102, 255, 0.1) !important;
+}
+#booking-modal .booking-select-uiverse.booking-select-has-value.is-open .selected,
+#booking-modal .booking-select-uiverse.booking-select-has-value .selected:focus,
+#booking-modal .booking-select-uiverse:has(select:valid).is-open .selected,
+#booking-modal .booking-select-uiverse:has(select:valid) .selected:focus {
+  background-color: rgba(0, 102, 255, 0.1) !important;
+}
+/* 未选择的必填下拉：红框提示与文本框一致 */
+#booking-modal .booking-select-uiverse.booking-select-validation-error .selected {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+#booking-modal .booking-select-uiverse .options {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin-top: 2px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: #fff;
+  border: 2px solid #e2e8f0;
+  border-radius: 5px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 50;
+}
+#booking-modal .booking-select-uiverse.is-open .options {
+  display: block;
+}
+#booking-modal .booking-select-uiverse .options .option {
+  padding: 10px 12px;
+  font-size: 16px;
+  font-weight: 500;
+  color: #111827;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f5f9;
+}
+#booking-modal .booking-select-uiverse .options .option:last-child {
+  border-bottom: none;
+}
+#booking-modal .booking-select-uiverse .options .option:hover {
+  background-color: #f8fafc;
+}
+
+/* 1.1.1 折扣码行：输入框与 Apply 按钮等高、同风格、同点击视觉效果 */
+#booking-modal .discount-input-match {
+  height: 40px;
+  box-sizing: border-box;
+}
+#booking-modal .apply-discount-btn-match {
+  height: 40px;
+  min-height: 40px;
+  min-width: 96px;
+  padding: 0 1.25rem;
+  box-sizing: border-box;
+  border: 2px solid #e2e8f0;
+  border-radius: 5px;
+  background-color: #f8fafc;
+  color: #334155;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 26px;
+  cursor: pointer;
+  transition: border-color 0.1s ease, box-shadow 0.1s ease, background-color 0.15s ease, transform 0.1s ease;
+}
+#booking-modal .apply-discount-btn-match:hover:not(:disabled) {
+  background-color: #f1f5f9;
+  border-color: #cbd5e1;
+}
+#booking-modal .apply-discount-btn-match:focus {
+  outline: none;
+  border-color: #0066ff;
+  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.2);
+}
+#booking-modal .apply-discount-btn-match:active:not(:disabled) {
+  transform: scale(0.98);
+}
+#booking-modal .apply-discount-btn-match:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 1.2 弹窗内标题层级 h4 > h5 > h6（未单独设 class 时生效） */
+#booking-modal h4 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0;
+}
+#booking-modal h5 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #334155;
+  margin: 0 0 0.75rem 0;
+}
+#booking-modal h6 {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #475569;
+  margin: 0;
+}
+
+/* 各步主标题（h3）：与 Step 1/2 一致的大小、字体、位置与风格，不覆盖字号/行高 */
+#booking-modal .booking-step-title,
+#booking-modal .booking-step-2-section-title,
+#booking-modal .booking-sidebar-title {
+  text-align: left;
+  padding-left: 0;
+  margin: 0;
+}
+#booking-modal .booking-step-2-section-title {
+  margin-bottom: 1rem;
+}
+
+/* 2. 套餐卡片视觉与选中态：圆角 + 与输入框一致的光晕 */
+#booking-modal .package-card {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+#booking-modal .package-card.selected {
+  border-color: #0066ff !important;
+  background-color: rgba(0, 102, 255, 0.03) !important;
+  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.2);
+}
+
+#booking-modal .package-card.package-card-validation-error {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+
+/* 2.2 Add-on 卡片：与 Package 页一致（圆角、边框、选中态、间距：无 gap，仅 border-b 分隔） */
+#booking-modal .addon-cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+#booking-modal .addon-card {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 16px;
+}
+#booking-modal .addon-card:last-child {
+  margin-bottom: 0;
+}
+#booking-modal .addon-card.selected {
+  border-color: #0066ff !important;
+  background-color: rgba(0, 102, 255, 0.03) !important;
+  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.2);
+}
+#booking-modal .addon-card .addon-card-desc {
+  font-size: 0.8125rem;
+  color: #4b5563;
+  padding-right: 1rem;
+}
+#booking-modal .addon-card .addon-card-price {
+  text-align: end;
+}
+
+/* 数量选择器 Uiverse（Package / Add-on 共用）：与弹窗内下拉框同风格 */
+#booking-modal .quantity-select-uiverse .selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  height: 40px;
+  padding: 0 10px;
+  background-color: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 5px;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 26px;
+  color: #111827;
+  cursor: pointer;
+  transition: box-shadow 0.1s ease, border-color 0.1s ease;
+  box-sizing: border-box;
+}
+#booking-modal .quantity-select-uiverse .selected .selected-value {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+#booking-modal .quantity-select-uiverse .selected .arrow {
+  flex-shrink: 0;
+  margin-left: 0.5rem;
+  color: #64748b;
+}
+#booking-modal .quantity-select-uiverse.is-open .selected,
+#booking-modal .quantity-select-uiverse .selected:focus {
+  border-color: #0066ff;
+  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.2);
+  outline: none;
+}
+#booking-modal .quantity-select-uiverse .options {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin-top: 2px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: #fff;
+  border: 2px solid #e2e8f0;
+  border-radius: 5px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 50;
+}
+#booking-modal .quantity-select-uiverse.is-open .options {
+  display: block;
+}
+#booking-modal .quantity-select-uiverse .options .option {
+  padding: 10px 12px;
+  font-size: 16px;
+  font-weight: 500;
+  color: #111827;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f5f9;
+}
+#booking-modal .quantity-select-uiverse .options .option:last-child {
+  border-bottom: none;
+}
+#booking-modal .quantity-select-uiverse .options .option:hover {
+  background-color: #f8fafc;
+}
+
+/* 2.1 Step 2 Participant info - 与 Package 页视觉统一：卡片式区块（边框、圆角与 package-card 一致） */
+#booking-modal .buyer-info-card {
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  padding: 1.25rem 1.5rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+#booking-modal .buyer-info-card h4 {
+  margin-bottom: 1rem;
+}
+#booking-modal .buyer-info-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+#booking-modal .participant-form {
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  padding: 1rem 1.25rem 1.25rem;
+}
+@media (min-width: 1024px) {
+  #booking-modal .participant-form {
+    padding: 1.5rem 1.5rem 1.5rem;
+  }
+}
+#booking-modal .participant-form .participant-section-header {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+#booking-modal .participant-form .participant-num-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding: 0 0.35rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: #0066ff;
+  border-radius: 9999px;
+}
+#booking-modal .participant-form.participant-form-validation-error {
+  border-color: #fca5a5;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.15);
+}
+#booking-modal .buyer-info-card label,
+#booking-modal .participant-form label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 0.5rem;
+}
+/* 必填项 * 统一颜色（弹窗内；全局在 admin base 中定义） */
+#booking-modal .required-asterisk {
+  color: #ea580c;
+}
+
+/* Buyer information：每个字段块（flex flex-col custom-field）间距 */
+#booking-modal .buyer-info-card .custom-field {
+  margin-bottom: 1rem;
+}
+#booking-modal .buyer-info-card .custom-field:last-child {
+  margin-bottom: 0;
+}
+
+/* Buyer 两列布局（First/Last name、Email/Phone 并排）：强制列距、行距，不依赖 Tailwind */
+#booking-modal .buyer-fields-grid-2col {
+  display: grid;
+  grid-template-columns: 1fr;
+  column-gap: 2rem;
+  row-gap: 0;
+}
+@media (min-width: 768px) {
+  #booking-modal .buyer-fields-grid-2col {
+    grid-template-columns: 1fr 1fr;
+  }
+  #booking-modal .buyer-fields-grid-2col [data-field-type="address"],
+  #booking-modal .buyer-fields-grid-2col [data-field-type="emergency_contact"] {
+    grid-column: 1 / -1;
+  }
+}
+
+/* 同一排两列：用 CSS 强制 grid + 列/行间距，不依赖 Tailwind */
+#booking-modal .buyer-row-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 1rem;
+  row-gap: 0.5rem;
+}
+@media (max-width: 639px) {
+  #booking-modal .buyer-row-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 数量为 0 时卡片收起：只显示名称、价格、人数选择；数量 >0 或选中时展开，installment 显示分期明细 */
+#booking-modal .package-card:not(.selected) .pkg-card-detail {
+  display: none !important;
+}
+#booking-modal .package-card:not(.selected) .pkg-card-stepper-row {
+  margin-top: 0.5rem !important;
+  padding-top: 0 !important;
+  border-top: none !important;
+}
+#booking-modal .package-card:not(.selected) {
+  padding: 0.75rem 1rem !important;
+}
+
+/* 3. 数量选择器 (Stepper) */
+#booking-modal .pkg-stepper-wrapper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: white;
+  height: 40px;
+}
+
+#booking-modal .pkg-stepper-minus,
+#booking-modal .pkg-stepper-plus {
+  width: 40px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: #64748b;
+  transition: all 0.2s;
+}
+
+#booking-modal .pkg-stepper-minus:hover,
+#booking-modal .pkg-stepper-plus:hover {
+  background-color: #f1f5f9;
+  color: #0066ff;
+}
+
+#booking-modal .pkg-qty-display {
+  min-width: 40px;
+  text-align: center;
+  font-weight: 700;
+  color: #0f172a;
+  border-left: 1px solid #f1f5f9;
+  border-right: 1px solid #f1f5f9;
+}
+
+/* Add-on 步进器：与 package 页 pkg-stepper-wrapper 同款视觉 */
+#booking-modal .addon-stepper-wrapper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: white;
+  height: 40px;
+}
+#booking-modal .addon-stepper-minus,
+#booking-modal .addon-stepper-plus {
+  width: 40px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: #64748b;
+  transition: all 0.2s;
+}
+#booking-modal .addon-stepper-minus:hover,
+#booking-modal .addon-stepper-plus:hover {
+  background-color: #f1f5f9;
+  color: #0066ff;
+}
+#booking-modal .addon-stepper-wrapper .addon-qty-display {
+  min-width: 40px;
+  text-align: center;
+  font-weight: 700;
+  color: #0f172a;
+  border-left: 1px solid #f1f5f9;
+  border-right: 1px solid #f1f5f9;
+  padding: 0 0.25rem;
+  box-sizing: border-box;
+}
+
+/* 4. 分期明细美化：标题、表格、提醒文案 */
+#booking-modal .package-installment-detail {
+  background: linear-gradient(to bottom, #fafbff 0%, transparent 100%);
+  border-radius: 0.75rem;
+  padding: 1rem 0 0;
+  border-top-color: #e2e8f0 !important;
+}
+
+#booking-modal .package-installment-detail > h5 {
+  text-align: left;
+  padding-left: 0;
+  margin-left: 0;
+}
+
+#booking-modal .package-installment-detail .installment-detail-title {
+  letter-spacing: 0.02em;
+}
+
+/* 分期明细：卡片式列表（与 package-card 圆角、边框、配色一致） */
+#booking-modal .installment-schedule {
+  width: 100%;
+  min-width: 0;
+}
+
+#booking-modal .installment-schedule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+#booking-modal .installment-schedule-item {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+#booking-modal .installment-schedule-item:last-child {
+  border-bottom: none;
+}
+
+#booking-modal .installment-schedule-item-deposit {
+  background: linear-gradient(to right, rgba(0, 102, 255, 0.06), transparent);
+  border-bottom: 1px solid #e2e8f0;
+}
+
+#booking-modal .installment-schedule-label {
+  font-weight: 600;
+  color: #334155;
+}
+
+#booking-modal .installment-schedule-date {
+  color: #64748b;
+  font-size: 0.8125rem;
+}
+
+#booking-modal .installment-schedule-amount {
+  font-weight: 600;
+  color: #0f172a;
+  text-align: right;
+  min-width: 4.5rem;
+}
+
+/* 保留旧 table 类名以兼容可能引用 */
+#booking-modal .installment-table-wrap {
+  background: #fff;
+}
+
+#booking-modal .installment-table {
+  border-collapse: collapse;
+}
+
+#booking-modal .package-installment-detail .installment-reminder {
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+  color: #64748b !important;
+}
+
+/* 4.1 Continue 按钮：与 package card 同宽 */
+#booking-modal .booking-btn-bar-spaced {
+  margin-top: 0;
+  padding: 2.5rem 1rem 2rem 1rem;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+@media (min-width: 1024px) {
+  #booking-modal .booking-btn-bar-spaced {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+#booking-modal #nextBtn {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* 5. 移动端底部按钮固定 + 右侧 Your Booking 底部留白，避免被按钮遮住 */
+@media (max-width: 1023px) {
+  #booking-modal .booking-modal-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: white;
+    padding: 1rem;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.05);
+    z-index: 100;
+  }
+  #booking-modal .booking-main-content {
+    padding-bottom: 100px;
+  }
+  /* 右侧 Your Booking 底部留白，滚动到底时 Fee、Due at Booking 能完整露出在按钮上方（覆盖内联 padding） */
+  #booking-modal #booking-modal-right,
+  #booking-modal .booking-sidebar {
+    padding-bottom: max(120px, calc(80px + env(safe-area-inset-bottom))) !important;
+  }
+}
+
+/* 6. 荧光绿按钮 (Continue) */
+#booking-modal .btn-neon-green {
+  background-color: #39ff14 !important;
+  color: #000 !important;
+  border-color: #39ff14 !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transition: all 0.3s;
+  box-shadow: 0 4px 14px rgba(57, 255, 20, 0.3);
+}
+
+#booking-modal .btn-neon-green:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(57, 255, 20, 0.4);
+  filter: brightness(1.1);
+}
+
+/* 分期页：Confirm 按钮与原版 #nextBtn 一致（绿底白字 + 粗体 + 全大写 + 字间距） */
+body.installment-modal-page #booking-modal #place-order-btn {
+  background-color: #16a34a !important;
+  color: #fff !important;
+  border-color: #16a34a !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 1px !important;
+  box-shadow: none !important;
+}
+body.installment-modal-page #booking-modal #place-order-btn:hover {
+  background-color: #15803d !important;
+  color: #fff !important;
+  border-color: #15803d !important;
+  opacity: 0.9;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 12px rgba(21, 128, 61, 0.35) !important;
+  filter: none !important;
+}
+body.installment-modal-page #booking-modal #place-order-btn {
+  transition: background-color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease !important;
+  border-width: 1px !important;
+  border-radius: 0.25rem !important;
+}
+
+/* Payment 步骤：加载占位，避免进入页面时空白 */
+#booking-modal .payment-element-wrapper {
+  position: relative;
+  min-height: 220px;
+  margin-bottom: 2rem !important;
+}
+#booking-modal .payment-element-box,
+#booking-modal #payment-element {
+  min-height: 200px;
+  margin-bottom: 1rem;
+}
+#booking-modal .payment-loading-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: #6b7280;
+  font-size: 0.875rem;
+  background: #fff;
+  border-radius: 0.5rem;
+  border: 1px solid #d1d5db;
+}
+#booking-modal .payment-loading-placeholder[aria-hidden="true"] {
+  display: none;
+}
+#booking-modal .payment-loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #e5e7eb;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: payment-loading-spin 0.7s linear infinite;
+}
+@keyframes payment-loading-spin {
+  to { transform: rotate(360deg); }
+}

@@ -1,0 +1,36 @@
+{# 付款模块专用导航：桌面仅 Logo，移动端汉堡 + Asia / North America / Mindx #}
+<nav class="fixed top-0 left-0 w-full transition-transform duration-300 translate-y-0 z-50" id="pageNav">
+	{# 桌面端导航栏 #}
+	<div class="hidden md:flex max-w-6xl w-full items-center justify-start pb-6 pt-4 px-6 md:px-8">
+		<span class="inline-block cursor-default -ml-4 md:-ml-6">
+			<img class="w-[256px] transition-all duration-300 ease-in-out" id="navLogo"
+				src="{{ url_for('static', filename='images/icons/logo-2-white.DyAUH4zT.svg') }}" alt="Nexus Horizons" />
+		</span>
+	</div>
+
+	{# 移动端导航栏 #}
+	<div class="md:hidden max-w-6xl pb-6 pt-2">
+		<div>
+			<span class="block w-[180px] mx-auto">
+				<img class="w-full" src="{{ url_for('static', filename='images/icons/logo-2-white.DyAUH4zT.svg') }}" alt="Nexus Horizons" />
+			</span>
+			<button class="absolute right-4 top-5" id="smNavBtn">
+				<svg class="w-6 h-6" fill="none" id="nav-open" stroke="#ffffff" viewbox="0 0 24 24">
+					<path d="M4 6h16M4 12h16M4 18h16" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+					</path>
+				</svg>
+				<svg class="w-6 h-6 hidden" fill="none" id="nav-close" stroke="#ffffff" viewbox="0 0 24 24">
+					<path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+					</path>
+				</svg>
+			</button>
+		</div>
+		<div class="hidden mt-5 p-4 grid grid-cols-2 gap-4" id="smNav">
+			<a class="pl-10 uppercase font-medium text-white tracking-wide"
+				href="{{ url_for('main.asia_index') }}">Asia</a>
+			<a class="pl-10 uppercase font-medium text-white tracking-wide"
+				href="{{ url_for('main.north_america_index') }}">North America</a>
+			<a class="pl-10 uppercase font-medium text-white tracking-wide" href="{{ url_for('main.mindx') }}">Mindx</a>
+		</div>
+	</div>
+</nav>

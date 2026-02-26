@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "booking/base.html" %}
 
 {% block title %}Checkout | Payment{% endblock %}
 
@@ -37,8 +37,8 @@
     </nav>
 </div>
 
-{# 支付表单区域 - 与 trip_booking.html Step 5 保持一致 #}
-<div class="max-w-xl mx-auto px-8 md:px-0 pb-16">
+{# 支付表单区域 - 与主站字体一致（Source Sans Pro） #}
+<div class="payment-section max-w-xl mx-auto px-8 md:px-0 pb-16">
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div class="lg:col-span-2 space-y-6">
             <div>
@@ -82,21 +82,21 @@
                     {% for item in summary_items %}
                     <div class="flex justify-between text-sm text-zinc-600">
                         <span>{{ item.label }}</span>
-                        <span>${{ "%.2f"|format(item.amount_cents / 100) }}</span>
+                        <span>${{ (item.amount_cents / 100)|format_currency }}</span>
                     </div>
                     {% endfor %}
                 {% endif %}
-                <div class="flex justify-between text-sm text-zinc-600">
-                    <span>Base Amount</span>
-                    <span id="summary-base">${{ "%.2f"|format(base_amount_cents / 100) }}</span>
-                </div>
+                    <div class="flex justify-between text-sm text-zinc-600">
+                        <span>Base Amount</span>
+                        <span id="summary-base">${{ (base_amount_cents / 100)|format_currency }}</span>
+                    </div>
                 <div class="flex justify-between text-sm text-zinc-600">
                     <span>Fee</span>
                     <span id="summary-fee">$0.00</span>
                 </div>
                 <div class="flex justify-between text-base font-semibold border-t border-zinc-200 pt-2 text-zinc-800">
                     <span>Total</span>
-                    <span id="summary-total">${{ "%.2f"|format(base_amount_cents / 100) }}</span>
+                    <span id="summary-total">${{ (base_amount_cents / 100)|format_currency }}</span>
                 </div>
             </div>
             <div class="text-sm text-zinc-500 pt-2 border-t border-zinc-200">
@@ -106,7 +106,7 @@
             <div class="pt-4 border-t border-zinc-200">
                 <a href="{{ payoff_url }}"
                    class="inline-flex items-center justify-center w-full border border-zinc-300 text-zinc-700 px-4 py-2 rounded-md hover:bg-zinc-50 transition-colors">
-                    Pay remaining balance (${{ "%.2f"|format(remaining_amount_cents / 100) }})
+                    Pay remaining balance (${{ (remaining_amount_cents / 100)|format_currency }})
                 </a>
             </div>
             {% endif %}
