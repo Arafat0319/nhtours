@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Nexus Horizons | Meet Our Team{% endblock %}
+
+{% block description %}Meet the Nexus Horizons team — experts in educational travel, cultural exchange, and program delivery across Asia and North America.{% endblock %}
+
+{% block og_title %}Nexus Horizons | Meet Our Team{% endblock %}
+
+{% block og_description %}Meet the Nexus Horizons team — experts in educational travel, cultural exchange, and program delivery across Asia and North America.{% endblock %}
+
+{% block body_class %}home-preview-page our-team-page{% endblock %}
+
+{% block nav %}{% include 'includes/home_preview/nav.html' %}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/home-preview.css') }}">
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module" src="{{ url_for('static', filename='js/home-preview-nav.js') }}"></script>
+{% endblock %}
+
+{% block content %}
+<header class="home-preview-header home-preview-header--no-ctas home-preview-header--team">
+	<div class="home-preview-header__hero home-preview-header__hero--team w-full"
+		style="background:url({{ url_for('static', filename='images/backgrounds/tibet_background.jpg') }}) center / cover no-repeat;">
+		<div class="home-preview-header__hero-inner h-full max-w-6xl mx-auto px-6 flex flex-col items-center justify-center text-center">
+			<div class="home-preview-header__hero-content">
+				<h1 class="home-preview-header__title">Meet Our Team</h1>
+			</div>
+		</div>
+	</div>
+</header>
+
+<section class="home-preview-team">
+	<div class="home-preview-team__inner">
+		<div class="home-preview-team__grid">
+			<article class="home-preview-team__member">
+				<div class="home-preview-team__photo">
+					<img src="{{ url_for('static', filename='images/content/team/luke-hao.png') }}"
+						alt="Luke Hao" width="400" height="533" />
+				</div>
+				<h2 class="home-preview-team__name">Luke Hao</h2>
+				<p class="home-preview-team__role">General Manager</p>
+				<p class="home-preview-team__bio">
+					Former Vice President of China Operations, Weber Shandwick. With 15 years of experience in event
+					management and international travel coordination, Luke oversees logistics, program delivery, and
+					student travel.
+				</p>
+			</article>
+			<article class="home-preview-team__member">
+				<div class="home-preview-team__photo">
+					<img src="{{ url_for('static', filename='images/content/team/amy-wu.png') }}"
+						alt="Amy Y. Wu" width="400" height="533" />
+				</div>
+				<h2 class="home-preview-team__name">Amy Y. Wu</h2>
+				<p class="home-preview-team__role">Director, Academic Partnerships</p>
+				<p class="home-preview-team__bio">
+					Amy brings extensive experience in international education, student recruitment, and cross-cultural
+					program development, helping connect students with meaningful educational opportunities.
+				</p>
+			</article>
+			<article class="home-preview-team__member">
+				<div class="home-preview-team__photo">
+					<img src="{{ url_for('static', filename='images/content/team/rui-dong.png') }}"
+						alt="Rui Dong" width="400" height="533" />
+				</div>
+				<h2 class="home-preview-team__name">Rui Dong</h2>
+				<p class="home-preview-team__role">Program Manager</p>
+				<p class="home-preview-team__bio">
+					Over 20 years of experience operating museums and designing educational travel programs across
+					China. Rui Dong specializes in cultural partnerships, student exchanges, and immersive learning
+					experiences.
+				</p>
+			</article>
+			<article class="home-preview-team__member">
+				<div class="home-preview-team__photo">
+					<img src="{{ url_for('static', filename='images/content/team/sophia-chen.png') }}"
+						alt="Sophia Chen" width="400" height="533" />
+				</div>
+				<h2 class="home-preview-team__name">Sophia Chen</h2>
+				<p class="home-preview-team__role">Program Support</p>
+				<p class="home-preview-team__bio">
+					Ethics, Society &amp; Law major at the University of Toronto. Sophia supports the stories behind
+					each travel experience with written content and educational resources.
+				</p>
+			</article>
+		</div>
+	</div>
+</section>
+{% endblock %}

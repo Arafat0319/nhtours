@@ -248,7 +248,38 @@ def stripe_webhook():
 | `/trips` | GET | 行程列表页 |
 | `/trips/<slug>` | GET/POST | 行程详情页（GET 展示；POST 为 AJAX 报名提交，创建 PendingBooking + PaymentIntent） |
 | `/trips/<slug>/design-preview` | GET/POST | 设计预览实验页（与正式页同数据，渲染实验模板；POST 为 AJAX 报名提交，逻辑同正式页） |
-| `/trips/<slug>/book` | GET | 报名页面（5步向导） |
+| `/trips/<slug>/book` | GET | 报名页面（5 步向导） |
+
+### 设计预览与内容页
+
+| 路由 | 方法 | 说明 |
+|------|------|------|
+| `/home-preview` | GET/POST | 首页设计预览实验页（Modern V1，**已定稿**）；POST 支持 newsletter，逻辑同 `/`。模板与资源见下表 |
+| `/our-team` | GET | Our Team **正式页**（**已定稿**）；继承 `base.html`，复用浅色 navbar 与 `home-preview.css` 团队样式。模板与资源见下表 |
+
+**`/home-preview` 关联文件**（与正式 `/` 隔离，改实验页勿动 `index.html`）：
+
+| 类型 | 路径 |
+|------|------|
+| 路由 | `app/routes.py` → `index_preview()` |
+| 页面模板 | `templates/index_experimental.html` |
+| Layout | `templates/home_preview/base.html` |
+| 导航 | `templates/includes/home_preview/nav.html`（Home → `/home-preview`） |
+| 样式 | `static/css/home-preview.css` |
+| 脚本 | `static/js/home-preview.js`（Testimonials 轮播、Philosophy 弹窗）、`static/js/home-preview-nav.js` |
+
+**`/our-team` 关联文件**：
+
+| 类型 | 路径 |
+|------|------|
+| 路由 | `app/routes.py` → `our_team()` |
+| 页面模板 | `templates/our_team.html`（extends `base.html`，`body.our-team-page`） |
+| 导航 | `templates/includes/home_preview/nav.html`（Home → `/`） |
+| 样式 | `static/css/home-preview.css`（`body.our-team-page` 下 `.home-preview-header--team`、`.home-preview-team`） |
+| 脚本 | `static/js/home-preview-nav.js` |
+| 成员照片 | `static/images/content/team/luke-hao.png`、`amy-wu.png`、`rui-dong.png`、`sophia-chen.png` |
+
+**样式隔离说明**：Our Team 的 hero 高度、标题字号等写在 `body.our-team-page` 选择器下，修改时不影响 `/home-preview`（home-preview hero 仍为模板内 `h-[70vh]` + indigo 底条）。
 
 ### 支付页面
 
@@ -264,7 +295,7 @@ def stripe_webhook():
 | 路由 | 方法 | 说明 |
 |------|------|------|
 | `/contact` | GET/POST | 联系表单 |
-| `/about` | GET | 关于我们 |
+| `/about` | — | **未实现**（文档占位；About Us 相关链接目前多指向 `/`） |
 
 ---
 
@@ -313,4 +344,4 @@ def stripe_webhook():
 
 ## 更新日期
 
-**最后更新**: 2026-02-09
+**最后更新**: 2026-06-14（含 `/our-team` 正式页、路由表修正、`/about` 未实现标注）

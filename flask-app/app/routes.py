@@ -53,6 +53,26 @@ def index():
     return render_template('index.html')
 
 
+@bp.route('/home-preview', methods=['GET', 'POST'])
+def index_preview():
+    """首页设计预览实验页（与正式首页 / 独立，便于安全验证新布局）"""
+    if request.method == 'POST':
+        data = request.get_json()
+        if data and data.get('form') == 'newsletter':
+            success, message = handle_newsletter_submission(data)
+            if success:
+                return jsonify({'success': True, 'message': 'Success!'}), 200
+            else:
+                return jsonify({'success': False, 'error': message}), 400
+    return render_template('index_experimental.html')
+
+
+@bp.route('/our-team', methods=['GET'])
+def our_team():
+    """Our Team 正式页"""
+    return render_template('our_team.html')
+
+
 @bp.route('/contact', methods=['GET', 'POST'])
 def contact():
     """联系页面路由"""

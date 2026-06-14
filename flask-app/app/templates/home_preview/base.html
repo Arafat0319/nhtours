@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	{% include 'includes/meta.html' %}
+	{% block extra_head %}{% endblock %}
+</head>
+
+<body class="home-preview-page {% block body_class %}{% endblock %}">
+	{% block nav %}{% include 'includes/home_preview/nav.html' %}{% endblock %}
+
+	<main>
+		{% block content %}{% endblock %}
+	</main>
+
+	{% include 'includes/footer.html' %}
+
+	<script type="module" src="{{ url_for('static', filename='js/home-preview-nav.js') }}"></script>
+	{% block extra_scripts %}{% endblock %}
+</body>
+
+</html>

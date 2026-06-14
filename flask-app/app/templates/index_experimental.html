@@ -1,0 +1,230 @@
+{% extends "home_preview/base.html" %}
+
+{% block title %}（设计预览）Nexus Horizons | Say YES to Adventure{% endblock %}
+
+{% block description %}Nexus Horizons is a leading provider of unique educational and personalized tours throughout Asia and North America.{% endblock %}
+
+{% block og_title %}（设计预览）Nexus Horizons | Say YES to Adventure{% endblock %}
+
+{% block og_description %}Nexus Horizons is a leading provider of unique educational and personalized tours throughout Asia and North America.{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/home-preview.css') }}">
+{% endblock %}
+
+{% block content %}
+{# Slide 13: hero (photo + title + program CTAs) → indigo bar → taglines on white #}
+<header class="home-preview-header">
+	<div class="home-preview-header__hero w-full h-[70vh]"
+		style="background:url({{ url_for('static', filename='images/backgrounds/tibet_background.jpg') }}) center / cover no-repeat;">
+		<div class="home-preview-header__hero-inner h-full max-w-6xl mx-auto px-6 flex flex-col items-center justify-center text-center">
+			<div class="home-preview-header__hero-content">
+				<h1 class="home-preview-header__title">Say <span class="home-preview-header__title-accent">YES</span> to Adventure</h1>
+				<div class="home-preview-header__ctas">
+				<a class="home-preview-header__cta home-preview-header__cta--asia"
+					href="{{ url_for('main.asia_index') }}">
+					<span class="home-preview-header__cta-part">View</span>
+					<span class="home-preview-header__cta-part home-preview-header__cta-part--bold">Asia</span>
+					<span class="home-preview-header__cta-part">Programs</span>
+				</a>
+				<a class="home-preview-header__cta home-preview-header__cta--na"
+					href="{{ url_for('main.north_america_index') }}">
+					<span class="home-preview-header__cta-part">View</span>
+					<span class="home-preview-header__cta-part home-preview-header__cta-part--bold">North America</span>
+					<span class="home-preview-header__cta-part">Programs</span>
+				</a>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div class="w-full h-[16px] bg-indigo-800"></div>
+</header>
+
+<section class="home-preview-intro">
+	<div class="home-preview-intro__grid">
+		<p class="home-preview-intro__line">Guided by 15+ years of expertise in travel planning</p>
+		<p class="home-preview-intro__line">Immersive travel tailored to your enjoyment and learning</p>
+		<p class="home-preview-intro__line">For brave, adventurous, and curious learners</p>
+	</div>
+</section>
+
+<div class="home-preview-content max-w-6xl mx-auto py-8 px-8 md:px-0">
+	{# What sets us apart #}
+	<section class="home-preview-section home-preview-apart-section">
+		<div class="home-preview-apart">
+			<div class="home-preview-apart__content">
+				<p class="home-preview-apart__lead">
+					Responsible and informed travel with the spirit of
+					<strong class="home-preview-apart__lead-emphasis">authentic cultural exchange.</strong>
+				</p>
+				<div class="home-preview-apart__rule" aria-hidden="true"></div>
+				<ul class="home-preview-apart__list">
+					<li>Expertise in facilitating safe travel programs between North America and Asia</li>
+					<li>Intentional trips, designed with care</li>
+				</ul>
+				<button type="button" class="home-preview-apart__cta" id="homePreviewPhilosophyOpen"
+					aria-haspopup="dialog" aria-controls="homePreviewPhilosophyModal">
+					Read About Our Philosophy
+				</button>
+			</div>
+			<div class="home-preview-apart__image">
+				<img src="{{ url_for('static', filename='images/content/asia/index/_astro_educational-tours.C1kHMlbY.jpg') }}"
+					alt="Educational travel programs" />
+			</div>
+		</div>
+	</section>
+</div>
+
+{# Testimonials #}
+<section class="home-preview-testimonials" id="home-preview-testimonials">
+	<div class="home-preview-testimonials__inner">
+		<h2 class="home-preview-testimonials__title">Testimonials</h2>
+		<div class="home-preview-testimonials__carousel">
+			<div class="home-preview-testimonials__slide is-active">
+				<p class="home-preview-testimonials__quote">
+					&ldquo;This trip was so exciting thanks to you guys. Everything we did was so cool and I felt so
+					immersed in Chinese culture. The service was amazing, especially all the help with suitcases
+					and making sure we arrive everywhere on time.&rdquo;
+				</p>
+				<p class="home-preview-testimonials__author">&mdash; Student, Ransom Everglades School</p>
+			</div>
+			<div class="home-preview-testimonials__slide">
+				<p class="home-preview-testimonials__quote">
+					&ldquo;This has been the best trip I have ever been on. We visited so many cool and fun places and I
+					will definitely coming back&rdquo;
+				</p>
+				<p class="home-preview-testimonials__author">&mdash; Student, Ransom Everglades School</p>
+			</div>
+			<div class="home-preview-testimonials__slide">
+				<p class="home-preview-testimonials__quote">
+					&ldquo;I really enjoyed the trip and thought that the destinations I've been to have been very good
+					places. The experiences for the most part were unheard of. My favorite parts were the pandas
+					and the shopping in Shanghai.&rdquo;
+				</p>
+				<p class="home-preview-testimonials__author">&mdash; Student, Ransom Everglades School</p>
+			</div>
+			<div class="home-preview-testimonials__slide">
+				<p class="home-preview-testimonials__quote">
+					&ldquo;Thank you so much, I really enjoyed this trip in Shanghai. It has been so fun and I hope to come
+					back soon. 谢谢你。这是很好玩儿！&rdquo;
+				</p>
+				<p class="home-preview-testimonials__author">&mdash; Liv B, Ransom Grade Nine</p>
+			</div>
+			<div class="home-preview-testimonials__slide">
+				<p class="home-preview-testimonials__quote">
+					&ldquo;我们爱你！谢谢，谢谢！ I loved the energy and I will remember my time in Shanghai!
+					我很高兴能连接中国和美国！&rdquo;
+				</p>
+				<p class="home-preview-testimonials__author">&mdash; Leyla Amjad</p>
+			</div>
+			<div class="home-preview-testimonials__nav">
+				<button type="button" class="home-preview-testimonials__arrow" data-testimonial-prev aria-label="Previous testimonial">&lsaquo;</button>
+				<div class="home-preview-testimonials__dots">
+					<button type="button" class="home-preview-testimonials__dot is-active" aria-label="Testimonial 1"></button>
+					<button type="button" class="home-preview-testimonials__dot" aria-label="Testimonial 2"></button>
+					<button type="button" class="home-preview-testimonials__dot" aria-label="Testimonial 3"></button>
+					<button type="button" class="home-preview-testimonials__dot" aria-label="Testimonial 4"></button>
+					<button type="button" class="home-preview-testimonials__dot" aria-label="Testimonial 5"></button>
+				</div>
+				<button type="button" class="home-preview-testimonials__arrow" data-testimonial-next aria-label="Next testimonial">&rsaquo;</button>
+			</div>
+		</div>
+	</div>
+</section>
+
+<div class="home-preview-content home-preview-content--after-testimonials max-w-6xl mx-auto px-8 md:px-0">
+	{# Programs #}
+	<section class="home-preview-programs">
+		<div class="text-center">
+			<img class="home-preview-programs__cloud"
+				src="{{ url_for('static', filename='images/icons/cloud-grey.DH_8-r-7.png') }}" alt="" />
+		</div>
+		<div class="home-preview-programs__grid">
+			<a class="home-preview-program-card" href="{{ url_for('main.asia_educational') }}">
+				<div class="home-preview-program-card__image">
+					<img src="{{ url_for('static', filename='images/content/asia/index/_astro_educational-tours.C1kHMlbY.jpg') }}"
+						alt="Students educational tours" />
+				</div>
+				<div class="home-preview-program-card__body">
+					<h3 class="home-preview-program-card__title">
+						<span class="home-preview-program-card__title-text">Educational Tours</span>
+						<span class="home-preview-program-card__badge">Popular</span>
+					</h3>
+					<p class="home-preview-program-card__text">
+						For students and schools. Tailored to foster language learning, cultural familiarity, and deeper learning.
+					</p>
+				</div>
+			</a>
+			<a class="home-preview-program-card" href="{{ url_for('main.asia_family') }}">
+				<div class="home-preview-program-card__image">
+					<img src="{{ url_for('static', filename='images/content/asia/index/_astro_family-tours.qDeGStI1.jpg') }}"
+						alt="Family tours" />
+				</div>
+				<div class="home-preview-program-card__body">
+					<h3 class="home-preview-program-card__title">
+						<span class="home-preview-program-card__title-text">Family Tours</span>
+						<span class="home-preview-program-card__badge home-preview-program-card__badge--new">NEW</span>
+					</h3>
+					<p class="home-preview-program-card__text">
+						For families and casual visitors. Modular itineraries designed to maximize comfort and peace of mind.
+					</p>
+				</div>
+			</a>
+			<a class="home-preview-program-card" href="{{ url_for('main.asia_business') }}">
+				<div class="home-preview-program-card__image">
+					<img src="{{ url_for('static', filename='images/content/asia/index/_astro_business-tours.BZeG91ia.jpg') }}"
+						alt="Business tours" />
+				</div>
+				<div class="home-preview-program-card__body">
+					<h3 class="home-preview-program-card__title">
+						<span class="home-preview-program-card__title-text">Business Tours</span>
+						<span class="home-preview-program-card__badge home-preview-program-card__badge--new">NEW</span>
+					</h3>
+					<p class="home-preview-program-card__text">
+						For corporate needs. From team-building trips to market visits and professional foreign exchange programs.
+					</p>
+				</div>
+			</a>
+		</div>
+	</section>
+
+	{# Newsletter #}
+	<div class="md:grid grid-cols-2 gap-4 mt-20 mb-12 p-8 border border-amber-800 rounded-lg">
+		<div class="text-center mb-2 md:p-0">
+			<span class="font-medium text-xl md:text-3xl text-zinc-800">Join our Newsletter!</span>
+		</div>
+		<div class="text-center md:text-left">
+			<form id="newsletter-form" action="{{ url_for('main.index_preview') }}" method="POST">
+				<input name="form" type="hidden" value="newsletter" />
+				<input class="px-2 py-2 w-[200px] border border-zinc-400 rounded-xs" id="email" name="email"
+					placeholder="me@example.com" type="email" required />
+				<span class="hidden text-sm mt-4 mb-4 transition-opacity duration-300" id="newsletter-form-status"></span>
+				<button class="py-2 px-4 mt-2 w-[200px] md:m-0 md:w-auto cursor-pointer bg-amber-800 text-white uppercase"
+					type="submit">Submit</button>
+			</form>
+		</div>
+	</div>
+</div>
+
+{# Philosophy modal #}
+<div class="home-preview-philosophy-modal" id="homePreviewPhilosophyModal" hidden role="dialog"
+	aria-modal="true" aria-labelledby="homePreviewPhilosophyTitle">
+	<div class="home-preview-philosophy-modal__backdrop" data-philosophy-close tabindex="-1"></div>
+	<div class="home-preview-philosophy-modal__panel" role="document">
+		<button type="button" class="home-preview-philosophy-modal__close" data-philosophy-close
+			aria-label="Close">&times;</button>
+		<h2 class="home-preview-philosophy-modal__title" id="homePreviewPhilosophyTitle">Our Philosophy</h2>
+		<p class="home-preview-philosophy-modal__text">
+			At Nexus Horizons, we believe travel should be both meaningful and well-supported. We design programs
+			that connect learners and families with authentic cultural experiences while giving organizers the
+			confidence that logistics, safety, and communication are handled with care. Every itinerary is built
+			intentionally—balancing discovery, learning, and peace of mind for everyone on the journey.
+		</p>
+	</div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module" src="{{ url_for('static', filename='js/forms.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/home-preview.js') }}"></script>
+{% endblock %}
