@@ -344,4 +344,4 @@ def stripe_webhook():
 
 ## 更新日期
 
-**最后更新**: 2026-06-14（含 `/our-team` 正式页、路由表修正、`/about` 未实现标注）
+**最后更新**: 2026-06-14（含 `/our-team`、Asia Family `photo-1.png`、`/about` 未实现标注）
