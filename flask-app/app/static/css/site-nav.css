@@ -189,6 +189,29 @@
 	margin-top: 0.75rem;
 }
 
+/* Sitewide program badges — 与首页 Popular / NEW 一致 */
+
+.nh-badge,
+.home-preview-program-card__badge {
+	display: inline-block;
+	padding: 0.125rem 0.5rem;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	line-height: 1.4;
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+	color: #fff;
+	background-color: #d59961;
+	border-radius: 9999px;
+	flex-shrink: 0;
+	vertical-align: middle;
+}
+
+.nh-badge--new,
+.home-preview-program-card__badge--new {
+	background-color: #004174;
+}
+
 body.home-preview-nav-body-lock {
 	position: fixed;
 	left: 0;
