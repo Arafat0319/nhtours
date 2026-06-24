@@ -11,7 +11,7 @@
 {% block body_class %}home-page{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/home-preview.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/home-preview.css') }}?v=2">
 {% endblock %}
 
 {% block content %}
@@ -41,7 +41,7 @@
 	<div class="w-full h-[16px] bg-indigo-800"></div>
 </header>
 
-<section class="home-preview-intro">
+<section class="home-preview-intro hidden" hidden aria-hidden="true">
 	<div class="home-preview-intro__grid">
 		<p class="home-preview-intro__line">Guided by 15+ years of expertise in travel planning</p>
 		<p class="home-preview-intro__line">Immersive travel tailored to your enjoyment and learning</p>
