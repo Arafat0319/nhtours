@@ -1,5 +1,5 @@
 /**
- * 实验首页 (/home-preview) 独立导航 — 与主站 navigation.js 解耦
+ * 全站主导航（Modern V1 浅色实底）
  */
 
 const homePreviewNav = document.getElementById("homePreviewNav");

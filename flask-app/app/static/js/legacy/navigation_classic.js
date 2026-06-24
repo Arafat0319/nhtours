@@ -1,5 +1,7 @@
 /**
- * 存档：旧版全站导航脚本 — 现行全站见 home-preview-nav.js
+ * 存档：旧版全站导航脚本（经典透明导航）
+ */
+/**
  * 导航栏交互逻辑
  * 主站：原版逻辑（仅 hidden 控制显隐，向上滚动时移除 -translate-y-full）
  * 付款页（booking-layout / installment-modal-page）：当前逻辑（hidden + -translate-y-full，初始根据 scrollY 隐藏）

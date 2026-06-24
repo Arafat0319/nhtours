@@ -4,12 +4,14 @@
 
 {% block body_class %}installment-modal-page{% endblock %}
 
-{% block nav %}{% include 'includes/nav_booking.html' %}{% endblock %}
+{% block nav %}{% endblock %}
+
+{% block nav_scripts %}{% endblock %}
 
 {% block extra_head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/booking-modal.css') }}">
 <style>
-    body.installment-modal-page #pageNav { display: none !important; }
+    body.installment-modal-page #homePreviewNav { display: none !important; }
     html.installment-modal-page, body.installment-modal-page { overflow: hidden !important; width: 100% !important; max-width: 100% !important; }
     /* 与原版一致：圆图压住卡片上缘，一半在框外一半在框内（负边距上移，圆 103px 约一半露出） */
     body.installment-modal-page #booking-modal header .rounded-full.overflow-hidden.object-cover {

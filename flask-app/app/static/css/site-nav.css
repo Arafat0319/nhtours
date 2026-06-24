@@ -1,0 +1,208 @@
+/* Sitewide navbar (Modern V1) — shared across all public pages */
+
+.home-preview-nav {
+	position: sticky;
+	top: 0;
+	left: 0;
+	right: 0;
+	z-index: 100;
+	background: #f8f8f8;
+	border-bottom: 1px solid #ececec;
+	transition: box-shadow 0.3s ease;
+}
+
+.home-preview-nav--scrolled {
+	box-shadow: 0 2px 12px rgba(45, 41, 38, 0.08);
+}
+
+.home-preview-nav--menu-open {
+	box-shadow: none;
+}
+
+.home-preview-nav__desktop {
+	display: none;
+	max-width: 72rem;
+	margin: 0 auto;
+	padding: 1.125rem 2rem;
+	grid-template-columns: 1fr auto 1fr;
+	align-items: center;
+	gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+	.home-preview-nav__desktop {
+		display: grid;
+	}
+}
+
+.home-preview-nav__logo {
+	display: inline-flex;
+	flex-shrink: 0;
+	justify-self: start;
+}
+
+.home-preview-nav__logo-img {
+	width: 13.75rem;
+	height: auto;
+}
+
+.home-preview-nav__links {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 2.75rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	justify-self: center;
+}
+
+.home-preview-nav__link {
+	position: relative;
+	padding-bottom: 0.35rem;
+	font-size: 1.0625rem;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: #2d2926;
+	text-decoration: none;
+	transition: color 0.2s ease;
+}
+
+.home-preview-nav__link::after {
+	content: "";
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: 2px;
+	background: #a67c52;
+	transform: scaleX(0);
+	transform-origin: center;
+	transition: transform 0.2s ease;
+}
+
+.home-preview-nav__link:hover {
+	color: #2d2926;
+}
+
+.home-preview-nav__link:hover::after,
+.home-preview-nav__link.is-active::after {
+	transform: scaleX(1);
+}
+
+.home-preview-nav__cta {
+	justify-self: end;
+	display: inline-flex;
+	align-items: center;
+	padding: 0.55rem 1.35rem;
+	border: 1.5px solid #a67c52;
+	border-radius: 4px;
+	background: transparent;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: #a67c52;
+	text-decoration: none;
+	transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.home-preview-nav__cta:hover {
+	background: #a67c52;
+	color: #fff;
+}
+
+.home-preview-nav__mobile {
+	display: block;
+	padding: 0.875rem 1rem 1rem;
+}
+
+@media (min-width: 768px) {
+	.home-preview-nav__mobile {
+		display: none;
+	}
+}
+
+.home-preview-nav__mobile-bar {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.home-preview-nav__logo--mobile {
+	justify-content: center;
+}
+
+.home-preview-nav__logo-img--mobile {
+	width: 10rem;
+}
+
+.home-preview-nav__toggle {
+	position: absolute;
+	right: 0;
+	top: 50%;
+	transform: translateY(-50%);
+	display: inline-flex;
+	padding: 0.25rem;
+	background: transparent;
+	border: none;
+	color: #2d2926;
+	cursor: pointer;
+}
+
+.home-preview-nav__toggle-icon {
+	width: 1.5rem;
+	height: 1.5rem;
+}
+
+.home-preview-nav__toggle-icon--hidden {
+	display: none;
+}
+
+.home-preview-nav__panel {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	margin-top: 0.75rem;
+	padding: 0.75rem 0 0.25rem;
+	border-top: 1px solid #e5e5e5;
+}
+
+.home-preview-nav__panel-link {
+	padding: 0.65rem 0.5rem;
+	font-size: 1rem;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: #2d2926;
+	text-decoration: none;
+}
+
+.home-preview-nav__panel-link.is-active {
+	color: #a67c52;
+}
+
+.home-preview-nav__cta--panel {
+	align-self: center;
+	margin-top: 0.75rem;
+}
+
+body.home-preview-nav-body-lock {
+	position: fixed;
+	left: 0;
+	right: 0;
+	width: 100%;
+	overflow: hidden;
+}
+
+/* 临时隐藏 Hero 下方 indigo 分隔条（全站预览）；恢复时删除此规则 */
+.w-full.h-\[16px\].bg-indigo-800 {
+	display: none !important;
+}
+
+/* 临时隐藏面包屑导航（全站预览）；恢复时删除此规则 */
+nav:has(> ol.flex.flex-wrap.items-center.space-x-2.text-lg.font-medium.text-amber-800) {
+	display: none !important;
+}

@@ -3,6 +3,7 @@
 
 <head>
 	{% include 'includes/meta.html' %}
+	<link rel="stylesheet" href="{{ url_for('static', filename='css/site-nav.css') }}">
 	{% block extra_head %}{% endblock %}
 </head>
 
@@ -15,11 +16,10 @@
 	
 	{% include 'includes/footer.html' %}
 	
-	{# JavaScript文件 #}
-	<script type="module" src="{{ url_for('static', filename='js/navigation.js') }}"></script>
+	{% block nav_scripts %}
+	<script type="module" src="{{ url_for('static', filename='js/home-preview-nav.js') }}"></script>
+	{% endblock %}
 	{% block extra_scripts %}{% endblock %}
 </body>
 
 </html>
-
-

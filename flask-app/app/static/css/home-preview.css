@@ -293,6 +293,7 @@ body.home-preview-nav-body-lock {
 }
 
 .home-preview-intro {
+	display: none;
 	background: #fff;
 	padding: 2.5rem 1.5rem;
 }
@@ -344,19 +345,24 @@ body.home-preview-nav-body-lock {
 
 .home-preview-content {
 	position: relative;
-	isolation: isolate;
 }
 
 .home-preview-content::before {
 	content: "";
 	position: absolute;
-	z-index: -1;
+	z-index: 0;
 	top: 0;
 	bottom: 0;
 	left: 50%;
 	width: 100vw;
 	transform: translateX(-50%);
-	background: #f7f7f8;
+	background: #efeff1;
+	pointer-events: none;
+}
+
+.home-preview-content > * {
+	position: relative;
+	z-index: 1;
 }
 
 .home-preview-content--after-testimonials {

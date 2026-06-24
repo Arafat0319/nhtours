@@ -41,7 +41,7 @@ bp = Blueprint('main', __name__)
 
 @bp.route('/', methods=['GET', 'POST'])
 def index():
-    """首页路由"""
+    """首页（Modern V1）"""
     if request.method == 'POST':
         data = request.get_json()
         if data and data.get('form') == 'newsletter':
@@ -53,9 +53,9 @@ def index():
     return render_template('index.html')
 
 
-@bp.route('/home-preview', methods=['GET', 'POST'])
-def index_preview():
-    """首页设计预览实验页（与正式首页 / 独立，便于安全验证新布局）"""
+@bp.route('/home-classic', methods=['GET', 'POST'])
+def index_classic():
+    """旧版首页存档（经典透明导航 + Wukong 叙事布局）"""
     if request.method == 'POST':
         data = request.get_json()
         if data and data.get('form') == 'newsletter':
@@ -64,7 +64,15 @@ def index_preview():
                 return jsonify({'success': True, 'message': 'Success!'}), 200
             else:
                 return jsonify({'success': False, 'error': message}), 400
-    return render_template('index_experimental.html')
+    return render_template('index_classic.html')
+
+
+@bp.route('/home-preview', methods=['GET', 'POST'])
+def index_preview():
+    """兼容旧实验页链接：GET 重定向至 /，POST 与首页一致"""
+    if request.method == 'POST':
+        return index()
+    return redirect(url_for('main.index'), code=301)
 
 
 @bp.route('/our-team', methods=['GET'])

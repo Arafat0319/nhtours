@@ -1,4 +1,5 @@
-{% extends "home_preview/base.html" %}
+{# 存档：旧版首页实验模板，路由 /home-preview 已重定向至 /；内容见 index.html #}
+{% extends "base.html" %}
 
 {% block title %}（设计预览）Nexus Horizons | Say YES to Adventure{% endblock %}
 
@@ -194,7 +195,7 @@
 			<span class="font-medium text-xl md:text-3xl text-zinc-800">Join our Newsletter!</span>
 		</div>
 		<div class="text-center md:text-left">
-			<form id="newsletter-form" action="{{ url_for('main.index_preview') }}" method="POST">
+			<form id="newsletter-form" action="{{ url_for('main.index') }}" method="POST">
 				<input name="form" type="hidden" value="newsletter" />
 				<input class="px-2 py-2 w-[200px] border border-zinc-400 rounded-xs" id="email" name="email"
 					placeholder="me@example.com" type="email" required />

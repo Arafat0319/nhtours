@@ -44,11 +44,11 @@
     }
     /* 移动端：顶部 nav 增加底部留白（仅弹窗未打开时生效） */
     @media (max-width: 767px) {
-        body.booking-layout #pageNav { padding-bottom: 1rem !important; margin-bottom: 0.5rem !important; }
+        body.booking-layout #homePreviewNav { padding-bottom: 0 !important; margin-bottom: 0 !important; }
     }
     /* 弹窗打开时：隐藏顶部 nav，main 整块提到最上（高于 footer） */
     body:has(#booking-modal:not(.hidden)) main { position: relative !important; z-index: 10000 !important; }
-    body:has(#booking-modal:not(.hidden)) #pageNav { visibility: hidden !important; pointer-events: none !important; }
+    body:has(#booking-modal:not(.hidden)) #homePreviewNav { visibility: hidden !important; pointer-events: none !important; }
     #booking-modal { position: fixed !important; top: 0 !important; right: 0 !important; bottom: 0 !important; left: 0 !important; z-index: 10001 !important; height: 100% !important; width: 100% !important; max-width: 100% !important; overflow-y: auto !important; overflow-x: hidden !important; border: none !important; outline: none !important; box-shadow: none !important; box-sizing: border-box !important; margin: 0 !important; padding: 0 !important; }
     /* 弹窗显示时强制可见，避免 .hidden 移除后仍被其它样式隐藏 */
     #booking-modal:not(.hidden) { display: block !important; visibility: visible !important; opacity: 1 !important; }
