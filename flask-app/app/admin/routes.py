@@ -7,10 +7,11 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy import or_, and_
 from app import db
 from app.admin import bp
-from app.admin.forms import LoginForm, TripForm, CityForm, ClientForm, TripBasicsForm, TripDescriptionForm, TripPackagesForm, TripAddonsForm, TripParticipantForm, TripCouponForm, EditBookingForm
-from app.models import User, Trip, City, Client, Lead, TripPackage, TripAddOn, CustomQuestion, DiscountCode, Booking, BookingParticipant, BookingAddOn, BookingPackage, Payment, Message, InstallmentPayment
+from app.admin.forms import LoginForm, TripForm, CityForm, ClientForm, TripBasicsForm, TripDescriptionForm, TripPackagesForm, TripAddonsForm, TripParticipantForm, TripCouponForm, EditBookingForm, TestimonialForm
+from app.models import User, Trip, City, Client, Lead, Testimonial, TripPackage, TripAddOn, CustomQuestion, DiscountCode, Booking, BookingParticipant, BookingAddOn, BookingPackage, Payment, Message, InstallmentPayment
 from app.payments import create_checkout_session
 from app.utils import save_image, send_email_via_ses, generate_installment_token, generate_export_token, verify_export_token
+from app.testimonial_data import assign_carousel_sort_order
 
 
 def get_trip_counts():
@@ -1264,6 +1265,172 @@ def delete_lead(id):
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error deleting lead: {str(e)}")
+        return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
+
+
+@bp.route('/customers/testimonials')
+@login_required
+def testimonials():
+    """首页 Testimonials 管理"""
+    status_filter = request.args.get('status', 'all')
+
+    if status_filter == 'approved':
+        items = (
+            Testimonial.query.filter_by(status='approved')
+            .order_by(Testimonial.sort_order.asc(), Testimonial.id.asc())
+            .all()
+        )
+    elif status_filter == 'pending':
+        items = (
+            Testimonial.query.filter_by(status='pending')
+            .order_by(Testimonial.created_at.desc())
+            .all()
+        )
+    elif status_filter == 'rejected':
+        items = (
+            Testimonial.query.filter_by(status='rejected')
+            .order_by(Testimonial.created_at.desc())
+            .all()
+        )
+    else:
+        approved = (
+            Testimonial.query.filter_by(status='approved')
+            .order_by(Testimonial.sort_order.asc(), Testimonial.id.asc())
+            .all()
+        )
+        pending = (
+            Testimonial.query.filter_by(status='pending')
+            .order_by(Testimonial.created_at.desc())
+            .all()
+        )
+        rejected = (
+            Testimonial.query.filter_by(status='rejected')
+            .order_by(Testimonial.created_at.desc())
+            .all()
+        )
+        items = approved + pending + rejected
+
+    stats = {
+        'total': Testimonial.query.count(),
+        'pending': Testimonial.query.filter_by(status='pending').count(),
+        'approved': Testimonial.query.filter_by(status='approved').count(),
+        'rejected': Testimonial.query.filter_by(status='rejected').count(),
+    }
+    can_reorder = status_filter in ('all', 'approved') and stats['approved'] > 0
+
+    return render_template(
+        'admin/customers/testimonials.html',
+        title='Testimonials',
+        testimonials=items,
+        stats=stats,
+        status_filter=status_filter,
+        can_reorder=can_reorder,
+    )
+
+
+@bp.route('/customers/testimonials/new', methods=['GET', 'POST'])
+@login_required
+def new_testimonial():
+    form = TestimonialForm()
+    if form.validate_on_submit():
+        testimonial = Testimonial(
+            quote=form.quote.data.strip(),
+            author_name=form.author_name.data.strip(),
+            organization=(form.organization.data or '').strip() or None,
+            status=form.status.data,
+        )
+        db.session.add(testimonial)
+        db.session.flush()
+        if testimonial.status == 'approved':
+            assign_carousel_sort_order(testimonial)
+        db.session.commit()
+        flash('Testimonial created.')
+        return redirect(url_for('admin.testimonials'))
+    if request.method == 'GET':
+        form.status.data = 'approved'
+    return render_template('admin/customers/testimonial_form.html', title='New Testimonial', form=form)
+
+
+@bp.route('/customers/testimonials/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+def edit_testimonial(id):
+    testimonial = Testimonial.query.get_or_404(id)
+    form = TestimonialForm(obj=testimonial)
+    if form.validate_on_submit():
+        was_approved = testimonial.status == 'approved'
+        testimonial.quote = form.quote.data.strip()
+        testimonial.author_name = form.author_name.data.strip()
+        testimonial.organization = (form.organization.data or '').strip() or None
+        testimonial.status = form.status.data
+        if testimonial.status == 'approved' and not was_approved:
+            assign_carousel_sort_order(testimonial)
+        db.session.commit()
+        flash('Testimonial updated.')
+        return redirect(url_for('admin.testimonials'))
+    return render_template('admin/customers/testimonial_form.html', title='Edit Testimonial', form=form, testimonial=testimonial)
+
+
+@bp.route('/customers/testimonials/<int:id>/approve', methods=['POST'])
+@login_required
+def approve_testimonial(id):
+    testimonial = Testimonial.query.get_or_404(id)
+    testimonial.status = 'approved'
+    assign_carousel_sort_order(testimonial)
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Testimonial approved.'})
+
+
+@bp.route('/customers/testimonials/reorder', methods=['POST'])
+@login_required
+def reorder_testimonials():
+    """保存首页轮播拖拽顺序（仅 approved）。"""
+    data = request.get_json() or {}
+    ids = data.get('ids')
+    if not isinstance(ids, list) or not ids:
+        return jsonify({'success': False, 'message': 'Invalid order.'}), 400
+
+    try:
+        id_list = [int(item_id) for item_id in ids]
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'Invalid order.'}), 400
+
+    approved_ids = {
+        row.id
+        for row in Testimonial.query.filter_by(status='approved').all()
+    }
+    if set(id_list) != approved_ids:
+        return jsonify({'success': False, 'message': 'Order must include all approved testimonials.'}), 400
+
+    for index, testimonial_id in enumerate(id_list):
+        testimonial = Testimonial.query.get(testimonial_id)
+        if not testimonial:
+            return jsonify({'success': False, 'message': 'Testimonial not found.'}), 404
+        testimonial.sort_order = index
+
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Carousel order saved.'})
+
+
+@bp.route('/customers/testimonials/<int:id>/reject', methods=['POST'])
+@login_required
+def reject_testimonial(id):
+    testimonial = Testimonial.query.get_or_404(id)
+    testimonial.status = 'rejected'
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Testimonial rejected.'})
+
+
+@bp.route('/customers/testimonials/<int:id>/delete', methods=['POST'])
+@login_required
+def delete_testimonial(id):
+    testimonial = Testimonial.query.get_or_404(id)
+    try:
+        db.session.delete(testimonial)
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Testimonial deleted.'})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error deleting testimonial: {str(e)}")
         return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
 
 

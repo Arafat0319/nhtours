@@ -11,7 +11,7 @@
 {% block body_class %}home-page{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/home-preview.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/home-preview.css') }}?v=4">
 {% endblock %}
 
 {% block content %}
@@ -78,55 +78,46 @@
 <section class="home-preview-testimonials" id="home-preview-testimonials">
 	<div class="home-preview-testimonials__inner">
 		<h2 class="home-preview-testimonials__title">Testimonials</h2>
-		<div class="home-preview-testimonials__carousel">
-			<div class="home-preview-testimonials__slide is-active">
-				<p class="home-preview-testimonials__quote">
-					&ldquo;This trip was so exciting thanks to you guys. Everything we did was so cool and I felt so
-					immersed in Chinese culture. The service was amazing, especially all the help with suitcases
-					and making sure we arrive everywhere on time.&rdquo;
-				</p>
-				<p class="home-preview-testimonials__author">&mdash; Student, Ransom Everglades School</p>
-			</div>
-			<div class="home-preview-testimonials__slide">
-				<p class="home-preview-testimonials__quote">
-					&ldquo;This has been the best trip I have ever been on. We visited so many cool and fun places and I
-					will definitely coming back&rdquo;
-				</p>
-				<p class="home-preview-testimonials__author">&mdash; Student, Ransom Everglades School</p>
-			</div>
-			<div class="home-preview-testimonials__slide">
-				<p class="home-preview-testimonials__quote">
-					&ldquo;I really enjoyed the trip and thought that the destinations I've been to have been very good
-					places. The experiences for the most part were unheard of. My favorite parts were the pandas
-					and the shopping in Shanghai.&rdquo;
-				</p>
-				<p class="home-preview-testimonials__author">&mdash; Student, Ransom Everglades School</p>
-			</div>
-			<div class="home-preview-testimonials__slide">
-				<p class="home-preview-testimonials__quote">
-					&ldquo;Thank you so much, I really enjoyed this trip in Shanghai. It has been so fun and I hope to come
-					back soon. 谢谢你。这是很好玩儿！&rdquo;
-				</p>
-				<p class="home-preview-testimonials__author">&mdash; Liv B, Ransom Grade Nine</p>
-			</div>
-			<div class="home-preview-testimonials__slide">
-				<p class="home-preview-testimonials__quote">
-					&ldquo;我们爱你！谢谢，谢谢！ I loved the energy and I will remember my time in Shanghai!
-					我很高兴能连接中国和美国！&rdquo;
-				</p>
-				<p class="home-preview-testimonials__author">&mdash; Leyla Amjad</p>
-			</div>
-			<div class="home-preview-testimonials__nav">
-				<button type="button" class="home-preview-testimonials__arrow" data-testimonial-prev aria-label="Previous testimonial">&lsaquo;</button>
-				<div class="home-preview-testimonials__dots">
-					<button type="button" class="home-preview-testimonials__dot is-active" aria-label="Testimonial 1"></button>
-					<button type="button" class="home-preview-testimonials__dot" aria-label="Testimonial 2"></button>
-					<button type="button" class="home-preview-testimonials__dot" aria-label="Testimonial 3"></button>
-					<button type="button" class="home-preview-testimonials__dot" aria-label="Testimonial 4"></button>
-					<button type="button" class="home-preview-testimonials__dot" aria-label="Testimonial 5"></button>
+		<div class="home-preview-testimonials__carousel{% if testimonials|length <= 1 %} home-preview-testimonials__carousel--single{% endif %}">
+			<button type="button" class="home-preview-testimonials__arrow home-preview-testimonials__arrow--prev" data-testimonial-prev aria-label="Previous testimonial">&lsaquo;</button>
+			<div class="home-preview-testimonials__stage">
+				{% for t in testimonials %}
+				<div class="home-preview-testimonials__slide{% if loop.first %} is-active{% endif %}">
+					<p class="home-preview-testimonials__quote">&ldquo;{{ t.quote }}&rdquo;</p>
+					<p class="home-preview-testimonials__author">
+						&mdash; {{ t.author_name }}{% if t.organization %}, {{ t.organization }}{% endif %}
+					</p>
 				</div>
-				<button type="button" class="home-preview-testimonials__arrow" data-testimonial-next aria-label="Next testimonial">&rsaquo;</button>
+				{% endfor %}
 			</div>
+			<button type="button" class="home-preview-testimonials__arrow home-preview-testimonials__arrow--next" data-testimonial-next aria-label="Next testimonial">&rsaquo;</button>
+		</div>
+
+		<div class="home-preview-testimonials__submit">
+			<h3 class="home-preview-testimonials__submit-title">Share your experience</h3>
+			<p class="home-preview-testimonials__submit-lead">Tell us about your trip. Approved stories appear in the carousel above.</p>
+			<form id="testimonial-form" class="home-preview-testimonials__form" action="{{ url_for('main.index') }}" method="POST">
+				<input name="form" type="hidden" value="testimonial" />
+				<label class="home-preview-testimonials__field">
+					<span class="home-preview-testimonials__label">Your story</span>
+					<textarea name="quote" rows="4" required minlength="20" maxlength="500"
+						placeholder="What made your journey memorable?"></textarea>
+				</label>
+				<div class="home-preview-testimonials__field-row">
+					<label class="home-preview-testimonials__field">
+						<span class="home-preview-testimonials__label">Your name</span>
+						<input name="author_name" type="text" required maxlength="128" placeholder="e.g. Alex" />
+					</label>
+					<label class="home-preview-testimonials__field">
+						<span class="home-preview-testimonials__label">School / organization <span class="home-preview-testimonials__optional">(optional)</span></span>
+						<input name="organization" type="text" maxlength="200" placeholder="e.g. Ransom Everglades School" />
+					</label>
+				</div>
+				<div class="home-preview-testimonials__form-actions">
+					<button type="submit" class="home-preview-testimonials__submit-btn">Submit</button>
+					<span class="home-preview-testimonials__form-status hidden" id="testimonial-form-status" role="status"></span>
+				</div>
+			</form>
 		</div>
 	</div>
 </section>
@@ -222,5 +213,5 @@
 
 {% block extra_scripts %}
 <script type="module" src="{{ url_for('static', filename='js/forms.js') }}"></script>
-<script type="module" src="{{ url_for('static', filename='js/home-preview.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/home-preview.js') }}?v=2"></script>
 {% endblock %}

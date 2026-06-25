@@ -1,5 +1,5 @@
 /**
- * Homepage experimental preview: testimonials carousel + philosophy modal
+ * Homepage: testimonials carousel + philosophy modal
  */
 
 function initPhilosophyModal() {
@@ -38,14 +38,14 @@ function initPhilosophyModal() {
 }
 
 function initTestimonialsCarousel() {
-	const carousel = document.getElementById("home-preview-testimonials");
-	if (!carousel) return;
+	const section = document.getElementById("home-preview-testimonials");
+	if (!section) return;
 
-	const slides = carousel.querySelectorAll(".home-preview-testimonials__slide");
-	const dots = carousel.querySelectorAll(".home-preview-testimonials__dot");
-	const prevBtn = carousel.querySelector("[data-testimonial-prev]");
-	const nextBtn = carousel.querySelector("[data-testimonial-next]");
-	const AUTOPLAY_MS = 6000;
+	const carousel = section.querySelector(".home-preview-testimonials__carousel");
+	const slides = section.querySelectorAll(".home-preview-testimonials__slide");
+	const prevBtn = section.querySelector("[data-testimonial-prev]");
+	const nextBtn = section.querySelector("[data-testimonial-next]");
+	const AUTOPLAY_MS = 5000;
 	const RESUME_AFTER_MS = 10000;
 	const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 	let current = 0;
@@ -58,9 +58,6 @@ function initTestimonialsCarousel() {
 		current = ((index % total) + total) % total;
 		slides.forEach((slide, i) => {
 			slide.classList.toggle("is-active", i === current);
-		});
-		dots.forEach((dot, i) => {
-			dot.classList.toggle("is-active", i === current);
 		});
 	}
 
@@ -98,18 +95,17 @@ function initTestimonialsCarousel() {
 
 	prevBtn?.addEventListener("click", () => onUserNavigate(current - 1));
 	nextBtn?.addEventListener("click", () => onUserNavigate(current + 1));
-	dots.forEach((dot, i) => {
-		dot.addEventListener("click", () => onUserNavigate(i));
-	});
 
-	carousel.addEventListener("mouseenter", pauseAutoplay);
-	carousel.addEventListener("mouseleave", startAutoplay);
-	carousel.addEventListener("focusin", pauseAutoplay);
-	carousel.addEventListener("focusout", (event) => {
-		if (!carousel.contains(event.relatedTarget)) {
-			startAutoplay();
-		}
-	});
+	if (carousel) {
+		carousel.addEventListener("mouseenter", pauseAutoplay);
+		carousel.addEventListener("mouseleave", startAutoplay);
+		carousel.addEventListener("focusin", pauseAutoplay);
+		carousel.addEventListener("focusout", (event) => {
+			if (!carousel.contains(event.relatedTarget)) {
+				startAutoplay();
+			}
+		});
+	}
 
 	document.addEventListener("visibilitychange", () => {
 		if (document.hidden) {

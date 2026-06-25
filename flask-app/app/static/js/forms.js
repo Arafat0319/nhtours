@@ -9,6 +9,24 @@
  * @param {HTMLElement} statusElement - 状态显示元素
  * @param {HTMLElement} spinnerElement - 加载动画元素（可选）
  */
+function applyFormStatusClass(statusElement, form, type) {
+	if (form.id === "testimonial-form") {
+		statusElement.className = `home-preview-testimonials__form-status is-${type}`;
+		return;
+	}
+	if (form.id === "contact-form") {
+		statusElement.className =
+			type === "success"
+				? "text-green-700 bg-green-100 px-3 py-2 rounded shadow-sm mt-4 mb-4"
+				: "text-red-700 bg-red-100 px-3 py-2 rounded shadow-sm mt-4 mb-4";
+		return;
+	}
+	statusElement.className =
+		type === "success"
+			? "text-green-700 bg-green-100 px-3 py-2 rounded shadow-sm"
+			: "text-red-700 bg-red-100 px-3 py-2 rounded shadow-sm";
+}
+
 async function handleFormSubmit(form, statusElement, spinnerElement = null) {
 	// 隐藏状态消息
 	statusElement.classList.add("hidden");
@@ -47,14 +65,8 @@ async function handleFormSubmit(form, statusElement, spinnerElement = null) {
 		}
 		
 		if (result.success) {
-			// 成功
 			statusElement.textContent = result.message || "Success!";
-			// 根据表单类型设置不同的成功消息样式
-			if (form.id === 'contact-form') {
-				statusElement.className = "text-green-700 bg-green-100 px-3 py-2 rounded shadow-sm mt-4 mb-4";
-			} else {
-				statusElement.className = "text-green-700 bg-green-100 px-3 py-2 rounded shadow-sm";
-			}
+			applyFormStatusClass(statusElement, form, "success");
 			statusElement.classList.remove("hidden");
 			form.reset();
 		} else {
@@ -69,12 +81,7 @@ async function handleFormSubmit(form, statusElement, spinnerElement = null) {
 		
 		// 显示错误消息
 		statusElement.textContent = error.message || "Oops!";
-		// 根据表单类型设置不同的错误消息样式
-		if (form.id === 'contact-form') {
-			statusElement.className = "text-red-700 bg-red-100 px-3 py-2 rounded shadow-sm mt-4 mb-4";
-		} else {
-			statusElement.className = "text-red-700 bg-red-100 px-3 py-2 rounded shadow-sm";
-		}
+		applyFormStatusClass(statusElement, form, "error");
 		statusElement.classList.remove("hidden");
 	}
 }
@@ -92,16 +99,26 @@ document.addEventListener("DOMContentLoaded", () => {
 		});
 	}
 	
-		// Contact表单处理
 	const contactForm = document.getElementById("contact-form");
-	
+
 	if (contactForm) {
 		const statusElement = document.getElementById("form-status");
 		const spinnerElement = document.getElementById("form-spinner");
-		
+
 		contactForm.addEventListener("submit", async (e) => {
 			e.preventDefault();
 			await handleFormSubmit(contactForm, statusElement, spinnerElement);
+		});
+	}
+
+	const testimonialForm = document.getElementById("testimonial-form");
+
+	if (testimonialForm) {
+		const statusElement = document.getElementById("testimonial-form-status");
+
+		testimonialForm.addEventListener("submit", async (e) => {
+			e.preventDefault();
+			await handleFormSubmit(testimonialForm, statusElement);
 		});
 	}
 });

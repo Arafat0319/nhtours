@@ -12,6 +12,7 @@ import stripe
 from app.utils import (
     handle_newsletter_submission,
     handle_contact_submission,
+    handle_testimonial_submission,
     send_email_via_ses,
     generate_installment_token,
     verify_installment_token,
@@ -36,6 +37,8 @@ from app.payments import (
 )
 from datetime import datetime, date, timedelta
 
+from app.testimonial_data import get_carousel_testimonials
+
 bp = Blueprint('main', __name__)
 
 
@@ -44,13 +47,20 @@ def index():
     """首页（Modern V1）"""
     if request.method == 'POST':
         data = request.get_json()
-        if data and data.get('form') == 'newsletter':
+        if not data:
+            return jsonify({'success': False, 'error': 'Invalid request.'}), 400
+        if data.get('form') == 'newsletter':
             success, message = handle_newsletter_submission(data)
             if success:
                 return jsonify({'success': True, 'message': 'Success!'}), 200
-            else:
-                return jsonify({'success': False, 'error': message}), 400
-    return render_template('index.html')
+            return jsonify({'success': False, 'error': message}), 400
+        if data.get('form') == 'testimonial':
+            success, message = handle_testimonial_submission(data)
+            if success:
+                return jsonify({'success': True, 'message': message}), 200
+            return jsonify({'success': False, 'error': message}), 400
+        return jsonify({'success': False, 'error': 'Unknown form type.'}), 400
+    return render_template('index.html', testimonials=get_carousel_testimonials())
 
 
 @bp.route('/home-classic', methods=['GET', 'POST'])

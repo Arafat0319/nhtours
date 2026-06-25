@@ -1,0 +1,291 @@
+{% extends "admin/customers/base_customers.html" %}
+
+{% block content %}
+<div class="space-y-6">
+	<div class="flex justify-between items-center">
+		<div>
+			<h2 class="text-2xl font-normal text-gray-500">Testimonials</h2>
+			<p class="text-sm text-gray-400 mt-1">
+				{% if can_reorder %}
+				Drag approved rows to set homepage carousel order. Edit or review all entries below.
+				{% else %}
+				Manage homepage testimonials.
+				{% endif %}
+			</p>
+		</div>
+		<div class="flex items-center gap-3">
+			{% if can_reorder %}
+			<span id="carouselOrderStatus" class="text-sm text-gray-400"></span>
+			{% endif %}
+			<a href="{{ url_for('admin.new_testimonial') }}"
+				class="bg-wetravel-green text-white px-4 py-2 rounded text-sm font-bold hover:bg-green-500 transition-colors">
+				Add New
+			</a>
+		</div>
+	</div>
+
+	<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+		<div class="bg-white rounded-lg shadow-sm p-4">
+			<p class="text-sm text-gray-500">Total</p>
+			<p class="text-2xl font-semibold text-gray-800">{{ stats.total }}</p>
+		</div>
+		<div class="bg-white rounded-lg shadow-sm p-4">
+			<p class="text-sm text-gray-500">Pending</p>
+			<p class="text-2xl font-semibold text-amber-600">{{ stats.pending }}</p>
+		</div>
+		<div class="bg-white rounded-lg shadow-sm p-4">
+			<p class="text-sm text-gray-500">Approved</p>
+			<p class="text-2xl font-semibold text-green-600">{{ stats.approved }}</p>
+		</div>
+		<div class="bg-white rounded-lg shadow-sm p-4">
+			<p class="text-sm text-gray-500">Rejected</p>
+			<p class="text-2xl font-semibold text-gray-500">{{ stats.rejected }}</p>
+		</div>
+	</div>
+
+	<div class="bg-white rounded-lg shadow-sm p-4">
+		<div class="flex items-center space-x-2">
+			<label class="text-sm text-gray-600 whitespace-nowrap">Filter:</label>
+			<select id="statusFilter" class="admin-select block w-full md:w-auto rounded-md border-gray-300 shadow-sm focus:border-wetravel-cyan focus:ring-wetravel-cyan sm:text-sm">
+				<option value="all" {% if status_filter == 'all' %}selected{% endif %}>All</option>
+				<option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending</option>
+				<option value="approved" {% if status_filter == 'approved' %}selected{% endif %}>Approved</option>
+				<option value="rejected" {% if status_filter == 'rejected' %}selected{% endif %}>Rejected</option>
+			</select>
+		</div>
+	</div>
+
+	<div class="bg-white rounded-lg shadow-sm overflow-hidden">
+		<table class="min-w-full divide-y divide-gray-200">
+			<thead class="bg-gray-50">
+				<tr>
+					{% if can_reorder %}
+					<th class="w-10 px-2 py-3" aria-label="Drag to reorder"></th>
+					{% endif %}
+					<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quote</th>
+					<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Author</th>
+					<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+					<th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+				</tr>
+			</thead>
+			<tbody id="testimonialsTableBody" class="bg-white divide-y divide-gray-200">
+				{% for item in testimonials %}
+				<tr class="testimonial-row{% if can_reorder and item.status == 'approved' %} testimonial-row--sortable{% endif %}"
+					data-id="{{ item.id }}"
+					data-status="{{ item.status }}"
+					{% if can_reorder and item.status == 'approved' %}draggable="true"{% endif %}>
+					{% if can_reorder %}
+					<td class="px-2 py-3 text-center align-middle">
+						{% if item.status == 'approved' %}
+						<span class="testimonial-sort-handle inline-block text-gray-400 select-none cursor-grab active:cursor-grabbing" aria-hidden="true" title="Drag to reorder">⋮⋮</span>
+						{% endif %}
+					</td>
+					{% endif %}
+					<td class="px-4 py-3 text-sm text-gray-700 max-w-md">
+						<p class="line-clamp-3 whitespace-pre-wrap">{{ item.quote }}</p>
+					</td>
+					<td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+						<div>{{ item.author_name }}</div>
+						{% if item.organization %}
+						<div class="text-gray-500 text-xs">{{ item.organization }}</div>
+						{% endif %}
+					</td>
+					<td class="px-4 py-3 text-sm whitespace-nowrap">
+						{% if item.status == 'pending' %}
+						<span class="px-2 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800">Pending</span>
+						{% elif item.status == 'approved' %}
+						<span class="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Approved</span>
+						{% else %}
+						<span class="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-600">Rejected</span>
+						{% endif %}
+					</td>
+					<td class="px-4 py-3 text-sm text-right whitespace-nowrap">
+						<a href="{{ url_for('admin.edit_testimonial', id=item.id) }}" class="text-wetravel-cyan hover:text-cyan-700 font-medium mr-3">Edit</a>
+						{% if item.status == 'pending' %}
+						<button type="button" class="text-green-600 hover:text-green-800 font-medium mr-2" onclick="updateTestimonialStatus({{ item.id }}, 'approve')">Approve</button>
+						<button type="button" class="text-gray-600 hover:text-gray-800 font-medium mr-2" onclick="updateTestimonialStatus({{ item.id }}, 'reject')">Reject</button>
+						{% elif item.status == 'rejected' %}
+						<button type="button" class="text-green-600 hover:text-green-800 font-medium mr-2" onclick="updateTestimonialStatus({{ item.id }}, 'approve')">Approve</button>
+						{% elif item.status == 'approved' %}
+						<button type="button" class="text-gray-600 hover:text-gray-800 font-medium mr-2" onclick="updateTestimonialStatus({{ item.id }}, 'reject')">Reject</button>
+						{% endif %}
+						<button type="button" class="text-red-600 hover:text-red-800 font-medium" onclick="deleteTestimonial({{ item.id }})">Delete</button>
+					</td>
+				</tr>
+				{% else %}
+				<tr>
+					<td colspan="{% if can_reorder %}5{% else %}4{% endif %}" class="px-4 py-8 text-center text-sm text-gray-500">No testimonials found.</td>
+				</tr>
+				{% endfor %}
+			</tbody>
+		</table>
+	</div>
+</div>
+
+{% if can_reorder %}
+<style>
+.testimonial-row--sortable.is-dragging {
+	opacity: 0.55;
+	background: #f9fafb;
+}
+
+.testimonial-row--sortable.is-drag-over td {
+	background: #ecfeff;
+}
+</style>
+
+<script>
+document.getElementById('statusFilter')?.addEventListener('change', (e) => {
+	window.location.href = `{{ url_for('admin.testimonials') }}?status=${e.target.value}`;
+});
+
+function initTestimonialTableDragSort() {
+	const tbody = document.getElementById('testimonialsTableBody');
+	const statusEl = document.getElementById('carouselOrderStatus');
+	if (!tbody) return;
+
+	let draggedRow = null;
+
+	function getSortableRows() {
+		return [...tbody.querySelectorAll('.testimonial-row--sortable')];
+	}
+
+	function getApprovedIds() {
+		return getSortableRows().map((row) => Number(row.dataset.id));
+	}
+
+	async function saveOrder() {
+		if (statusEl) statusEl.textContent = 'Saving...';
+		try {
+			const response = await fetch('{{ url_for('admin.reorder_testimonials') }}', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ ids: getApprovedIds() }),
+			});
+			const data = await response.json();
+			if (data.success) {
+				if (statusEl) statusEl.textContent = 'Order saved';
+				if (typeof showToast === 'function') {
+					showToast(data.message || 'Carousel order saved.', 'success');
+				}
+			} else {
+				if (statusEl) statusEl.textContent = 'Save failed';
+				if (typeof showToast === 'function') {
+					showToast(data.message || 'Save failed.', 'error');
+				}
+			}
+		} catch (error) {
+			console.error(error);
+			if (statusEl) statusEl.textContent = 'Save failed';
+			if (typeof showToast === 'function') {
+				showToast('Save failed. Please try again.', 'error');
+			}
+		}
+	}
+
+	getSortableRows().forEach((row) => {
+		row.addEventListener('dragstart', (event) => {
+			draggedRow = row;
+			row.classList.add('is-dragging');
+			event.dataTransfer.effectAllowed = 'move';
+		});
+
+		row.addEventListener('dragend', () => {
+			row.classList.remove('is-dragging');
+			getSortableRows().forEach((el) => el.classList.remove('is-drag-over'));
+			draggedRow = null;
+		});
+
+		row.addEventListener('dragover', (event) => {
+			event.preventDefault();
+			if (!draggedRow || draggedRow === row) return;
+
+			const rect = row.getBoundingClientRect();
+			const insertAfter = event.clientY > rect.top + rect.height / 2;
+			if (insertAfter) {
+				row.after(draggedRow);
+			} else {
+				row.before(draggedRow);
+			}
+		});
+
+		row.addEventListener('dragenter', () => {
+			if (draggedRow && draggedRow !== row) {
+				row.classList.add('is-drag-over');
+			}
+		});
+
+		row.addEventListener('dragleave', () => {
+			row.classList.remove('is-drag-over');
+		});
+
+		row.addEventListener('drop', (event) => {
+			event.preventDefault();
+			row.classList.remove('is-drag-over');
+			saveOrder();
+		});
+	});
+}
+
+initTestimonialTableDragSort();
+</script>
+{% else %}
+<script>
+document.getElementById('statusFilter')?.addEventListener('change', (e) => {
+	window.location.href = `{{ url_for('admin.testimonials') }}?status=${e.target.value}`;
+});
+</script>
+{% endif %}
+
+<script>
+async function updateTestimonialStatus(id, action) {
+	const endpoint = action === 'approve' ? 'approve' : 'reject';
+	try {
+		const response = await fetch(`/admin/customers/testimonials/${id}/${endpoint}`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({}),
+		});
+		const data = await response.json();
+		if (data.success) {
+			if (typeof showToast === 'function') {
+				showToast(data.message || 'Updated.', 'success');
+			}
+			setTimeout(() => location.reload(), 500);
+		} else if (typeof showToast === 'function') {
+			showToast(data.message || 'Update failed.', 'error');
+		}
+	} catch (error) {
+		console.error(error);
+		if (typeof showToast === 'function') {
+			showToast('Update failed. Please try again.', 'error');
+		}
+	}
+}
+
+async function deleteTestimonial(id) {
+	if (!confirm('Delete this testimonial permanently?')) return;
+	try {
+		const response = await fetch(`/admin/customers/testimonials/${id}/delete`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({}),
+		});
+		const data = await response.json();
+		if (data.success) {
+			if (typeof showToast === 'function') {
+				showToast(data.message || 'Deleted.', 'success');
+			}
+			setTimeout(() => location.reload(), 500);
+		} else if (typeof showToast === 'function') {
+			showToast(data.message || 'Delete failed.', 'error');
+		}
+	} catch (error) {
+		console.error(error);
+		if (typeof showToast === 'function') {
+			showToast('Delete failed. Please try again.', 'error');
+		}
+	}
+}
+</script>
+{% endblock %}

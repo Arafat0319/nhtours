@@ -74,6 +74,13 @@
 | `/admin/customers` | GET | 客户列表 |
 | `/admin/customers/<id>` | GET | 客户详情 |
 | `/admin/leads` | GET | 潜在客户列表 |
+| `/admin/customers/testimonials` | GET | Testimonials 列表（可拖拽排序 approved） |
+| `/admin/customers/testimonials/new` | GET/POST | 新建 Testimonial |
+| `/admin/customers/testimonials/<id>/edit` | GET/POST | 编辑 Testimonial |
+| `/admin/customers/testimonials/reorder` | POST | 保存轮播顺序 JSON `{ ids: [...] }` |
+| `/admin/customers/testimonials/<id>/approve` | POST | 批准 |
+| `/admin/customers/testimonials/<id>/reject` | POST | 拒绝 |
+| `/admin/customers/testimonials/<id>/delete` | POST | 删除 |
 
 ### 数据导出
 
@@ -254,7 +261,7 @@ def stripe_webhook():
 
 | 路由 | 方法 | 说明 |
 |------|------|------|
-| `/` | GET/POST | 正式首页（Modern V1）；POST 支持 newsletter |
+| `/` | GET/POST | 正式首页（Modern V1）；POST：`form=newsletter` \| `form=testimonial` |
 | `/home-classic` | GET/POST | **旧版首页存档**（经典透明导航 + Wukong 叙事）；POST 支持 newsletter |
 | `/home-preview` | GET/POST | 兼容旧链接：GET **301** 重定向至 `/`；POST 与 `/` 一致 |
 | `/our-team` | GET | Our Team 正式页 |
@@ -354,4 +361,4 @@ def stripe_webhook():
 
 ## 更新日期
 
-**最后更新**: 2026-06-23（`.nh-badge` 全站徽章）
+**最后更新**: 2026-06-24（Testimonials API、后台路由）

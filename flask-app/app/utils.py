@@ -9,9 +9,9 @@ from botocore.exceptions import ClientError
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
-from flask import current_app
+from flask import current_app, url_for
 from app import db
-from app.models import Lead
+from app.models import Lead, Testimonial
 import json
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
@@ -238,6 +238,77 @@ def handle_contact_submission(data):
     
     # 发送邮件
     return send_email_via_ses(sender_email, recipient_email, subject, html_body, text_body, reply_to=email)
+
+
+def handle_testimonial_submission(data):
+    """
+    处理首页 Testimonials 反馈表单
+
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    quote = (data.get("quote") or "").strip()
+    author_name = (data.get("author_name") or "").strip()
+    organization = (data.get("organization") or "").strip() or None
+
+    if not author_name:
+        return False, "Please enter your name."
+    if len(quote) < 20:
+        return False, "Please write at least 20 characters."
+    if len(quote) > 500:
+        return False, "Please keep your message under 500 characters."
+    if len(author_name) > 128:
+        return False, "Name is too long."
+    if organization and len(organization) > 200:
+        return False, "School or organization name is too long."
+
+    try:
+        testimonial = Testimonial(
+            quote=quote,
+            author_name=author_name,
+            organization=organization,
+            status="pending",
+        )
+        db.session.add(testimonial)
+        db.session.commit()
+        current_app.logger.info(f"Testimonial submitted: {author_name}")
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Failed to save testimonial: {str(e)}")
+        return False, "Unable to save your feedback. Please try again."
+
+    recipient_email = current_app.config.get("RECIPIENT_EMAIL", "info@nhtours.com")
+    sender_email = current_app.config.get("SENDER_EMAIL", recipient_email)
+    admin_url = url_for("admin.testimonials", _external=True)
+
+    subject = f"New Testimonial pending review — {author_name}"
+    org_line = organization or "Not provided"
+    html_body = f"""
+    <html><body>
+        <h2>New homepage testimonial (pending review)</h2>
+        <p><strong>Name:</strong> {author_name}</p>
+        <p><strong>School / Organization:</strong> {org_line}</p>
+        <p><strong>Quote:</strong></p>
+        <p style="white-space: pre-wrap;">{quote}</p>
+        <p><strong>Submitted:</strong> {get_current_timestamp()}</p>
+        <p><a href="{admin_url}">Review in admin</a></p>
+    </body></html>
+    """
+    text_body = f"""
+New homepage testimonial (pending review)
+
+Name: {author_name}
+School / Organization: {org_line}
+
+Quote:
+{quote}
+
+Submitted: {get_current_timestamp()}
+Review: {admin_url}
+    """
+    send_email_via_ses(sender_email, recipient_email, subject, html_body, text_body)
+
+    return True, "Thank you! Your story will appear after review."
 
 
 def get_current_timestamp():

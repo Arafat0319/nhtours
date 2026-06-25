@@ -134,3 +134,19 @@ class EditBookingForm(FlaskForm):
     special_requests = TextAreaField('Special Requests', validators=[Optional()])
     
     submit = SubmitField('Save Changes')
+
+
+class TestimonialForm(FlaskForm):
+    quote = TextAreaField('Quote', validators=[DataRequired(), Length(min=20, max=500)])
+    author_name = StringField('Author Name', validators=[DataRequired(), Length(max=128)])
+    organization = StringField('School / Organization', validators=[Optional(), Length(max=200)])
+    status = SelectField(
+        'Status',
+        choices=[
+            ('pending', 'Pending'),
+            ('approved', 'Approved'),
+            ('rejected', 'Rejected'),
+        ],
+        validators=[DataRequired()],
+    )
+    submit = SubmitField('Save')

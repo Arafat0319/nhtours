@@ -647,3 +647,20 @@ class Message(db.Model):
     
     def __repr__(self):
         return f'<Message {self.id} - {self.subject}>'
+
+
+class Testimonial(db.Model):
+    """首页 Testimonials 评价"""
+    __tablename__ = "testimonials"
+
+    id = db.Column(db.Integer, primary_key=True)
+    quote = db.Column(db.Text, nullable=False)
+    author_name = db.Column(db.String(128), nullable=False)
+    organization = db.Column(db.String(200))
+    status = db.Column(db.String(20), default="pending", index=True)  # pending, approved, rejected
+    sort_order = db.Column(db.Integer, default=0, index=True)
+    is_default = db.Column(db.Boolean, default=False)  # legacy column, unused
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<Testimonial {self.id} by {self.author_name}>"
