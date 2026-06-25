@@ -1328,6 +1328,84 @@ def testimonials():
     )
 
 
+def _validate_testimonial_payload(data):
+    quote = (data.get('quote') or '').strip()
+    author_name = (data.get('author_name') or '').strip()
+    organization = (data.get('organization') or '').strip() or None
+    status = (data.get('status') or 'pending').strip()
+
+    if status not in ('pending', 'approved', 'rejected'):
+        return None, 'Invalid status.'
+    if not author_name:
+        return None, 'Author name is required.'
+    if len(quote) < 20:
+        return None, 'Quote must be at least 20 characters.'
+    if len(quote) > 500:
+        return None, 'Quote must be 500 characters or fewer.'
+    if len(author_name) > 128:
+        return None, 'Author name is too long.'
+    if organization and len(organization) > 200:
+        return None, 'School or organization name is too long.'
+
+    return {
+        'quote': quote,
+        'author_name': author_name,
+        'organization': organization,
+        'status': status,
+    }, None
+
+
+@bp.route('/customers/testimonials/<int:id>/json')
+@login_required
+def testimonial_json(id):
+    testimonial = Testimonial.query.get_or_404(id)
+    return jsonify({
+        'success': True,
+        'testimonial': {
+            'id': testimonial.id,
+            'quote': testimonial.quote,
+            'author_name': testimonial.author_name,
+            'organization': testimonial.organization or '',
+            'status': testimonial.status,
+        },
+    })
+
+
+@bp.route('/customers/testimonials/save', methods=['POST'])
+@login_required
+def save_testimonial_api():
+    data = request.get_json(silent=True) or {}
+    payload, error = _validate_testimonial_payload(data)
+    if error:
+        return jsonify({'success': False, 'message': error}), 400
+
+    testimonial_id = data.get('id')
+    try:
+        if testimonial_id:
+            testimonial = Testimonial.query.get_or_404(int(testimonial_id))
+            was_approved = testimonial.status == 'approved'
+            testimonial.quote = payload['quote']
+            testimonial.author_name = payload['author_name']
+            testimonial.organization = payload['organization']
+            testimonial.status = payload['status']
+            if testimonial.status == 'approved' and not was_approved:
+                assign_carousel_sort_order(testimonial)
+            message = 'Testimonial updated.'
+        else:
+            testimonial = Testimonial(**payload)
+            db.session.add(testimonial)
+            db.session.flush()
+            if testimonial.status == 'approved':
+                assign_carousel_sort_order(testimonial)
+            message = 'Testimonial created.'
+        db.session.commit()
+        return jsonify({'success': True, 'message': message})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error saving testimonial: {str(e)}")
+        return jsonify({'success': False, 'message': 'Unable to save testimonial.'}), 500
+
+
 @bp.route('/customers/testimonials/new', methods=['GET', 'POST'])
 @login_required
 def new_testimonial():

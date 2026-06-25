@@ -17,10 +17,10 @@
 			{% if can_reorder %}
 			<span id="carouselOrderStatus" class="text-sm text-gray-400"></span>
 			{% endif %}
-			<a href="{{ url_for('admin.new_testimonial') }}"
+			<button type="button" onclick="openTestimonialFormModal()"
 				class="bg-wetravel-green text-white px-4 py-2 rounded text-sm font-bold hover:bg-green-500 transition-colors">
 				Add New
-			</a>
+			</button>
 		</div>
 	</div>
 
@@ -70,7 +70,7 @@
 			</thead>
 			<tbody id="testimonialsTableBody" class="bg-white divide-y divide-gray-200">
 				{% for item in testimonials %}
-				<tr class="testimonial-row{% if can_reorder and item.status == 'approved' %} testimonial-row--sortable{% endif %}"
+				<tr class="testimonial-row hover:bg-gray-50{% if can_reorder and item.status == 'approved' %} testimonial-row--sortable{% endif %}"
 					data-id="{{ item.id }}"
 					data-status="{{ item.status }}"
 					{% if can_reorder and item.status == 'approved' %}draggable="true"{% endif %}>
@@ -100,16 +100,16 @@
 						{% endif %}
 					</td>
 					<td class="px-4 py-3 text-sm text-right whitespace-nowrap">
-						<a href="{{ url_for('admin.edit_testimonial', id=item.id) }}" class="text-wetravel-cyan hover:text-cyan-700 font-medium mr-3">Edit</a>
-						{% if item.status == 'pending' %}
-						<button type="button" class="text-green-600 hover:text-green-800 font-medium mr-2" onclick="updateTestimonialStatus({{ item.id }}, 'approve')">Approve</button>
-						<button type="button" class="text-gray-600 hover:text-gray-800 font-medium mr-2" onclick="updateTestimonialStatus({{ item.id }}, 'reject')">Reject</button>
-						{% elif item.status == 'rejected' %}
-						<button type="button" class="text-green-600 hover:text-green-800 font-medium mr-2" onclick="updateTestimonialStatus({{ item.id }}, 'approve')">Approve</button>
-						{% elif item.status == 'approved' %}
-						<button type="button" class="text-gray-600 hover:text-gray-800 font-medium mr-2" onclick="updateTestimonialStatus({{ item.id }}, 'reject')">Reject</button>
-						{% endif %}
-						<button type="button" class="text-red-600 hover:text-red-800 font-medium" onclick="deleteTestimonial({{ item.id }})">Delete</button>
+						<button type="button"
+							class="testimonial-action-btn text-gray-400 hover:text-gray-600 focus:outline-none"
+							data-id="{{ item.id }}"
+							data-author="{{ item.author_name|e }}"
+							data-status="{{ item.status }}"
+							aria-label="Manage testimonial">
+							<svg class="w-5 h-5 inline-block" fill="currentColor" viewBox="0 0 20 20">
+								<path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+							</svg>
+						</button>
 					</td>
 				</tr>
 				{% else %}
@@ -133,12 +133,378 @@
 	background: #ecfeff;
 }
 </style>
+{% endif %}
+
+<!-- Create / Edit Modal -->
+<div id="testimonialFormModal" class="relative z-50 hidden" aria-labelledby="testimonial-form-title" role="dialog" aria-modal="true">
+	<div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity backdrop-blur-sm" onclick="closeTestimonialFormModal()"></div>
+	<div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+		<div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+			<div class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
+				<div class="bg-gray-50 px-4 py-3 sm:px-6 flex justify-between items-center border-b border-gray-200">
+					<h3 class="text-lg font-semibold leading-6 text-gray-900" id="testimonial-form-title">Add Testimonial</h3>
+					<button type="button" onclick="closeTestimonialFormModal()" class="text-gray-400 hover:text-gray-500">
+						<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+				<div class="px-4 py-5 sm:p-6 max-h-[70vh] overflow-y-auto">
+					<input type="hidden" id="testimonialId">
+					<div class="space-y-5">
+						<div>
+							<label for="testimonialQuote" class="block text-sm font-medium leading-6 text-gray-900 mb-2">Quote</label>
+							<textarea id="testimonialQuote" rows="5" maxlength="500"
+								class="block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6"
+								placeholder="What did they say about their trip?"></textarea>
+							<p class="mt-1 text-xs text-gray-400">20–500 characters</p>
+						</div>
+						<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+							<div>
+								<label for="testimonialAuthor" class="block text-sm font-medium leading-6 text-gray-900 mb-2">Author Name</label>
+								<input type="text" id="testimonialAuthor" maxlength="128"
+									class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6"
+									placeholder="e.g. Alex">
+							</div>
+							<div>
+								<label for="testimonialOrganization" class="block text-sm font-medium leading-6 text-gray-900 mb-2">School / Organization <span class="text-gray-400 font-normal">(optional)</span></label>
+								<input type="text" id="testimonialOrganization" maxlength="200"
+									class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6"
+									placeholder="e.g. Ransom Everglades School">
+							</div>
+						</div>
+						<div>
+							<label for="testimonialStatus" class="block text-sm font-medium leading-6 text-gray-900 mb-2">Status</label>
+							<select id="testimonialStatus"
+								class="admin-select block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
+								<option value="pending">Pending</option>
+								<option value="approved">Approved</option>
+								<option value="rejected">Rejected</option>
+							</select>
+						</div>
+					</div>
+				</div>
+				<div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6 border-t border-gray-200">
+					<button type="button" id="saveTestimonialBtn" onclick="saveTestimonial()"
+						class="inline-flex w-full justify-center rounded-md bg-wetravel-cyan px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-wetravel-cyan-dark transition-colors sm:ml-3 sm:w-auto">Save</button>
+					<button type="button" onclick="closeTestimonialFormModal()"
+						class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors sm:mt-0 sm:w-auto">Cancel</button>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- Action Modal -->
+<div id="actionModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+	<div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+		<div class="mt-1">
+			<div class="flex items-center justify-between mb-4">
+				<h3 class="text-lg leading-6 font-medium text-gray-900">Testimonial Actions</h3>
+				<button type="button" onclick="closeActionModal()" class="text-gray-400 hover:text-gray-600">
+					<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			</div>
+			<div class="mb-4">
+				<p class="text-sm text-gray-600">Author: <span id="modalTestimonialAuthor" class="font-semibold text-gray-900"></span></p>
+			</div>
+			<div class="space-y-2" id="actionButtons"></div>
+			<div class="mt-4 pt-4 border-t border-gray-200">
+				<button type="button" onclick="closeActionModal()"
+					class="w-full px-4 py-2 bg-gray-300 text-gray-800 text-sm font-medium rounded-md shadow-sm hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500">
+					Close
+				</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="deleteModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+	<div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+		<div class="mt-3 text-center">
+			<div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+				<svg class="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+				</svg>
+			</div>
+			<h3 class="text-lg leading-6 font-medium text-gray-900 mt-5">Delete Testimonial</h3>
+			<div class="mt-2 px-7 py-3">
+				<p class="text-sm text-gray-500">
+					Are you sure you want to delete <span id="deleteTestimonialAuthor" class="font-semibold"></span>?
+					This action cannot be undone.
+				</p>
+			</div>
+			<div class="items-center px-4 py-3">
+				<button type="button" id="confirmDeleteBtn"
+					class="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md w-full shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500">
+					Delete
+				</button>
+				<button type="button" id="cancelDeleteBtn"
+					class="mt-2 px-4 py-2 bg-gray-300 text-gray-800 text-sm font-medium rounded-md w-full shadow-sm hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500">
+					Cancel
+				</button>
+			</div>
+		</div>
+	</div>
+</div>
 
 <script>
+let currentTestimonialId = null;
+let currentTestimonialAuthor = '';
+
 document.getElementById('statusFilter')?.addEventListener('change', (e) => {
 	window.location.href = `{{ url_for('admin.testimonials') }}?status=${e.target.value}`;
 });
 
+document.querySelectorAll('.testimonial-action-btn').forEach((btn) => {
+	btn.addEventListener('click', () => {
+		openActionModal(
+			Number(btn.dataset.id),
+			btn.dataset.author || 'Unknown',
+			btn.dataset.status || 'pending'
+		);
+	});
+});
+
+function openActionModal(id, author, status) {
+	currentTestimonialId = id;
+	currentTestimonialAuthor = author;
+	document.getElementById('modalTestimonialAuthor').textContent = author;
+	const actionButtons = document.getElementById('actionButtons');
+	actionButtons.innerHTML = '';
+
+	addActionButton('Edit', 'text-wetravel-cyan', `
+		<svg class="w-4 h-4 mr-2 text-wetravel-cyan" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+		</svg>
+	`, () => {
+		closeActionModal();
+		openTestimonialFormModal(id);
+	});
+
+	if (status !== 'approved') {
+		addActionButton('Approve', 'text-green-600', `
+			<svg class="w-4 h-4 mr-2 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+			</svg>
+		`, () => {
+			closeActionModal();
+			updateTestimonialStatus(id, 'approve');
+		});
+	}
+
+	if (status !== 'rejected') {
+		addActionButton('Reject', 'text-gray-600', `
+			<svg class="w-4 h-4 mr-2 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+			</svg>
+		`, () => {
+			closeActionModal();
+			updateTestimonialStatus(id, 'reject');
+		});
+	}
+
+	addActionButton('Delete', 'text-red-600', `
+		<svg class="w-4 h-4 mr-2 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+		</svg>
+	`, () => {
+		closeActionModal();
+		openDeleteModal(id, author);
+	});
+
+	document.getElementById('actionModal').classList.remove('hidden');
+}
+
+function addActionButton(label, colorClass, iconHtml, onClick) {
+	const btn = document.createElement('button');
+	btn.type = 'button';
+	btn.className = `w-full flex items-center px-4 py-2 text-sm ${colorClass} hover:bg-gray-100 rounded-md transition-colors text-left`;
+	btn.innerHTML = `${iconHtml}${label}`;
+	btn.addEventListener('click', onClick);
+	document.getElementById('actionButtons').appendChild(btn);
+}
+
+function closeActionModal() {
+	document.getElementById('actionModal').classList.add('hidden');
+}
+
+function openDeleteModal(id, author) {
+	currentTestimonialId = id;
+	document.getElementById('deleteTestimonialAuthor').textContent = author || 'this testimonial';
+	document.getElementById('deleteModal').classList.remove('hidden');
+}
+
+function closeDeleteModal() {
+	document.getElementById('deleteModal').classList.add('hidden');
+	currentTestimonialId = null;
+}
+
+document.getElementById('cancelDeleteBtn')?.addEventListener('click', closeDeleteModal);
+document.getElementById('deleteModal')?.addEventListener('click', (e) => {
+	if (e.target === document.getElementById('deleteModal')) closeDeleteModal();
+});
+document.getElementById('actionModal')?.addEventListener('click', (e) => {
+	if (e.target === document.getElementById('actionModal')) closeActionModal();
+});
+
+document.getElementById('confirmDeleteBtn')?.addEventListener('click', async () => {
+	if (!currentTestimonialId) return;
+	const btn = document.getElementById('confirmDeleteBtn');
+	btn.disabled = true;
+	btn.textContent = 'Deleting...';
+	try {
+		await deleteTestimonial(currentTestimonialId, false);
+		closeDeleteModal();
+	} finally {
+		btn.disabled = false;
+		btn.textContent = 'Delete';
+	}
+});
+
+function resetTestimonialForm() {
+	document.getElementById('testimonialId').value = '';
+	document.getElementById('testimonialQuote').value = '';
+	document.getElementById('testimonialAuthor').value = '';
+	document.getElementById('testimonialOrganization').value = '';
+	document.getElementById('testimonialStatus').value = 'approved';
+}
+
+async function openTestimonialFormModal(id = null) {
+	resetTestimonialForm();
+	const titleEl = document.getElementById('testimonial-form-title');
+	const saveBtn = document.getElementById('saveTestimonialBtn');
+
+	if (id) {
+		titleEl.textContent = 'Edit Testimonial';
+		saveBtn.textContent = 'Save Changes';
+		try {
+			const response = await fetch(`/admin/customers/testimonials/${id}/json`);
+			const data = await response.json();
+			if (!data.success) throw new Error(data.message || 'Load failed');
+			const item = data.testimonial;
+			document.getElementById('testimonialId').value = item.id;
+			document.getElementById('testimonialQuote').value = item.quote;
+			document.getElementById('testimonialAuthor').value = item.author_name;
+			document.getElementById('testimonialOrganization').value = item.organization || '';
+			document.getElementById('testimonialStatus').value = item.status;
+		} catch (error) {
+			console.error(error);
+			if (typeof showToast === 'function') {
+				showToast('Unable to load testimonial.', 'error');
+			}
+			return;
+		}
+	} else {
+		titleEl.textContent = 'Add Testimonial';
+		saveBtn.textContent = 'Create';
+	}
+
+	document.getElementById('testimonialFormModal').classList.remove('hidden');
+}
+
+function closeTestimonialFormModal() {
+	document.getElementById('testimonialFormModal').classList.add('hidden');
+}
+
+async function saveTestimonial() {
+	const saveBtn = document.getElementById('saveTestimonialBtn');
+	const payload = {
+		id: document.getElementById('testimonialId').value || null,
+		quote: document.getElementById('testimonialQuote').value,
+		author_name: document.getElementById('testimonialAuthor').value,
+		organization: document.getElementById('testimonialOrganization').value,
+		status: document.getElementById('testimonialStatus').value,
+	};
+
+	saveBtn.disabled = true;
+	const originalText = saveBtn.textContent;
+	saveBtn.textContent = 'Saving...';
+
+	try {
+		const response = await fetch('{{ url_for('admin.save_testimonial_api') }}', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(payload),
+		});
+		const data = await response.json();
+		if (data.success) {
+			if (typeof showToast === 'function') {
+				showToast(data.message || 'Saved.', 'success');
+			}
+			closeTestimonialFormModal();
+			setTimeout(() => location.reload(), 500);
+		} else if (typeof showToast === 'function') {
+			showToast(data.message || 'Save failed.', 'error');
+		}
+	} catch (error) {
+		console.error(error);
+		if (typeof showToast === 'function') {
+			showToast('Save failed. Please try again.', 'error');
+		}
+	} finally {
+		saveBtn.disabled = false;
+		saveBtn.textContent = originalText;
+	}
+}
+
+async function updateTestimonialStatus(id, action) {
+	const endpoint = action === 'approve' ? 'approve' : 'reject';
+	try {
+		const response = await fetch(`/admin/customers/testimonials/${id}/${endpoint}`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({}),
+		});
+		const data = await response.json();
+		if (data.success) {
+			if (typeof showToast === 'function') {
+				showToast(data.message || 'Updated.', 'success');
+			}
+			setTimeout(() => location.reload(), 500);
+		} else if (typeof showToast === 'function') {
+			showToast(data.message || 'Update failed.', 'error');
+		}
+	} catch (error) {
+		console.error(error);
+		if (typeof showToast === 'function') {
+			showToast('Update failed. Please try again.', 'error');
+		}
+	}
+}
+
+async function deleteTestimonial(id, showConfirm = true) {
+	if (showConfirm) {
+		openDeleteModal(id, currentTestimonialAuthor);
+		return;
+	}
+	try {
+		const response = await fetch(`/admin/customers/testimonials/${id}/delete`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({}),
+		});
+		const data = await response.json();
+		if (data.success) {
+			if (typeof showToast === 'function') {
+				showToast(data.message || 'Deleted.', 'success');
+			}
+			setTimeout(() => location.reload(), 500);
+		} else if (typeof showToast === 'function') {
+			showToast(data.message || 'Delete failed.', 'error');
+		}
+	} catch (error) {
+		console.error(error);
+		if (typeof showToast === 'function') {
+			showToast('Delete failed. Please try again.', 'error');
+		}
+	}
+}
+
+{% if can_reorder %}
 function initTestimonialTableDragSort() {
 	const tbody = document.getElementById('testimonialsTableBody');
 	const statusEl = document.getElementById('carouselOrderStatus');
@@ -228,64 +594,6 @@ function initTestimonialTableDragSort() {
 }
 
 initTestimonialTableDragSort();
-</script>
-{% else %}
-<script>
-document.getElementById('statusFilter')?.addEventListener('change', (e) => {
-	window.location.href = `{{ url_for('admin.testimonials') }}?status=${e.target.value}`;
-});
-</script>
 {% endif %}
-
-<script>
-async function updateTestimonialStatus(id, action) {
-	const endpoint = action === 'approve' ? 'approve' : 'reject';
-	try {
-		const response = await fetch(`/admin/customers/testimonials/${id}/${endpoint}`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({}),
-		});
-		const data = await response.json();
-		if (data.success) {
-			if (typeof showToast === 'function') {
-				showToast(data.message || 'Updated.', 'success');
-			}
-			setTimeout(() => location.reload(), 500);
-		} else if (typeof showToast === 'function') {
-			showToast(data.message || 'Update failed.', 'error');
-		}
-	} catch (error) {
-		console.error(error);
-		if (typeof showToast === 'function') {
-			showToast('Update failed. Please try again.', 'error');
-		}
-	}
-}
-
-async function deleteTestimonial(id) {
-	if (!confirm('Delete this testimonial permanently?')) return;
-	try {
-		const response = await fetch(`/admin/customers/testimonials/${id}/delete`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({}),
-		});
-		const data = await response.json();
-		if (data.success) {
-			if (typeof showToast === 'function') {
-				showToast(data.message || 'Deleted.', 'success');
-			}
-			setTimeout(() => location.reload(), 500);
-		} else if (typeof showToast === 'function') {
-			showToast(data.message || 'Delete failed.', 'error');
-		}
-	} catch (error) {
-		console.error(error);
-		if (typeof showToast === 'function') {
-			showToast('Delete failed. Please try again.', 'error');
-		}
-	}
-}
 </script>
 {% endblock %}
