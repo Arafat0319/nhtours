@@ -6,8 +6,12 @@ Flask配置类
 import os
 from dotenv import load_dotenv
 
-# 加载环境变量
-load_dotenv()
+# 加载环境变量（支持 .env 在 flask-app/ 或仓库根目录 /var/www/nhtours/）
+from pathlib import Path
+
+_BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(_BASE_DIR / ".env")
+load_dotenv(_BASE_DIR.parent / ".env")
 
 
 class Config:

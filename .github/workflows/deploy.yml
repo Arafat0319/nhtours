@@ -28,8 +28,14 @@ jobs:
             else
               pip install -q -r requirements.txt gunicorn
             fi
-            cd flask-app
+            set -a
+            if [ -f .env ]; then
+              . ./.env
+            fi
+            set +a
             export FLASK_APP=wsgi.py
+            export FLASK_ENV=production
+            cd flask-app
             flask db upgrade
             cd ..
             sudo systemctl restart nhtours || true
