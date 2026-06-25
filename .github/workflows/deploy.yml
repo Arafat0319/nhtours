@@ -18,25 +18,31 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             set -e
-            # 部署目录（若不同请在本文件中改为你的路径）
-            cd /var/www/nhtours
+            DEPLOY_ROOT=/var/www/nhtours
+            cd "$DEPLOY_ROOT"
             git fetch origin main
             git reset --hard origin/main
-            [ -d venv ] && . venv/bin/activate || true
-            if [ -f flask-app/requirements.txt ]; then
-              pip install -q -r flask-app/requirements.txt gunicorn
+            if [ -f "$DEPLOY_ROOT/venv/bin/activate" ]; then
+              . "$DEPLOY_ROOT/venv/bin/activate"
+            fi
+            if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "$VIRTUAL_ENV/bin/python" ]; then
+              PYTHON="$VIRTUAL_ENV/bin/python"
             else
-              pip install -q -r requirements.txt gunicorn
+              PYTHON="$(command -v python3 || command -v python)"
+            fi
+            if [ -f flask-app/requirements.txt ]; then
+              "$PYTHON" -m pip install -q -r flask-app/requirements.txt gunicorn
+            else
+              "$PYTHON" -m pip install -q -r requirements.txt gunicorn
             fi
             set -a
-            if [ -f .env ]; then
-              . ./.env
+            if [ -f "$DEPLOY_ROOT/.env" ]; then
+              . "$DEPLOY_ROOT/.env"
             fi
             set +a
             export FLASK_APP=wsgi.py
             export FLASK_ENV=production
-            cd flask-app
-            flask db upgrade
-            cd ..
+            cd "$DEPLOY_ROOT/flask-app"
+            "$PYTHON" -m flask db upgrade
             sudo systemctl restart nhtours || true
             echo "Deploy done."
