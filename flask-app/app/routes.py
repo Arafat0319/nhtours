@@ -42,24 +42,48 @@ from app.testimonial_data import get_carousel_testimonials
 bp = Blueprint('main', __name__)
 
 
+def _parse_post_data():
+    """解析 POST：forms.js 发 JSON，原生表单发 application/x-www-form-urlencoded。"""
+    data = request.get_json(silent=True)
+    if data is not None:
+        return data, True
+    if request.form:
+        return request.form.to_dict(), False
+    return None, False
+
+
+def _form_submission_response(success, message, *, wants_json, anchor='home-preview-testimonials'):
+    if wants_json:
+        if success:
+            return jsonify({'success': True, 'message': message}), 200
+        return jsonify({'success': False, 'error': message}), 400
+    if success:
+        flash(message, 'success')
+    else:
+        flash(message, 'error')
+    return redirect(url_for('main.index', _anchor=anchor))
+
+
 @bp.route('/', methods=['GET', 'POST'])
 def index():
     """首页（Modern V1）"""
     if request.method == 'POST':
-        data = request.get_json()
+        data, wants_json = _parse_post_data()
         if not data:
-            return jsonify({'success': False, 'error': 'Invalid request.'}), 400
+            return _form_submission_response(
+                False, 'Invalid request.', wants_json=wants_json
+            )
         if data.get('form') == 'newsletter':
             success, message = handle_newsletter_submission(data)
             if success:
-                return jsonify({'success': True, 'message': 'Success!'}), 200
-            return jsonify({'success': False, 'error': message}), 400
+                message = 'Success!'
+            return _form_submission_response(success, message, wants_json=wants_json)
         if data.get('form') == 'testimonial':
             success, message = handle_testimonial_submission(data)
-            if success:
-                return jsonify({'success': True, 'message': message}), 200
-            return jsonify({'success': False, 'error': message}), 400
-        return jsonify({'success': False, 'error': 'Unknown form type.'}), 400
+            return _form_submission_response(success, message, wants_json=wants_json)
+        return _form_submission_response(
+            False, 'Unknown form type.', wants_json=wants_json
+        )
     return render_template('index.html', testimonials=get_carousel_testimonials())
 
 

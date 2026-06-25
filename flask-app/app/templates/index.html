@@ -96,6 +96,11 @@
 		<div class="home-preview-testimonials__submit">
 			<h3 class="home-preview-testimonials__submit-title">Share your experience</h3>
 			<p class="home-preview-testimonials__submit-lead">Tell us about your trip. Approved stories appear in the carousel above.</p>
+			{% with messages = get_flashed_messages(with_categories=true) %}
+			{% if messages %}
+			<p class="home-preview-testimonials__form-status is-{{ messages[0][0] }}" role="status">{{ messages[0][1] }}</p>
+			{% endif %}
+			{% endwith %}
 			<form id="testimonial-form" class="home-preview-testimonials__form" action="{{ url_for('main.index') }}" method="POST">
 				<input name="form" type="hidden" value="testimonial" />
 				<label class="home-preview-testimonials__field">
@@ -212,6 +217,6 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script type="module" src="{{ url_for('static', filename='js/forms.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/forms.js') }}?v=2"></script>
 <script type="module" src="{{ url_for('static', filename='js/home-preview.js') }}?v=2"></script>
 {% endblock %}

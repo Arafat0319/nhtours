@@ -52,12 +52,26 @@ async function handleFormSubmit(form, statusElement, spinnerElement = null) {
 		const response = await fetch(submitUrl, {
 			method: "POST",
 			headers: {
-				"Content-Type": "application/json"
+				"Content-Type": "application/json",
+				"Accept": "application/json"
 			},
 			body: JSON.stringify(data)
 		});
-		
-		const result = await response.json();
+
+		let result;
+		try {
+			result = await response.json();
+		} catch (parseError) {
+			throw new Error(
+				response.ok
+					? "Unexpected response from server."
+					: `Request failed (${response.status}). Please try again.`
+			);
+		}
+
+		if (!response.ok) {
+			throw new Error(result.error || result.message || "Something went wrong.");
+		}
 		
 		// 隐藏加载动画
 		if (spinnerElement) {
