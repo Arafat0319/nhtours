@@ -19,21 +19,19 @@ jobs:
           script: |
             set -e
             DEPLOY_ROOT=/var/www/nhtours
+            VENV="$DEPLOY_ROOT/venv"
             cd "$DEPLOY_ROOT"
             git fetch origin main
             git reset --hard origin/main
-            if [ -f "$DEPLOY_ROOT/venv/bin/activate" ]; then
-              . "$DEPLOY_ROOT/venv/bin/activate"
+            if [ ! -x "$VENV/bin/python" ]; then
+              python3 -m venv "$VENV"
             fi
-            if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "$VIRTUAL_ENV/bin/python" ]; then
-              PYTHON="$VIRTUAL_ENV/bin/python"
-            else
-              PYTHON="$(command -v python3 || command -v python)"
-            fi
+            PYTHON="$VENV/bin/python"
+            "$PYTHON" -m pip install -q --upgrade pip
             if [ -f flask-app/requirements.txt ]; then
-              "$PYTHON" -m pip install -q -r flask-app/requirements.txt gunicorn
+              "$PYTHON" -m pip install -q -r flask-app/requirements.txt
             else
-              "$PYTHON" -m pip install -q -r requirements.txt gunicorn
+              "$PYTHON" -m pip install -q -r requirements.txt
             fi
             set -a
             if [ -f "$DEPLOY_ROOT/.env" ]; then
