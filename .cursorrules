@@ -1,5 +1,9 @@
 # NH Tours 项目规则
 
+## AI 读文档
+
+优先读 **`context/AI_快速参考.md`**；路由/API/模型以 `04`、`02` 及代码为准，`07` 历史条目可能过时。
+
 ## 部署：本地测试后再 push（必须遵守）
 
 本项目的 CI 在**本地**进行；**未经用户明确确认，不得 `git push origin main`**（会触发 GitHub Actions 自动部署）。

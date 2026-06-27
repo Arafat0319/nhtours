@@ -34,13 +34,18 @@
 
 | 路由 | 方法 | 说明 |
 |------|------|------|
-| `/admin/trips` | GET | 行程列表（卡片视图） |
-| `/admin/trips/calendar` | GET | 行程日历视图 |
+| `/admin/trips` | GET | 行程列表（卡片视图；`?filter=`、`?view=calendar`） |
+| `/admin/trips?view=calendar` | GET | 行程日历视图（FullCalendar） |
+| `/admin/trips/json` | GET | 日历/列表用 JSON 数据 |
 | `/admin/trips/new` | GET | 创建新行程，跳转 Trip Builder |
-| `/admin/trips/<id>` | GET | 行程详情/订单管理页 |
-| `/admin/trips/<id>/publish` | POST | 发布行程 |
+| `/admin/trips/<id>/manage` | GET | 行程详情 / 订单管理页 |
+| `/admin/trips/<id>/deactivate` | POST | 停用行程（`status=deactivated`） |
+| `/admin/trips/<id>/reactivate` | POST | 重新启用 |
 | `/admin/trips/<id>/archive` | POST | 归档行程 |
+| `/admin/trips/<id>/copy` | POST | 复制行程 |
 | `/admin/trips/<id>/delete` | POST | 删除行程 |
+
+> **发布**：无独立 `/publish` 路由；Trip Builder 步骤完成度达标后自动 `published`，或通过 reactivate 恢复。
 
 ### Trip Builder
 
@@ -60,12 +65,14 @@
 
 ### 订单管理
 
+订单列表嵌入 `/admin/trips/<id>/manage` 页面，无独立 list 路由。
+
 | 路由 | 方法 | 说明 |
 |------|------|------|
-| `/admin/trips/<id>/bookings` | GET | 行程订单列表 |
-| `/admin/trips/<id>/bookings/<bid>` | GET | 订单详情 |
-| `/admin/trips/<id>/bookings/<bid>/receipt` | GET | 生成收据 |
-| `/admin/trips/<id>/bookings/<bid>/refund` | POST | 发起退款 |
+| `/admin/trips/<id>/bookings/add` | POST | 后台手动添加订单 |
+| `/admin/trips/<trip_id>/bookings/<booking_id>` | GET/POST | 订单详情 / 编辑 |
+| `/admin/trips/<trip_id>/bookings/<booking_id>/receipt` | GET | 生成收据 |
+| `/admin/trips/<trip_id>/bookings/<booking_id>/refund` | POST | 发起退款 |
 
 ### 客户管理
 
@@ -73,7 +80,7 @@
 |------|------|------|
 | `/admin/customers` | GET | 客户列表 |
 | `/admin/customers/<id>` | GET | 客户详情 |
-| `/admin/leads` | GET | 潜在客户列表 |
+| `/admin/customers/leads` | GET | 潜在客户列表 |
 | `/admin/customers/testimonials` | GET | Testimonials 列表；`?status=`、`?source=homepage\|feedback` |
 | `/admin/customers/testimonials/save` | POST | 弹窗创建/更新 JSON `{ id?, quote, author_name, organization?, status }` |
 | `/admin/customers/testimonials/<id>/json` | GET | 编辑弹窗加载单条 JSON |
@@ -100,9 +107,15 @@
 
 | 路由 | 方法 | 说明 |
 |------|------|------|
+| `POST /trips/<slug>` | POST | **AJAX 报名首步**：创建 PendingBooking + Stripe PaymentIntent，返回 `client_secret` |
+| `/api/payment/quote` | POST | 根据 PendingBooking 计算报价 |
 | `/api/payment/intent` | POST | 更新已有 PaymentIntent 的金额与 metadata（用于确认前写入手续费等） |
 | `/api/payment/status` | GET | 查询支付状态 |
 | `/api/payment/fee` | POST | 计算手续费 |
+| `/api/booking/create-free` | POST | 零元订单直接创建 Booking |
+| `/api/booking/<id>/summary` | GET | 订单摘要 JSON |
+| `/booking/payment/<id>` | GET | 独立支付页（邮件链接等） |
+| `/booking/<id>/receipt` | GET | 前台收据页 |
 
 #### POST /api/payment/intent
 
@@ -182,34 +195,37 @@
 
 | 路由 | 方法 | 说明 |
 |------|------|------|
-| `/api/discount/validate` | POST | 验证折扣码 |
+| `/api/discount/validate` | POST | 验证折扣码并返回折扣金额 |
+| `/api/discount/apply` | POST | 应用折扣码到订单 |
 
-**请求体**:
+**POST /api/discount/validate 请求体**:
 
 ```json
 {
   "trip_id": 1,
-  "code": "SAVE10"
+  "code": "SAVE10",
+  "order_amount": 2000
 }
 ```
 
-**响应**:
+**响应**（有效时）:
 
 ```json
 {
   "valid": true,
-  "type": "percentage",
-  "amount": 10,
-  "message": "折扣码有效"
+  "message": "Discount code applied successfully",
+  "discount": {
+    "id": 1,
+    "code": "SAVE10",
+    "type": "percent",
+    "value": 10,
+    "discount_amount": 200,
+    "final_amount": 1800
+  }
 }
 ```
 
-### 行程数据
-
-| 路由 | 方法 | 说明 |
-|------|------|------|
-| `/api/trips/<id>` | GET | 获取行程详情 JSON |
-| `/api/trips/<id>/availability` | GET | 获取剩余名额 |
+> `type` 取值：`percent` / `fixed`（非 `percentage`）。
 
 ---
 
@@ -217,33 +233,24 @@
 
 | 路由 | 方法 | 说明 |
 |------|------|------|
-| `/webhook/stripe` | POST | Stripe Webhook 接收端点 |
+| `/webhooks/stripe` | POST | Stripe Webhook（生产推荐） |
+| `/api/stripe/webhook` | POST | 同上（兼容 Stripe CLI 默认路径） |
 
 ### 处理的事件
 
 | 事件类型 | 处理函数 | 说明 |
 |----------|----------|------|
-| `payment_intent.succeeded` | `handle_payment_intent_succeeded` | 支付成功 |
-| `payment_intent.payment_failed` | `handle_payment_failed` | 支付失败 |
+| `payment_intent.succeeded` | `handle_booking_payment_intent_succeeded` + `handle_payment_intent_succeeded` | 支付成功（双处理器） |
+| `payment_intent.payment_failed` | `handle_payment_intent_failed` | 支付失败 |
 | `checkout.session.completed` | `handle_checkout_completed` | Checkout 完成 |
-| `charge.refunded` | `handle_charge_refunded` | 退款完成 |
+| `charge.refunded` | `handle_refund` | 退款完成 |
 
-### Webhook 签名验证
+### 本地测试
 
-```python
-@app.route('/webhook/stripe', methods=['POST'])
-def stripe_webhook():
-    payload = request.get_data()
-    sig_header = request.headers.get('Stripe-Signature')
-    
-    try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, STRIPE_WEBHOOK_SECRET
-        )
-    except stripe.error.SignatureVerificationError:
-        return 'Invalid signature', 400
-    
-    # 处理事件...
+```bash
+cd flask-app
+python run.py   # 默认 http://localhost:8080
+stripe listen --forward-to localhost:8080/webhooks/stripe
 ```
 
 ---
@@ -254,12 +261,22 @@ def stripe_webhook():
 
 | 路由 | 方法 | 说明 |
 |------|------|------|
-| `/trips` | GET | 行程列表页 |
 | `/trips/<slug>` | GET/POST | 行程详情页（GET 展示；POST 为 AJAX 报名提交，创建 PendingBooking + PaymentIntent） |
-| `/trips/<slug>/design-preview` | GET/POST | 设计预览实验页（与正式页同数据，渲染实验模板；POST 为 AJAX 报名提交，逻辑同正式页） |
-| `/trips/<slug>/book` | GET | 报名页面（5 步向导） |
+| `/trips/<slug>/design-preview` | GET/POST | 设计预览实验页（与正式页同数据，渲染实验模板；POST 逻辑同正式页） |
 
-### 设计预览与内容页
+> 无 `/trips` 列表页、无 `/trips/<slug>/book` 独立向导；报名在详情页弹窗内完成（5 步）。
+
+### 内容页（Asia / North America 等）
+
+| 路由 | 方法 | 说明 |
+|------|------|------|
+| `/asia`、`/asia/educational`、`/asia/family`、`/asia/business` 等 | GET | Asia 内容页 |
+| `/north-america`、`/north-america/educational`、`/north-america/newyork` 等 | GET | North America 内容页 |
+| `/mindx` | GET | Mindx 页 |
+| `/privacy` | GET | 隐私政策 |
+| `/terms` | GET | 服务条款 |
+
+### 设计预览与首页
 
 | 路由 | 方法 | 说明 |
 |------|------|------|
@@ -364,4 +381,4 @@ def stripe_webhook():
 
 ## 更新日期
 
-**最后更新**: 2026-06-25（Post-trip Feedback `/feedback`）
+**最后更新**: 2026-06-18（对照代码审计：路由/Webhook/支付 API 修正）
