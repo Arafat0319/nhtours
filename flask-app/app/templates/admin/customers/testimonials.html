@@ -65,15 +65,15 @@
 		</div>
 	</div>
 
-	<div class="bg-white rounded-lg shadow-sm overflow-hidden">
+	<div class="bg-white rounded-lg shadow-sm overflow-x-auto">
 		<table class="min-w-full divide-y divide-gray-200">
 			<thead class="bg-gray-50">
 				<tr>
 					{% if can_reorder %}
 					<th class="w-10 px-2 py-3" aria-label="Drag to reorder"></th>
 					{% endif %}
-					<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quote</th>
-					<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Author</th>
+					<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[16rem]">Comments</th>
+					<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[10rem]">Contact</th>
 					<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
 					<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rating</th>
 					<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -82,24 +82,34 @@
 			</thead>
 			<tbody id="testimonialsTableBody" class="bg-white divide-y divide-gray-200">
 				{% for item in testimonials %}
-				<tr class="testimonial-row hover:bg-gray-50{% if can_reorder and item.status == 'approved' %} testimonial-row--sortable{% endif %}"
+				<tr class="testimonial-row hover:bg-gray-50 align-top{% if can_reorder and item.status == 'approved' %} testimonial-row--sortable{% endif %}"
 					data-id="{{ item.id }}"
 					data-status="{{ item.status }}"
 					{% if can_reorder and item.status == 'approved' %}draggable="true"{% endif %}>
 					{% if can_reorder %}
-					<td class="px-2 py-3 text-center align-middle">
+					<td class="px-2 py-3 text-center align-top">
 						{% if item.status == 'approved' %}
 						<span class="testimonial-sort-handle inline-block text-gray-400 select-none cursor-grab active:cursor-grabbing" aria-hidden="true" title="Drag to reorder">⋮⋮</span>
 						{% endif %}
 					</td>
 					{% endif %}
-					<td class="px-4 py-3 text-sm text-gray-700 max-w-md">
-						<p class="line-clamp-3 whitespace-pre-wrap">{{ item.quote }}</p>
+					<td class="px-4 py-3 text-sm text-gray-700">
+						<p class="whitespace-pre-wrap break-words leading-relaxed">{{ item.quote }}</p>
 					</td>
-					<td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
-						<div>{{ item.author_name }}</div>
+					<td class="px-4 py-3 text-sm text-gray-700">
+						<div class="font-medium text-gray-900">{{ item.author_name }}</div>
 						{% if item.organization %}
-						<div class="text-gray-500 text-xs">{{ item.organization }}</div>
+						<div class="text-gray-600 mt-1">{{ item.organization }}</div>
+						{% endif %}
+						{% if item.source == 'feedback' %}
+						<dl class="mt-2 space-y-1 text-xs text-gray-600">
+							{% if item.email %}
+							<div><span class="text-gray-500">Email:</span> <a href="mailto:{{ item.email }}" class="text-wetravel-cyan hover:underline break-all">{{ item.email }}</a></div>
+							{% endif %}
+							{% if item.phone %}
+							<div><span class="text-gray-500">Phone:</span> {{ item.phone }}</div>
+							{% endif %}
+						</dl>
 						{% endif %}
 					</td>
 					<td class="px-4 py-3 text-sm whitespace-nowrap">
