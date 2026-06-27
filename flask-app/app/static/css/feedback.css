@@ -3,10 +3,13 @@
 .feedback-hero {
 	display: block;
 	width: 100%;
-	height: clamp(9rem, 16vh, 12.5rem);
-	background-position: center;
-	background-size: cover;
+	height: clamp(18rem, 32vh, 25rem);
+	/* zoom: 100% ≈ cover 宽度；>100% 放大裁切，<100% 缩小露边 */
+	--feedback-hero-zoom: 100%;
+	background-position: center 40%;
+	background-size: var(--feedback-hero-zoom);
 	background-repeat: no-repeat;
+	background-color: #1e3a5f;
 }
 
 .feedback-page {

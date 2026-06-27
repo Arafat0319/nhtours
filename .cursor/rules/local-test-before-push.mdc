@@ -20,6 +20,7 @@ alwaysApply: true
 2. 明确告知用户：「请你在本地测试；确认无误后告诉我，我再帮你 push / 部署。」
 3. 仅在用户明确表示测试通过、同意推送（如「可以 push」「部署吧」「测试没问题」）后，才执行 `git push origin main`。
 4. 若用户只要求改代码、未要求部署，**只改代码 + 更新 context（若需要）**，不 push。
+5. **Push 前**：按 `context/11_推送与上下文同步.md` 完成 context 同步，与代码一并 commit（见 `.cursor/rules/context-sync-before-push.mdc`）。
 
 ## 与用户确认时的表述示例
 
@@ -28,4 +29,5 @@ alwaysApply: true
 ## 相关文档
 
 - 本地开发：`context/06_部署指南.md`
+- Context 同步：`context/11_推送与上下文同步.md`
 - 防灾与 Git：`context/10_防灾与备份机制.md`
