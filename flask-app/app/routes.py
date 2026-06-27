@@ -13,6 +13,7 @@ from app.utils import (
     handle_newsletter_submission,
     handle_contact_submission,
     handle_testimonial_submission,
+    handle_feedback_submission,
     send_email_via_ses,
     generate_installment_token,
     verify_installment_token,
@@ -127,6 +128,36 @@ def contact():
             else:
                 return jsonify({'success': False, 'error': message}), 400
     return render_template('contact.html')
+
+
+@bp.route('/feedback', methods=['GET', 'POST'])
+def feedback():
+    """行程结束后的 Feedback 页面（私有链接，不放入主导航）"""
+    if request.method == 'POST':
+        data, wants_json = _parse_post_data()
+        if not data:
+            return _feedback_submission_response(
+                False, 'Invalid request.', wants_json=wants_json
+            )
+        if data.get('form') != 'feedback':
+            return _feedback_submission_response(
+                False, 'Unknown form type.', wants_json=wants_json
+            )
+        success, message = handle_feedback_submission(data)
+        return _feedback_submission_response(success, message, wants_json=wants_json)
+    return render_template('feedback.html')
+
+
+def _feedback_submission_response(success, message, *, wants_json):
+    if wants_json:
+        if success:
+            return jsonify({'success': True, 'message': message}), 200
+        return jsonify({'success': False, 'error': message}), 400
+    if success:
+        flash(message, 'success')
+    else:
+        flash(message, 'error')
+    return redirect(url_for('main.feedback'))
 
 
 

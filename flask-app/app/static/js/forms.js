@@ -14,6 +14,10 @@ function applyFormStatusClass(statusElement, form, type) {
 		statusElement.className = `home-preview-testimonials__form-status is-${type}`;
 		return;
 	}
+	if (form.id === "feedback-form") {
+		statusElement.className = `feedback-form__status is-${type}`;
+		return;
+	}
 	if (form.id === "contact-form") {
 		statusElement.className =
 			type === "success"
@@ -133,6 +137,17 @@ document.addEventListener("DOMContentLoaded", () => {
 		testimonialForm.addEventListener("submit", async (e) => {
 			e.preventDefault();
 			await handleFormSubmit(testimonialForm, statusElement);
+		});
+	}
+
+	const feedbackForm = document.getElementById("feedback-form");
+
+	if (feedbackForm) {
+		const statusElement = document.getElementById("feedback-form-status");
+
+		feedbackForm.addEventListener("submit", async (e) => {
+			e.preventDefault();
+			await handleFormSubmit(feedbackForm, statusElement);
 		});
 	}
 });

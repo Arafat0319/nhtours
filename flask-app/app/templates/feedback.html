@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Nexus Horizons | Feedback{% endblock %}
+
+{% block description %}Share your post-trip feedback with Nexus Horizons.{% endblock %}
+
+{% block og_title %}Nexus Horizons | Feedback{% endblock %}
+
+{% block og_description %}Share your post-trip feedback with Nexus Horizons.{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/feedback.css') }}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="feedback-hero w-full h-[70vh]"
+	style="background:url({{ url_for('static', filename='images/backgrounds/tibet_background.jpg') }}) center / cover no-repeat;"></div>
+
+<div class="feedback-page max-w-3xl mx-auto px-6 md:px-8 py-12 md:py-16">
+	<h1 class="feedback-page__thanks">Thank You</h1>
+
+	<section class="feedback-form-section" aria-labelledby="feedback-form-title">
+		<h2 class="feedback-form-section__title" id="feedback-form-title">Feedback Form</h2>
+		<p class="feedback-form-section__lead">
+			Thank you for joining us on this journey. Your feedback helps us improve future tours
+			and share meaningful stories with others. We appreciate you taking the time to tell us about your experience.
+		</p>
+
+		{% with messages = get_flashed_messages(with_categories=true) %}
+		{% if messages %}
+		<p class="feedback-form__status is-{{ messages[0][0] }}" role="status">{{ messages[0][1] }}</p>
+		{% endif %}
+		{% endwith %}
+
+		<form id="feedback-form" class="feedback-form" action="{{ url_for('main.feedback') }}" method="POST">
+			<input name="form" type="hidden" value="feedback" />
+
+			<div class="feedback-form__row">
+				<label class="feedback-form__field">
+					<span class="feedback-form__label">First Name <span class="feedback-form__required">*</span></span>
+					<input name="firstName" type="text" required maxlength="64" autocomplete="given-name" />
+				</label>
+				<label class="feedback-form__field">
+					<span class="feedback-form__label">Last Name <span class="feedback-form__required">*</span></span>
+					<input name="lastName" type="text" required maxlength="64" autocomplete="family-name" />
+				</label>
+			</div>
+
+			<label class="feedback-form__field">
+				<span class="feedback-form__label">Email <span class="feedback-form__required">*</span></span>
+				<input name="email" type="email" required maxlength="255" autocomplete="email" placeholder="me@example.com" />
+			</label>
+
+			<label class="feedback-form__field">
+				<span class="feedback-form__label">Phone number</span>
+				<input name="phone" type="tel" maxlength="50" autocomplete="tel" />
+			</label>
+
+			<label class="feedback-form__field">
+				<span class="feedback-form__label">School / Organization Name</span>
+				<input name="organization" type="text" maxlength="200" />
+			</label>
+
+			<label class="feedback-form__field">
+				<span class="feedback-form__label">Comments <span class="feedback-form__required">*</span></span>
+				<textarea name="comments" rows="5" required minlength="20" maxlength="2000"
+					placeholder="Tell us about your trip experience"></textarea>
+			</label>
+
+			<fieldset class="feedback-form__rating">
+				<legend class="feedback-form__label">Overall, how would you rate your experience? <span class="feedback-form__required">*</span></legend>
+				<div class="feedback-form__rating-options">
+					<label class="feedback-form__rating-option">
+						<input type="radio" name="rating" value="excellent" required />
+						<span>Excellent</span>
+					</label>
+					<label class="feedback-form__rating-option">
+						<input type="radio" name="rating" value="very_good" />
+						<span>Very Good</span>
+					</label>
+					<label class="feedback-form__rating-option">
+						<input type="radio" name="rating" value="good" />
+						<span>Good</span>
+					</label>
+					<label class="feedback-form__rating-option">
+						<input type="radio" name="rating" value="fair" />
+						<span>Fair</span>
+					</label>
+					<label class="feedback-form__rating-option">
+						<input type="radio" name="rating" value="needs_improvement" />
+						<span>Needs Improvement</span>
+					</label>
+				</div>
+			</fieldset>
+
+			<div class="feedback-form__actions">
+				<button type="submit" class="feedback-form__submit">Submit</button>
+				<span class="feedback-form__status hidden" id="feedback-form-status" role="status"></span>
+			</div>
+		</form>
+	</section>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module" src="{{ url_for('static', filename='js/forms.js') }}?v=3"></script>
+{% endblock %}

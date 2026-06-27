@@ -44,14 +44,24 @@
 	</div>
 
 	<div class="bg-white rounded-lg shadow-sm p-4">
-		<div class="flex items-center space-x-2">
-			<label class="text-sm text-gray-600 whitespace-nowrap">Filter:</label>
-			<select id="statusFilter" class="admin-select block w-full md:w-auto rounded-md border-gray-300 shadow-sm focus:border-wetravel-cyan focus:ring-wetravel-cyan sm:text-sm">
-				<option value="all" {% if status_filter == 'all' %}selected{% endif %}>All</option>
-				<option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending</option>
-				<option value="approved" {% if status_filter == 'approved' %}selected{% endif %}>Approved</option>
-				<option value="rejected" {% if status_filter == 'rejected' %}selected{% endif %}>Rejected</option>
-			</select>
+		<div class="flex flex-col md:flex-row md:items-center gap-3 md:gap-6">
+			<div class="flex items-center space-x-2">
+				<label class="text-sm text-gray-600 whitespace-nowrap">Status:</label>
+				<select id="statusFilter" class="admin-select block w-full md:w-auto rounded-md border-gray-300 shadow-sm focus:border-wetravel-cyan focus:ring-wetravel-cyan sm:text-sm">
+					<option value="all" {% if status_filter == 'all' %}selected{% endif %}>All</option>
+					<option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending</option>
+					<option value="approved" {% if status_filter == 'approved' %}selected{% endif %}>Approved</option>
+					<option value="rejected" {% if status_filter == 'rejected' %}selected{% endif %}>Rejected</option>
+				</select>
+			</div>
+			<div class="flex items-center space-x-2">
+				<label class="text-sm text-gray-600 whitespace-nowrap">Source:</label>
+				<select id="sourceFilter" class="admin-select block w-full md:w-auto rounded-md border-gray-300 shadow-sm focus:border-wetravel-cyan focus:ring-wetravel-cyan sm:text-sm">
+					<option value="all" {% if source_filter == 'all' %}selected{% endif %}>All</option>
+					<option value="homepage" {% if source_filter == 'homepage' %}selected{% endif %}>Homepage</option>
+					<option value="feedback" {% if source_filter == 'feedback' %}selected{% endif %}>Post-trip Feedback</option>
+				</select>
+			</div>
 		</div>
 	</div>
 
@@ -64,6 +74,8 @@
 					{% endif %}
 					<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quote</th>
 					<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Author</th>
+					<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
+					<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rating</th>
 					<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
 					<th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
 				</tr>
@@ -91,6 +103,20 @@
 						{% endif %}
 					</td>
 					<td class="px-4 py-3 text-sm whitespace-nowrap">
+						{% if item.source == 'feedback' %}
+						<span class="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">Post-trip</span>
+						{% else %}
+						<span class="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700">Homepage</span>
+						{% endif %}
+					</td>
+					<td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+						{% if item.rating_label %}
+						{{ item.rating_label }}
+						{% else %}
+						<span class="text-gray-400">—</span>
+						{% endif %}
+					</td>
+					<td class="px-4 py-3 text-sm whitespace-nowrap">
 						{% if item.status == 'pending' %}
 						<span class="px-2 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800">Pending</span>
 						{% elif item.status == 'approved' %}
@@ -114,7 +140,7 @@
 				</tr>
 				{% else %}
 				<tr>
-					<td colspan="{% if can_reorder %}5{% else %}4{% endif %}" class="px-4 py-8 text-center text-sm text-gray-500">No testimonials found.</td>
+					<td colspan="{% if can_reorder %}7{% else %}6{% endif %}" class="px-4 py-8 text-center text-sm text-gray-500">No testimonials found.</td>
 				</tr>
 				{% endfor %}
 			</tbody>
@@ -151,6 +177,12 @@
 				</div>
 				<div class="px-4 py-5 sm:p-6 max-h-[70vh] overflow-y-auto">
 					<input type="hidden" id="testimonialId">
+					<div id="testimonialFeedbackMeta" class="hidden mb-5 rounded-md bg-blue-50 border border-blue-100 p-4 text-sm text-gray-700 space-y-1">
+						<p class="font-medium text-gray-900">Post-trip feedback details</p>
+						<p><span class="text-gray-500">Email:</span> <span id="testimonialMetaEmail">—</span></p>
+						<p><span class="text-gray-500">Phone:</span> <span id="testimonialMetaPhone">—</span></p>
+						<p><span class="text-gray-500">Rating:</span> <span id="testimonialMetaRating">—</span></p>
+					</div>
 					<div class="space-y-5">
 						<div>
 							<label for="testimonialQuote" class="block text-sm font-medium leading-6 text-gray-900 mb-2">Quote</label>
@@ -255,8 +287,22 @@
 let currentTestimonialId = null;
 let currentTestimonialAuthor = '';
 
-document.getElementById('statusFilter')?.addEventListener('change', (e) => {
-	window.location.href = `{{ url_for('admin.testimonials') }}?status=${e.target.value}`;
+function buildTestimonialsUrl() {
+	const status = document.getElementById('statusFilter')?.value || 'all';
+	const source = document.getElementById('sourceFilter')?.value || 'all';
+	const params = new URLSearchParams();
+	if (status !== 'all') params.set('status', status);
+	if (source !== 'all') params.set('source', source);
+	const query = params.toString();
+	return `{{ url_for('admin.testimonials') }}${query ? `?${query}` : ''}`;
+}
+
+document.getElementById('statusFilter')?.addEventListener('change', () => {
+	window.location.href = buildTestimonialsUrl();
+});
+
+document.getElementById('sourceFilter')?.addEventListener('change', () => {
+	window.location.href = buildTestimonialsUrl();
 });
 
 document.querySelectorAll('.testimonial-action-btn').forEach((btn) => {
@@ -371,6 +417,22 @@ function resetTestimonialForm() {
 	document.getElementById('testimonialAuthor').value = '';
 	document.getElementById('testimonialOrganization').value = '';
 	document.getElementById('testimonialStatus').value = 'approved';
+	document.getElementById('testimonialFeedbackMeta').classList.add('hidden');
+	document.getElementById('testimonialQuote').maxLength = 500;
+}
+
+function showFeedbackMeta(item) {
+	const meta = document.getElementById('testimonialFeedbackMeta');
+	if (item.source === 'feedback') {
+		document.getElementById('testimonialMetaEmail').textContent = item.email || '—';
+		document.getElementById('testimonialMetaPhone').textContent = item.phone || '—';
+		document.getElementById('testimonialMetaRating').textContent = item.rating_label || '—';
+		document.getElementById('testimonialQuote').maxLength = 2000;
+		meta.classList.remove('hidden');
+	} else {
+		meta.classList.add('hidden');
+		document.getElementById('testimonialQuote').maxLength = 500;
+	}
 }
 
 async function openTestimonialFormModal(id = null) {
@@ -391,6 +453,7 @@ async function openTestimonialFormModal(id = null) {
 			document.getElementById('testimonialAuthor').value = item.author_name;
 			document.getElementById('testimonialOrganization').value = item.organization || '';
 			document.getElementById('testimonialStatus').value = item.status;
+			showFeedbackMeta(item);
 		} catch (error) {
 			console.error(error);
 			if (typeof showToast === 'function') {

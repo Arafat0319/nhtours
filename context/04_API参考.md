@@ -74,7 +74,7 @@
 | `/admin/customers` | GET | 客户列表 |
 | `/admin/customers/<id>` | GET | 客户详情 |
 | `/admin/leads` | GET | 潜在客户列表 |
-| `/admin/customers/testimonials` | GET | Testimonials 列表（可拖拽排序 approved；⋮ 操作弹窗） |
+| `/admin/customers/testimonials` | GET | Testimonials 列表；`?status=`、`?source=homepage\|feedback` |
 | `/admin/customers/testimonials/save` | POST | 弹窗创建/更新 JSON `{ id?, quote, author_name, organization?, status }` |
 | `/admin/customers/testimonials/<id>/json` | GET | 编辑弹窗加载单条 JSON |
 | `/admin/customers/testimonials/new` | GET/POST | 新建 Testimonial（独立页，备用） |
@@ -264,6 +264,7 @@ def stripe_webhook():
 | 路由 | 方法 | 说明 |
 |------|------|------|
 | `/` | GET/POST | 正式首页（Modern V1）；POST：`form=newsletter` \| `form=testimonial`（JSON 或表单） |
+| `/feedback` | GET/POST | 行程结束 Feedback 页（私有链接）；POST：`form=feedback` |
 | `/home-classic` | GET/POST | **旧版首页存档**（经典透明导航 + Wukong 叙事）；POST 支持 newsletter |
 | `/home-preview` | GET/POST | 兼容旧链接：GET **301** 重定向至 `/`；POST 与 `/` 一致 |
 | `/our-team` | GET | Our Team 正式页 |
@@ -363,4 +364,4 @@ def stripe_webhook():
 
 ## 更新日期
 
-**最后更新**: 2026-06-24（Testimonials 部署修复、弹窗 API、前台双格式 POST）
+**最后更新**: 2026-06-25（Post-trip Feedback `/feedback`）

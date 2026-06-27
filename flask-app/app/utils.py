@@ -268,6 +268,7 @@ def handle_testimonial_submission(data):
             author_name=author_name,
             organization=organization,
             status="pending",
+            source="homepage",
         )
         db.session.add(testimonial)
         db.session.commit()
@@ -309,6 +310,114 @@ Review: {admin_url}
     send_email_via_ses(sender_email, recipient_email, subject, html_body, text_body)
 
     return True, "Thank you! Your story will appear after review."
+
+
+FEEDBACK_RATINGS = {
+    "excellent": "Excellent",
+    "very_good": "Very Good",
+    "good": "Good",
+    "fair": "Fair",
+    "needs_improvement": "Needs Improvement",
+}
+
+
+def handle_feedback_submission(data):
+    """
+    处理行程结束后的 Feedback 表单（/feedback）
+
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    first_name = (data.get("firstName") or data.get("first_name") or "").strip()
+    last_name = (data.get("lastName") or data.get("last_name") or "").strip()
+    email = (data.get("email") or "").strip()
+    phone = (data.get("phone") or "").strip() or None
+    organization = (data.get("organization") or "").strip() or None
+    quote = (data.get("comments") or data.get("quote") or "").strip()
+    rating = (data.get("rating") or "").strip()
+
+    author_name = f"{first_name} {last_name}".strip()
+
+    if not first_name:
+        return False, "Please enter your first name."
+    if not last_name:
+        return False, "Please enter your last name."
+    if not email:
+        return False, "Please enter your email."
+    if "@" not in email or len(email) > 255:
+        return False, "Please enter a valid email address."
+    if len(quote) < 20:
+        return False, "Please write at least 20 characters in your comments."
+    if len(quote) > 2000:
+        return False, "Please keep your comments under 2000 characters."
+    if len(author_name) > 128:
+        return False, "Name is too long."
+    if organization and len(organization) > 200:
+        return False, "School or organization name is too long."
+    if phone and len(phone) > 50:
+        return False, "Phone number is too long."
+    if rating not in FEEDBACK_RATINGS:
+        return False, "Please select an overall rating."
+
+    try:
+        testimonial = Testimonial(
+            quote=quote,
+            author_name=author_name,
+            organization=organization,
+            email=email,
+            phone=phone,
+            rating=rating,
+            status="pending",
+            source="feedback",
+        )
+        db.session.add(testimonial)
+        db.session.commit()
+        current_app.logger.info(f"Post-trip feedback submitted: {author_name}")
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Failed to save feedback: {str(e)}")
+        return False, "Unable to save your feedback. Please try again."
+
+    recipient_email = current_app.config.get("RECIPIENT_EMAIL", "info@nhtours.com")
+    sender_email = current_app.config.get("SENDER_EMAIL", recipient_email)
+    admin_url = url_for("admin.testimonials", _external=True)
+    rating_label = FEEDBACK_RATINGS.get(rating, rating)
+    org_line = organization or "Not provided"
+    phone_line = phone or "Not provided"
+
+    subject = f"New post-trip feedback — {author_name} ({rating_label})"
+    html_body = f"""
+    <html><body>
+        <h2>New post-trip feedback (pending review)</h2>
+        <p><strong>Name:</strong> {author_name}</p>
+        <p><strong>Email:</strong> {email}</p>
+        <p><strong>Phone:</strong> {phone_line}</p>
+        <p><strong>School / Organization:</strong> {org_line}</p>
+        <p><strong>Overall rating:</strong> {rating_label}</p>
+        <p><strong>Comments:</strong></p>
+        <p style="white-space: pre-wrap;">{quote}</p>
+        <p><strong>Submitted:</strong> {get_current_timestamp()}</p>
+        <p><a href="{admin_url}">Review in admin</a></p>
+    </body></html>
+    """
+    text_body = f"""
+New post-trip feedback (pending review)
+
+Name: {author_name}
+Email: {email}
+Phone: {phone_line}
+School / Organization: {org_line}
+Overall rating: {rating_label}
+
+Comments:
+{quote}
+
+Submitted: {get_current_timestamp()}
+Review: {admin_url}
+    """
+    send_email_via_ses(sender_email, recipient_email, subject, html_body, text_body, reply_to=email)
+
+    return True, "Thank you for your feedback! We appreciate you taking the time to share your experience."
 
 
 def get_current_timestamp():

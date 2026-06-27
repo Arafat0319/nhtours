@@ -659,8 +659,26 @@ class Testimonial(db.Model):
     organization = db.Column(db.String(200))
     status = db.Column(db.String(20), default="pending", index=True)  # pending, approved, rejected
     sort_order = db.Column(db.Integer, default=0, index=True)
+    source = db.Column(db.String(20), default="homepage", index=True)  # homepage, feedback
+    email = db.Column(db.String(255))
+    phone = db.Column(db.String(50))
+    rating = db.Column(db.String(30))  # excellent, very_good, good, fair, needs_improvement
     is_default = db.Column(db.Boolean, default=False)  # legacy column, unused
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    RATING_LABELS = {
+        "excellent": "Excellent",
+        "very_good": "Very Good",
+        "good": "Good",
+        "fair": "Fair",
+        "needs_improvement": "Needs Improvement",
+    }
+
+    @property
+    def rating_label(self):
+        if not self.rating:
+            return None
+        return self.RATING_LABELS.get(self.rating, self.rating)
 
     def __repr__(self):
         return f"<Testimonial {self.id} by {self.author_name}>"

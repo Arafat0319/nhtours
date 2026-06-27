@@ -1273,6 +1273,7 @@ def delete_lead(id):
 def testimonials():
     """首页 Testimonials 管理"""
     status_filter = request.args.get('status', 'all')
+    source_filter = request.args.get('source', 'all')
 
     if status_filter == 'approved':
         items = (
@@ -1310,13 +1311,16 @@ def testimonials():
         )
         items = approved + pending + rejected
 
+    if source_filter in ('homepage', 'feedback'):
+        items = [item for item in items if (item.source or 'homepage') == source_filter]
+
     stats = {
         'total': Testimonial.query.count(),
         'pending': Testimonial.query.filter_by(status='pending').count(),
         'approved': Testimonial.query.filter_by(status='approved').count(),
         'rejected': Testimonial.query.filter_by(status='rejected').count(),
     }
-    can_reorder = status_filter in ('all', 'approved') and stats['approved'] > 0
+    can_reorder = status_filter in ('all', 'approved') and source_filter in ('all', 'homepage') and stats['approved'] > 0
 
     return render_template(
         'admin/customers/testimonials.html',
@@ -1324,15 +1328,18 @@ def testimonials():
         testimonials=items,
         stats=stats,
         status_filter=status_filter,
+        source_filter=source_filter,
         can_reorder=can_reorder,
     )
 
 
-def _validate_testimonial_payload(data):
+def _validate_testimonial_payload(data, existing=None):
     quote = (data.get('quote') or '').strip()
     author_name = (data.get('author_name') or '').strip()
     organization = (data.get('organization') or '').strip() or None
     status = (data.get('status') or 'pending').strip()
+    source = (existing.source if existing else data.get('source') or 'homepage').strip()
+    max_quote = 2000 if source == 'feedback' else 500
 
     if status not in ('pending', 'approved', 'rejected'):
         return None, 'Invalid status.'
@@ -1340,8 +1347,8 @@ def _validate_testimonial_payload(data):
         return None, 'Author name is required.'
     if len(quote) < 20:
         return None, 'Quote must be at least 20 characters.'
-    if len(quote) > 500:
-        return None, 'Quote must be 500 characters or fewer.'
+    if len(quote) > max_quote:
+        return None, f'Quote must be {max_quote} characters or fewer.'
     if len(author_name) > 128:
         return None, 'Author name is too long.'
     if organization and len(organization) > 200:
@@ -1352,6 +1359,7 @@ def _validate_testimonial_payload(data):
         'author_name': author_name,
         'organization': organization,
         'status': status,
+        'source': source,
     }, None
 
 
@@ -1367,6 +1375,11 @@ def testimonial_json(id):
             'author_name': testimonial.author_name,
             'organization': testimonial.organization or '',
             'status': testimonial.status,
+            'source': testimonial.source or 'homepage',
+            'email': testimonial.email or '',
+            'phone': testimonial.phone or '',
+            'rating': testimonial.rating or '',
+            'rating_label': testimonial.rating_label or '',
         },
     })
 
@@ -1375,24 +1388,30 @@ def testimonial_json(id):
 @login_required
 def save_testimonial_api():
     data = request.get_json(silent=True) or {}
-    payload, error = _validate_testimonial_payload(data)
+    testimonial_id = data.get('id')
+    existing = Testimonial.query.get(int(testimonial_id)) if testimonial_id else None
+    payload, error = _validate_testimonial_payload(data, existing=existing)
     if error:
         return jsonify({'success': False, 'message': error}), 400
 
-    testimonial_id = data.get('id')
     try:
-        if testimonial_id:
-            testimonial = Testimonial.query.get_or_404(int(testimonial_id))
-            was_approved = testimonial.status == 'approved'
-            testimonial.quote = payload['quote']
-            testimonial.author_name = payload['author_name']
-            testimonial.organization = payload['organization']
-            testimonial.status = payload['status']
-            if testimonial.status == 'approved' and not was_approved:
-                assign_carousel_sort_order(testimonial)
+        if existing:
+            was_approved = existing.status == 'approved'
+            existing.quote = payload['quote']
+            existing.author_name = payload['author_name']
+            existing.organization = payload['organization']
+            existing.status = payload['status']
+            if existing.status == 'approved' and not was_approved:
+                assign_carousel_sort_order(existing)
             message = 'Testimonial updated.'
         else:
-            testimonial = Testimonial(**payload)
+            testimonial = Testimonial(
+                quote=payload['quote'],
+                author_name=payload['author_name'],
+                organization=payload['organization'],
+                status=payload['status'],
+                source='homepage',
+            )
             db.session.add(testimonial)
             db.session.flush()
             if testimonial.status == 'approved':
@@ -1416,6 +1435,7 @@ def new_testimonial():
             author_name=form.author_name.data.strip(),
             organization=(form.organization.data or '').strip() or None,
             status=form.status.data,
+            source='homepage',
         )
         db.session.add(testimonial)
         db.session.flush()
