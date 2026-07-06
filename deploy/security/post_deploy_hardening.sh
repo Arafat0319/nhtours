@@ -5,6 +5,7 @@
 set -euo pipefail
 
 DEPLOY_ROOT="${DEPLOY_ROOT:-/var/www/nhtours}"
+ROOT_ENV="$DEPLOY_ROOT/.env"
 ENV_FILE="$DEPLOY_ROOT/flask-app/.env"
 NGINX_SITE="${NGINX_SITE:-/etc/nginx/sites-enabled/nhtours}"
 SECURITY_HEADERS="include /var/www/nhtours/deploy/security/nginx-security-headers.conf;"
@@ -20,12 +21,25 @@ else
   echo "WARN: $ENV_FILE not found"
 fi
 
-# --- 2. 轮换 admin（当前用户环境，需能读 DATABASE_URL）---
+# --- 2. 轮换 admin（须与 Gunicorn 同一 DATABASE_URL：先 source 仓库根 .env）---
 cd "$DEPLOY_ROOT/flask-app"
 if [ -n "${NEW_ADMIN_USERNAME:-}" ] && [ -n "${NEW_ADMIN_PASSWORD:-}" ]; then
   set -a
   # shellcheck disable=SC1090
-  [ -f "$ENV_FILE" ] && source "$ENV_FILE"
+  if [ -f "$ROOT_ENV" ]; then
+    source "$ROOT_ENV"
+    echo "OK: loaded $ROOT_ENV"
+  elif [ -f "$ENV_FILE" ]; then
+    source "$ENV_FILE"
+    echo "OK: loaded $ENV_FILE (no root .env)"
+  else
+    echo "ERROR: no .env at $ROOT_ENV or $ENV_FILE" >&2
+    exit 1
+  fi
+  # flask-app/.env 仅补充 SECURITY_* 等，不覆盖 DATABASE_URL
+  if [ -f "$ENV_FILE" ] && [ -f "$ROOT_ENV" ]; then
+    source "$ENV_FILE"
+  fi
   set +a
   export FLASK_ENV=production
   export OLD_ADMIN_USERNAME="${OLD_ADMIN_USERNAME:-admin}"
