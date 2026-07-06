@@ -42,5 +42,6 @@ jobs:
             export FLASK_ENV=production
             cd "$DEPLOY_ROOT/flask-app"
             "$PYTHON" -m flask db upgrade
+            sudo bash "$DEPLOY_ROOT/deploy/security/setup_audit_log.sh" || true
             sudo systemctl restart nhtours || true
             echo "Deploy done."
