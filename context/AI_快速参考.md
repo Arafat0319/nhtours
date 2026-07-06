@@ -1,6 +1,6 @@
 # AI 快速参考（优先读此）
 
-> 本页是给 AI 助手的一页纸。**路由 / API / 字段以代码为准**；与 `07_开发日志` 历史条目冲突时，以 **`04_API参考.md`**、**`02_数据库设计.md`** 为准。
+> 人工文档在 **`手册/`**。路由/API/字段以代码及 **`04`**、**`02`** 为准；`07` 历史可能过时。
 
 ## 本地开发
 
@@ -10,6 +10,7 @@
 | 端口 | **8080**（`PORT` 环境变量可改；不是 5000） |
 | 后台 | `http://localhost:8080/admin/login` |
 | 迁移 | `flask db upgrade`（在 flask-app 目录，激活 venv 后） |
+| 开发 DB | 本机 **MySQL 8** 推荐（`nhtours_dev`）；轻量 UI 可用 SQLite；测支付用 MySQL |
 
 ## 代码入口
 
@@ -40,10 +41,21 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 
 | 项 | 值 |
 |----|-----|
-| 触发 | 用户明确同意后才 `git push origin main` |
-| Workflow | 根目录 `.github/workflows/deploy.yml`（SSH → Lightsail） |
-| **勿用** | `flask-app/.github/workflows/deploy.yml`（旧 EB 流程） |
-| 生产示例 | `http://54.69.40.218`，目录 `/var/www/nhtours` |
+| 正式站 | **https://nhtours.com** 、https://www.nhtours.com |
+| 后台 | https://nhtours.com/admin/login |
+| 服务器 IP | `54.69.40.218`（Lightsail 静态 IP，备用） |
+| 目录 | `/var/www/nhtours` |
+| 环境变量 | **`/var/www/nhtours/flask-app/.env`**（非仓库根 `.env`） |
+| Gunicorn | Unix socket `flask-app/nhtours.sock`（非 8000 端口） |
+| Nginx | `/etc/nginx/sites-enabled/nhtours` |
+| 触发部署 | 用户同意后才 `git push origin main` |
+| Workflow | 根目录 `.github/workflows/deploy.yml` |
+| 域名脚本 | `deploy/setup-domain.sh`；DNS 验证 `deploy/verify-dns.ps1` |
+| Stripe Webhook | `https://nhtours.com/webhooks/stripe`（**仅沙盒** Test mode；Live 延后） |
+| 邮件 SES | **未配置**；测邮件前读 `08` →「邮件/SES 上线前必读」 |
+| 安全审计 | `/var/log/nhtours/audit.log`；本地 `flask-app/instance/audit.log`；手册 [手册/安全手册.md](../手册/安全手册.md) |
+| 安全加固 | 代码已就绪、**本地测完**；生产：**push → SSH** rotate + Nginx 头 + fail2ban（见 `06`） |
+| 生产 DB | **现网** VM 本机 MySQL → **目标** Lightsail 托管 MySQL（**方案 B 待迁移**；见 `08`） |
 
 ## Testimonials / Feedback
 
@@ -54,21 +66,18 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 数据表 | `testimonials`；`source=homepage\|feedback` |
 | 后台 | `/admin/customers/testimonials` |
 
-## 协作规则（细则见专文，此处不重复）
+## 协作规则
 
-- **push 前**：更新 context（至少 `07`）→ 用户确认本地测试 → 同一 commit 含代码+文档
-- **防灾**：覆盖工作区前读 `10_防灾与备份机制.md`
-- **完整检查表**：`11_推送与上下文同步.md`
+push 前更新 context（至少 `07`）→ 用户确认 → 同一 commit push。细则：**`11`**、**`10`**、**`.cursorrules`**。
 
-## 文档地图
+## 文档索引
 
 | 问什么 | 读什么 |
 |--------|--------|
-| 有哪些路由 | `04_API参考.md`（列表可能不全，grep `@bp.route` 补） |
-| 表/字段 | `02_数据库设计.md` + `models.py` |
-| 报名/Stripe 流程 | `03_功能模块/报名付款系统.md` |
-| UI 规范 | `05_UI设计系统.md` |
-| 怎么部署 | `06_部署指南.md` |
-| 历史决策 | `07_开发日志.md`（旧条目可能过时） |
+| 路由 | `04`（不全则 grep `@bp.route`） |
+| 表/字段 | `02` + `models.py` |
+| 支付 | `03/报名付款系统.md` |
+| UI | `05` |
+| 部署 | `06` |
 
-**最后更新**: 2026-06-18
+**最后更新**: 2026-07-05（安全加固本地测完，生产部署进行中）

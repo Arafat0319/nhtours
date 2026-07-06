@@ -463,12 +463,13 @@ def generate_export_token(trip_id):
 
 
 def verify_export_token(token):
-    """验证 export token，返回 trip_id 或 None（token 永不过期）"""
+    """验证 export token，返回 trip_id 或 None"""
     if not token:
         return None
     serializer = _export_token_serializer()
+    max_age = current_app.config.get('EXPORT_TOKEN_MAX_AGE_SECONDS', 90 * 24 * 3600)
     try:
-        data = serializer.loads(token)  # 不传 max_age，永不过期
+        data = serializer.loads(token, max_age=max_age)
         return data.get('trip_id')
     except (BadSignature, SignatureExpired):
         return None

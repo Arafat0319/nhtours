@@ -22,6 +22,7 @@ npm-debug.log*
 .env.local
 .env.production
 .env.example
+手册/安全手册-凭据.local.md
 
 # 构建输出（如果有的话）
 dist/

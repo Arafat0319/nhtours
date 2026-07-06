@@ -1,25 +1,15 @@
 ---
-description: push 前按检查表同步 context 文档，与代码一并提交
+description: push 前同步 context，与代码一并提交
 alwaysApply: true
 ---
 
-# 推送前上下文（context）同步（必须遵守）
+# 推送前 context 同步
 
-配合 **local-test-before-push**：用户同意 push 之前，除代码外必须完成 context 同步。
+用户同意 push **之前**：
 
-## 必须
+1. 按 **`context/11_推送与上下文同步.md`** 更新适用文档
+2. **至少**写 `context/07_开发日志.md` 一条
+3. `git add` 含 **context/**，与代码同一 commit
+4. 禁止在 context 写密钥/真实 `.env`
 
-1. 对照 **`context/11_推送与上下文同步.md`** 中的「同步检查表」，更新所有适用文档。
-2. **每次 push 至少更新** `context/07_开发日志.md`（dated 条目：改动、原因、影响文件）。
-3. 按改动类型同步：`04_API参考.md`（路由）、`02_数据库设计.md`（模型/迁移）、`08_任务追踪.md`（功能状态）、`05_UI设计系统.md`（UI）、`06_部署指南.md`（部署）、`00_项目概览.md`（概览）等。
-4. `git add` 时**包含 context/**，与代码同一 commit（或 push 前已全部 commit 到分支）。
-5. push 完成后，在回复中**列出已更新的 context 文件**。
-
-## 禁止
-
-- 只 push 代码、长期不写 `07_开发日志` 或专项 context。
-- 在 context 中写入 secrets、真实 `.env`、私钥。
-
-## 流程顺序
-
-代码完成 → 更新 context → 用户本地测试确认 → commit（代码+context）→ push → 提醒查 Actions。
+顺序：改代码 → 更新 context → 用户确认 → commit → push

@@ -1,0 +1,38 @@
+# 在 Lightsail 上配置 nhtours.com 域名（Nginx + 可选 Certbot）
+# 手动触发：GitHub → Actions → Setup Domain → Run workflow
+# 需要 Secrets：DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY（与 Deploy 相同）
+
+name: Setup Domain
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_certbot:
+        description: 'DNS 已指向服务器后，申请 HTTPS 证书'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup domain on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            DEPLOY_ROOT=/var/www/nhtours
+            cd "$DEPLOY_ROOT"
+            git fetch origin main
+            git reset --hard origin/main
+            chmod +x deploy/setup-domain.sh
+            if [ "${{ inputs.run_certbot }}" = "true" ]; then
+              sudo bash deploy/setup-domain.sh --certbot
+            else
+              sudo bash deploy/setup-domain.sh
+            fi
+            echo "Done. Verify: curl -I -H 'Host: nhtours.com' http://127.0.0.1/"

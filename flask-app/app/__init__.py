@@ -90,6 +90,10 @@ def create_app(config_name=None):
         config_class.validate()
     
     app.config.from_object(config_class)
+
+    if config_name == 'production':
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
     
     # 初始化扩展
     db.init_app(app)

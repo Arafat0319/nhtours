@@ -7,11 +7,17 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy import or_, and_
 from app import db
 from app.admin import bp
-from app.admin.forms import LoginForm, TripForm, CityForm, ClientForm, TripBasicsForm, TripDescriptionForm, TripPackagesForm, TripAddonsForm, TripParticipantForm, TripCouponForm, EditBookingForm, TestimonialForm
+from app.admin.forms import LoginForm, ChangePasswordForm, TripForm, CityForm, ClientForm, TripBasicsForm, TripDescriptionForm, TripPackagesForm, TripAddonsForm, TripParticipantForm, TripCouponForm, EditBookingForm, TestimonialForm
 from app.models import User, Trip, City, Client, Lead, Testimonial, TripPackage, TripAddOn, CustomQuestion, DiscountCode, Booking, BookingParticipant, BookingAddOn, BookingPackage, Payment, Message, InstallmentPayment
 from app.payments import create_checkout_session
 from app.utils import save_image, send_email_via_ses, generate_installment_token, generate_export_token, verify_export_token
 from app.testimonial_data import assign_carousel_sort_order
+from app.security_audit import (
+    is_login_rate_limited,
+    record_login_failure,
+    record_login_success,
+    record_logout,
+)
 
 
 def get_trip_counts():
@@ -147,12 +153,19 @@ def login():
     
     form = LoginForm()
     if form.validate_on_submit():
-        user = User.query.filter_by(username=form.username.data).first()
+        if is_login_rate_limited():
+            flash('登录尝试过多，请稍后再试。')
+            return redirect(url_for('admin.login'))
+
+        username = (form.username.data or '').strip()
+        user = User.query.filter_by(username=username).first()
         if user is None or not user.check_password(form.password.data):
+            record_login_failure(username)
             flash('用户名或密码错误')
             return redirect(url_for('admin.login'))
         
         login_user(user, remember=form.remember_me.data)
+        record_login_success(user.username)
         next_page = request.args.get('next')
         if not next_page or not next_page.startswith('/'):
             next_page = url_for('admin.trips')
@@ -162,8 +175,25 @@ def login():
 
 @bp.route('/logout')
 def logout():
+    if current_user.is_authenticated:
+        record_logout(current_user.username)
     logout_user()
     return redirect(url_for('admin.login'))
+
+
+@bp.route('/account/password', methods=['GET', 'POST'])
+@login_required
+def change_password():
+    form = ChangePasswordForm()
+    if form.validate_on_submit():
+        if not current_user.check_password(form.current_password.data):
+            flash('当前密码不正确', 'error')
+            return redirect(url_for('admin.change_password'))
+        current_user.set_password(form.new_password.data)
+        db.session.commit()
+        flash('密码已更新', 'success')
+        return redirect(url_for('admin.trips'))
+    return render_template('admin/change_password.html', title='修改密码', form=form)
 
 @bp.route('/')
 @bp.route('/dashboard')

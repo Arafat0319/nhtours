@@ -2,13 +2,30 @@ from flask_wtf import FlaskForm
 from flask_wtf.file import FileField, FileAllowed
 from wtforms import StringField, PasswordField, BooleanField, SubmitField, FloatField, DateField, TextAreaField, SelectMultipleField, widgets, IntegerField, SelectField
 
-from wtforms.validators import DataRequired, Length, Optional
+from wtforms.validators import DataRequired, Length, Optional, ValidationError
 
 class LoginForm(FlaskForm):
     username = StringField('用户名', validators=[DataRequired()])
     password = PasswordField('密码', validators=[DataRequired()])
     remember_me = BooleanField('记住我')
     submit = SubmitField('登录')
+
+
+class ChangePasswordForm(FlaskForm):
+    current_password = PasswordField('当前密码', validators=[DataRequired()])
+    new_password = PasswordField(
+        '新密码',
+        validators=[DataRequired(), Length(min=12, message='至少 12 个字符')],
+    )
+    new_password2 = PasswordField(
+        '确认新密码',
+        validators=[DataRequired(), Length(min=12)],
+    )
+    submit = SubmitField('保存')
+
+    def validate_new_password2(self, field):
+        if field.data != self.new_password.data:
+            raise ValidationError('两次输入的新密码不一致')
 
 
 class TripBasicsForm(FlaskForm):

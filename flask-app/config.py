@@ -14,6 +14,19 @@ load_dotenv(_BASE_DIR / ".env")
 load_dotenv(_BASE_DIR.parent / ".env")
 
 
+def _resolve_audit_log_path(default=None):
+    """相对路径一律相对于 flask-app 目录，避免从仓库根目录 run.py 时写错位置。"""
+    raw = os.environ.get("SECURITY_AUDIT_LOG", "").strip()
+    if raw:
+        p = Path(raw)
+        if not p.is_absolute():
+            p = _BASE_DIR / p
+        return str(p)
+    if default:
+        return default
+    return str(_BASE_DIR / "instance" / "audit.log")
+
+
 class Config:
     """基础配置类"""
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
@@ -41,6 +54,14 @@ class Config:
 
     # Excel 内置连接：本地运行时 URL 为 localhost，Excel 无法访问。设置此为可访问的 API 基地址（部署域名或隧道如 cloudflared）
     EXCEL_REFRESH_BASE_URL = os.environ.get('EXCEL_REFRESH_BASE_URL', '').rstrip('/')
+
+    # 安全审计与告警（路径见 _resolve_audit_log_path）
+    SECURITY_AUDIT_LOG = _resolve_audit_log_path()
+    SECURITY_ALERTS_ENABLED = os.environ.get('SECURITY_ALERTS_ENABLED', 'true').lower() in ('1', 'true', 'yes')
+    SECURITY_ALERT_EMAIL = os.environ.get('SECURITY_ALERT_EMAIL', '')
+    SECURITY_ALERT_DEDUP_SECONDS = int(os.environ.get('SECURITY_ALERT_DEDUP_SECONDS', '3600'))
+    EXPORT_TOKEN_MAX_AGE_SECONDS = int(os.environ.get('EXPORT_TOKEN_MAX_AGE_SECONDS', str(90 * 24 * 3600)))
+    BASE_URL = os.environ.get('BASE_URL', '').rstrip('/')
     
     # Flask配置
     DEBUG = False
@@ -55,6 +76,16 @@ class DevelopmentConfig(Config):
 class ProductionConfig(Config):
     """生产环境配置"""
     DEBUG = False
+
+    # 生产默认绝对路径（.env 可覆盖 SECURITY_AUDIT_LOG）
+    SECURITY_AUDIT_LOG = _resolve_audit_log_path("/var/log/nhtours/audit.log")
+
+    SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    REMEMBER_COOKIE_SECURE = True
+    REMEMBER_COOKIE_HTTPONLY = True
+    REMEMBER_COOKIE_SAMESITE = 'Lax'
     
     @classmethod
     def validate(cls):

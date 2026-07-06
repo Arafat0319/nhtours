@@ -1,0 +1,9 @@
+/var/log/nhtours/audit.log {
+    daily
+    rotate 90
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 640 www-data www-data
+}

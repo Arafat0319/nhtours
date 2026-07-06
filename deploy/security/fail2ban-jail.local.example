@@ -1,0 +1,19 @@
+[DEFAULT]
+bantime = 1h
+findtime = 10m
+maxretry = 5
+
+[sshd]
+enabled = true
+port = ssh
+logpath = %(sshd_log)s
+backend = %(sshd_backend)s
+
+# 若 Nginx 对 /admin/login 返回 403/429，可启用（需自定义 filter）
+# [nginx-admin-login]
+# enabled = false
+# port = http,https
+# filter = nginx-admin-login
+# logpath = /var/log/nginx/access.log
+# maxretry = 10
+# findtime = 5m

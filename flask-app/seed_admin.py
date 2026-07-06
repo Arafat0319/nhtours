@@ -13,13 +13,15 @@ def seed_admin():
 
         # Create admin user
         # In a real scenario, password should be from env or input
-        admin = User(username='admin')
-        admin.set_password('admin123') # Default password
+        admin = User(username=os.environ.get('ADMIN_USERNAME', 'admin'))
+        pw = os.environ.get('ADMIN_INITIAL_PASSWORD')
+        if not pw:
+            print('Set ADMIN_INITIAL_PASSWORD env var to create admin (min 12 chars).')
+            return
+        admin.set_password(pw)
         db.session.add(admin)
         db.session.commit()
-        print('Admin user created successfully.')
-        print('Username: admin')
-        print('Password: admin123')
+        print(f'Admin user created: {admin.username}')
 
 if __name__ == '__main__':
     seed_admin()
