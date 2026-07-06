@@ -47,6 +47,10 @@ if [ -n "${NEW_ADMIN_USERNAME:-}" ] && [ -n "${NEW_ADMIN_PASSWORD:-}" ]; then
   echo "OK: admin credentials rotated"
 else
   echo "SKIP: NEW_ADMIN_USERNAME/PASSWORD not set — rotate manually if still on admin123"
+  if [ "${ROTATE_REQUIRED:-}" = "1" ]; then
+    echo "ERROR: ROTATE_REQUIRED=1 but credentials missing (check GitHub Secrets)" >&2
+    exit 1
+  fi
 fi
 
 # --- 3. 审计日志（需 root）---

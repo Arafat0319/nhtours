@@ -3,28 +3,47 @@
 #
 # Secrets（Settings → Secrets → Actions）：
 #   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY  （与 Deploy 相同）
-#   NEW_ADMIN_USERNAME, NEW_ADMIN_PASSWORD    （轮换凭据，勿写入 Git）
+#   NEW_ADMIN_PASSWORD                          （新管理员密码，≥12 位）
+#
+# 用户名在 Run workflow 弹窗里填写（默认 nh_ops_947d43）
 
 name: Security Hardening
 
 on:
   workflow_dispatch:
+    inputs:
+      admin_username:
+        description: 新管理员用户名
+        required: true
+        default: nh_ops_947d43
+        type: string
 
 jobs:
   harden:
     runs-on: ubuntu-latest
     steps:
+      - name: Check NEW_ADMIN_PASSWORD secret
+        run: |
+          if [ -z "${{ secrets.NEW_ADMIN_PASSWORD }}" ]; then
+            echo "::error::未配置 GitHub Secret「NEW_ADMIN_PASSWORD」。"
+            echo "请到 Settings → Secrets and variables → Actions → New repository secret"
+            echo "Name: NEW_ADMIN_PASSWORD  Value: 见本地 手册/安全手册-凭据.local.md"
+            exit 1
+          fi
+          echo "NEW_ADMIN_PASSWORD secret 已配置"
+
       - name: Run post-deploy hardening on server
         uses: appleboy/ssh-action@v1.0.3
         env:
-          NEW_ADMIN_USERNAME: ${{ secrets.NEW_ADMIN_USERNAME }}
+          NEW_ADMIN_USERNAME: ${{ inputs.admin_username }}
           NEW_ADMIN_PASSWORD: ${{ secrets.NEW_ADMIN_PASSWORD }}
           OLD_ADMIN_USERNAME: admin
+          ROTATE_REQUIRED: "1"
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: NEW_ADMIN_USERNAME,NEW_ADMIN_PASSWORD,OLD_ADMIN_USERNAME
+          envs: NEW_ADMIN_USERNAME,NEW_ADMIN_PASSWORD,OLD_ADMIN_USERNAME,ROTATE_REQUIRED
           script: |
             set -e
             DEPLOY_ROOT=/var/www/nhtours
@@ -32,7 +51,9 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             chmod +x deploy/security/post_deploy_hardening.sh
-            export NEW_ADMIN_USERNAME='${{ secrets.NEW_ADMIN_USERNAME }}'
-            export NEW_ADMIN_PASSWORD='${{ secrets.NEW_ADMIN_PASSWORD }}'
-            export OLD_ADMIN_USERNAME='admin'
+            if [ -z "$NEW_ADMIN_USERNAME" ] || [ -z "$NEW_ADMIN_PASSWORD" ]; then
+              echo "ERROR: NEW_ADMIN_USERNAME or NEW_ADMIN_PASSWORD empty on server" >&2
+              exit 1
+            fi
+            echo "Rotate target user: $NEW_ADMIN_USERNAME"
             bash deploy/security/post_deploy_hardening.sh
