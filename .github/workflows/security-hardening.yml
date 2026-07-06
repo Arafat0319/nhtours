@@ -1,0 +1,35 @@
+# 生产安全加固：Deploy 后手动触发一次
+# GitHub → Actions → Security Hardening → Run workflow
+#
+# Secrets（Settings → Secrets → Actions）：
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY  （与 Deploy 相同）
+#   NEW_ADMIN_USERNAME, NEW_ADMIN_PASSWORD    （轮换凭据，勿写入 Git）
+
+name: Security Hardening
+
+on:
+  workflow_dispatch:
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run post-deploy hardening on server
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          NEW_ADMIN_USERNAME: ${{ secrets.NEW_ADMIN_USERNAME }}
+          NEW_ADMIN_PASSWORD: ${{ secrets.NEW_ADMIN_PASSWORD }}
+          OLD_ADMIN_USERNAME: admin
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: NEW_ADMIN_USERNAME,NEW_ADMIN_PASSWORD,OLD_ADMIN_USERNAME
+          script: |
+            set -e
+            DEPLOY_ROOT=/var/www/nhtours
+            cd "$DEPLOY_ROOT"
+            git fetch origin main
+            git reset --hard origin/main
+            chmod +x deploy/security/post_deploy_hardening.sh
+            sudo -E bash deploy/security/post_deploy_hardening.sh
