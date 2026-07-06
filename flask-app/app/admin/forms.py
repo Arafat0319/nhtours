@@ -11,23 +11,6 @@ class LoginForm(FlaskForm):
     submit = SubmitField('登录')
 
 
-class ChangePasswordForm(FlaskForm):
-    current_password = PasswordField('当前密码', validators=[DataRequired()])
-    new_password = PasswordField(
-        '新密码',
-        validators=[DataRequired(), Length(min=12, message='至少 12 个字符')],
-    )
-    new_password2 = PasswordField(
-        '确认新密码',
-        validators=[DataRequired(), Length(min=12)],
-    )
-    submit = SubmitField('保存')
-
-    def validate_new_password2(self, field):
-        if field.data != self.new_password.data:
-            raise ValidationError('两次输入的新密码不一致')
-
-
 class TripBasicsForm(FlaskForm):
     title = StringField('Trip Title', validators=[DataRequired(), Length(max=128)])
     slug = StringField('URL Slug', validators=[DataRequired(), Length(max=128)])

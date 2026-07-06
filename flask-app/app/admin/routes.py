@@ -7,7 +7,7 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy import or_, and_
 from app import db
 from app.admin import bp
-from app.admin.forms import LoginForm, ChangePasswordForm, TripForm, CityForm, ClientForm, TripBasicsForm, TripDescriptionForm, TripPackagesForm, TripAddonsForm, TripParticipantForm, TripCouponForm, EditBookingForm, TestimonialForm
+from app.admin.forms import LoginForm, TripForm, CityForm, ClientForm, TripBasicsForm, TripDescriptionForm, TripPackagesForm, TripAddonsForm, TripParticipantForm, TripCouponForm, EditBookingForm, TestimonialForm
 from app.models import User, Trip, City, Client, Lead, Testimonial, TripPackage, TripAddOn, CustomQuestion, DiscountCode, Booking, BookingParticipant, BookingAddOn, BookingPackage, Payment, Message, InstallmentPayment
 from app.payments import create_checkout_session
 from app.utils import save_image, send_email_via_ses, generate_installment_token, generate_export_token, verify_export_token
@@ -180,20 +180,6 @@ def logout():
     logout_user()
     return redirect(url_for('admin.login'))
 
-
-@bp.route('/account/password', methods=['GET', 'POST'])
-@login_required
-def change_password():
-    form = ChangePasswordForm()
-    if form.validate_on_submit():
-        if not current_user.check_password(form.current_password.data):
-            flash('当前密码不正确', 'error')
-            return redirect(url_for('admin.change_password'))
-        current_user.set_password(form.new_password.data)
-        db.session.commit()
-        flash('密码已更新', 'success')
-        return redirect(url_for('admin.trips'))
-    return render_template('admin/change_password.html', title='修改密码', form=form)
 
 @bp.route('/')
 @bp.route('/dashboard')
