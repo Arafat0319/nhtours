@@ -32,4 +32,7 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             chmod +x deploy/security/post_deploy_hardening.sh
-            sudo -E bash deploy/security/post_deploy_hardening.sh
+            export NEW_ADMIN_USERNAME='${{ secrets.NEW_ADMIN_USERNAME }}'
+            export NEW_ADMIN_PASSWORD='${{ secrets.NEW_ADMIN_PASSWORD }}'
+            export OLD_ADMIN_USERNAME='admin'
+            bash deploy/security/post_deploy_hardening.sh
