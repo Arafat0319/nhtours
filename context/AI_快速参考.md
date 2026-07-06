@@ -53,7 +53,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 域名脚本 | `deploy/setup-domain.sh`；DNS 验证 `deploy/verify-dns.ps1` |
 | Stripe Webhook | `https://nhtours.com/webhooks/stripe`（**仅沙盒** Test mode；Live 延后） |
 | 邮件 SES | **未配置**；测邮件前读 `08` →「邮件/SES 上线前必读」 |
-| 安全审计 | `/var/log/nhtours/audit.log`；本地 `flask-app/instance/audit.log`；手册 [手册/安全手册.md](../手册/安全手册.md) |
+| 安全审计 | `/var/log/nhtours/audit.log`；查看 **`nh-audit`** / `nh-audit -f` |
 | 安全加固 | 代码已就绪、**本地测完**；生产：**push → SSH** rotate + Nginx 头 + fail2ban（见 `06`） |
 | 生产 DB | **现网** VM 本机 MySQL → **目标** Lightsail 托管 MySQL（**方案 B 待迁移**；见 `08`） |
 
