@@ -5,7 +5,7 @@ Flask应用工厂
 
 import re
 from datetime import datetime
-from flask import Flask, render_template, request, flash, redirect
+from flask import Flask, render_template, request, flash, redirect, make_response
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager
@@ -94,6 +94,22 @@ def create_app(config_name=None):
     if config_name == 'production':
         from werkzeug.middleware.proxy_fix import ProxyFix
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+    @app.before_request
+    def redirect_trailing_slash():
+        """统一页面 URL：GET/HEAD 的尾部斜杠永久重定向到无斜杠版本。"""
+        if request.method not in ('GET', 'HEAD') or request.path == '/':
+            return None
+        if not request.path.endswith('/'):
+            return None
+        # 保留显式定义为目录式的规范路由（目前为 /admin/），避免重定向循环。
+        if request.url_rule is not None and request.url_rule.rule.endswith('/'):
+            return None
+
+        target = request.path.rstrip('/')
+        if request.query_string:
+            target = f"{target}?{request.query_string.decode('latin-1')}"
+        return redirect(target, code=308)
     
     # 初始化扩展
     db.init_app(app)
@@ -148,7 +164,10 @@ def create_app(config_name=None):
     # 注册错误处理器
     @app.errorhandler(404)
     def not_found_error(error):
-        return render_template('404.html'), 404
+        response = make_response(render_template('404.html'), 404)
+        # 避免 Safari 等浏览器长期缓存迁移期间的旧 404。
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
+        return response
 
     @app.errorhandler(500)
     def internal_error(error):

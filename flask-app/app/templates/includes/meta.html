@@ -10,6 +10,10 @@
 <meta content="Nexus Horizons" name="author" />
 <meta content="index, follow" name="robots" />
 
+{# 规范 URL：统一无尾部斜杠，避免旧书签 / 浏览器补全导致 404 #}
+{% set canonical_path = request.path.rstrip('/') if request.path != '/' else '/' %}
+<link rel="canonical" href="https://nhtours.com{{ canonical_path }}" />
+
 {# Open Graph标签 - 使用单独的block，子模板可以覆盖 #}
 <meta content="{% block og_title %}{% endblock %}" property="og:title" />
 <meta content="{% block og_description %}{% endblock %}" property="og:description" />
