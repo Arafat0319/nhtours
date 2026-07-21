@@ -161,6 +161,7 @@ def main() -> None:
     parser.add_argument("-n", "--lines", type=int, default=30, help="Number of lines (default: 30)")
     parser.add_argument("-f", "--follow", action="store_true", help="Follow new entries (like tail -f)")
     parser.add_argument(
+        "-a",
         "--all",
         action="store_true",
         help="Include rotated archives (.1, .2.gz, …); take last -n across all",

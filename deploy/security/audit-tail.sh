@@ -1,6 +1,6 @@
 #!/bin/bash
 # Pretty-print security audit log. Install: setup_audit_log.sh → nh-audit
-# Usage: nh-audit | nh-audit -f | nh-audit -n 50 | nh-audit --all
+# Usage: nh-audit | nh-audit -f | nh-audit -n 50 | nh-audit --all | nh-audit -a
 # Local: AUDIT_LOG=flask-app/instance/audit.log nh-audit
 set -euo pipefail
 
