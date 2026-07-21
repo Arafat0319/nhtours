@@ -65,19 +65,19 @@
 		</div>
 	</div>
 
-	<div class="bg-white rounded-lg shadow-sm overflow-x-auto">
-		<table class="min-w-full divide-y divide-gray-200">
+	<div class="bg-white rounded-lg shadow-sm overflow-hidden">
+		<table class="w-full table-fixed divide-y divide-gray-200">
 			<thead class="bg-gray-50">
 				<tr>
 					{% if can_reorder %}
 					<th class="w-10 px-2 py-3" aria-label="Drag to reorder"></th>
 					{% endif %}
-					<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[16rem]">Comments</th>
-					<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[10rem]">Contact</th>
-					<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
-					<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rating</th>
-					<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-					<th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+					<th class="{% if can_reorder %}w-[38%]{% else %}w-[42%]{% endif %} px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Comments</th>
+					<th class="w-[22%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
+					<th class="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
+					<th class="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rating</th>
+					<th class="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+					<th class="w-[10%] px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
 				</tr>
 			</thead>
 			<tbody id="testimonialsTableBody" class="bg-white divide-y divide-gray-200">
@@ -94,17 +94,20 @@
 					</td>
 					{% endif %}
 					<td class="px-4 py-3 text-sm text-gray-700">
-						<p class="whitespace-pre-wrap break-words leading-relaxed">{{ item.quote }}</p>
+						<p class="admin-clamp-text line-clamp-3 whitespace-pre-wrap break-words leading-relaxed">{{ item.quote }}</p>
+						{% if item.quote and item.quote|length > 140 %}
+						<button type="button" class="admin-clamp-toggle mt-1 text-xs font-medium text-wetravel-cyan hover:underline">Show more</button>
+						{% endif %}
 					</td>
-					<td class="px-4 py-3 text-sm text-gray-700">
-						<div class="font-medium text-gray-900">{{ item.author_name }}</div>
+					<td class="px-4 py-3 text-sm text-gray-700 overflow-hidden">
+						<div class="font-medium text-gray-900 truncate" title="{{ item.author_name }}">{{ item.author_name }}</div>
 						{% if item.organization %}
-						<div class="text-gray-600 mt-1">{{ item.organization }}</div>
+						<div class="text-gray-600 mt-1 truncate" title="{{ item.organization }}">{{ item.organization }}</div>
 						{% endif %}
 						{% if item.source == 'feedback' %}
 						<dl class="mt-2 space-y-1 text-xs text-gray-600">
 							{% if item.email %}
-							<div><span class="text-gray-500">Email:</span> <a href="mailto:{{ item.email }}" class="text-wetravel-cyan hover:underline break-all">{{ item.email }}</a></div>
+							<div class="truncate"><span class="text-gray-500">Email:</span> <a href="mailto:{{ item.email }}" class="text-wetravel-cyan hover:underline" title="{{ item.email }}">{{ item.email }}</a></div>
 							{% endif %}
 							{% if item.phone %}
 							<div><span class="text-gray-500">Phone:</span> {{ item.phone }}</div>
@@ -155,6 +158,7 @@
 				{% endfor %}
 			</tbody>
 		</table>
+		{% include 'admin/includes/pagination.html' %}
 	</div>
 </div>
 
@@ -322,6 +326,15 @@ document.querySelectorAll('.testimonial-action-btn').forEach((btn) => {
 			btn.dataset.author || 'Unknown',
 			btn.dataset.status || 'pending'
 		);
+	});
+});
+
+document.querySelectorAll('.admin-clamp-toggle').forEach((btn) => {
+	btn.addEventListener('click', () => {
+		const textEl = btn.previousElementSibling;
+		if (!textEl) return;
+		const isClamped = textEl.classList.toggle('line-clamp-3');
+		btn.textContent = isClamped ? 'Show more' : 'Show less';
 	});
 });
 

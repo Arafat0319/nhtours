@@ -22,73 +22,66 @@
     </div>
 
     <!-- Customers Table -->
-    <div class="bg-white shadow overflow-hidden sm:rounded-lg max-h-[calc(100vh-250px)] overflow-y-auto overflow-x-auto">
-        <table class="min-w-full divide-y divide-gray-200" style="min-width: 800px;">
+    <div class="bg-white shadow overflow-hidden sm:rounded-lg">
+        <table class="w-full table-fixed divide-y divide-gray-200">
             <thead class="bg-gray-50">
                 <tr>
-                    <th scope="col"
-                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                    <th scope="col" class="w-[26%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Name / Email
                     </th>
-                    <th scope="col"
-                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                    <th scope="col" class="w-[30%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Trip
                     </th>
-                    <th scope="col"
-                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                        Collected Amount
+                    <th scope="col" class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Collected
                     </th>
-                    <th scope="col"
-                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                    <th scope="col" class="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Status
                     </th>
-                    <th scope="col"
-                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                        Date Created
+                    <th scope="col" class="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Created
                     </th>
-                    <th scope="col"
-                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                    <th scope="col" class="w-[12%] pl-4 pr-5 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Actions
                     </th>
                 </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
                 {% for client in clients %}
-                <tr>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm font-medium text-gray-900">{{ client.name }}</div>
-                        <div class="text-sm text-gray-500">{{ client.email }}</div>
+                <tr class="align-top">
+                    <td class="px-4 py-3 overflow-hidden">
+                        <div class="text-sm font-medium text-gray-900 truncate" title="{{ client.name }}">{{ client.name }}</div>
+                        <div class="text-sm text-gray-500 truncate" title="{{ client.email }}">{{ client.email }}</div>
                     </td>
-                    <td class="px-6 py-4">
+                    <td class="px-4 py-3">
                         {% set stats = client_stats.get(client.id, {}) %}
                         {% set trips = stats.get('trips', []) %}
                         {% if trips %}
-                            <div class="text-sm text-gray-900 max-w-xs">
-                                {% for trip_name in trips %}
-                                    <span class="inline-block">{{ trip_name }}{% if not loop.last %}, {% endif %}</span>
-                                {% endfor %}
-                            </div>
+                            {% set trips_text = trips|join(', ') %}
+                            <p class="admin-clamp-text line-clamp-2 text-sm text-gray-900 break-words">{{ trips_text }}</p>
+                            {% if trips_text|length > 80 %}
+                            <button type="button" class="admin-clamp-toggle mt-1 text-xs font-medium text-wetravel-cyan hover:underline">Show more</button>
+                            {% endif %}
                         {% else %}
                             <div class="text-sm text-gray-500">-</div>
                         {% endif %}
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
+                    <td class="px-4 py-3 whitespace-nowrap">
                         {% set stats = client_stats.get(client.id, {}) %}
                         {% set collected = stats.get('collected_amount', 0.0) %}
                         <div class="text-sm text-wetravel-cyan font-bold">${{ "%.2f"|format(collected) }}</div>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <span
-                            class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                    <td class="px-4 py-3 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
                             Booked
                         </span>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 min-w-[120px]">
+                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                         {{ client.created_at.strftime('%Y/%m/%d') }}
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button type="button" 
-                            class="text-red-600 hover:text-red-900 delete-customer-btn" 
+                    <td class="pl-4 pr-5 py-3 whitespace-nowrap text-sm font-medium text-right">
+                        <button type="button"
+                            class="text-red-600 hover:text-red-900 delete-customer-btn"
                             data-client-id="{{ client.id }}"
                             data-client-name="{{ client.name }}">
                             Delete
@@ -104,6 +97,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        {% include 'admin/includes/pagination.html' %}
     </div>
 </div>
 
@@ -139,6 +133,16 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.admin-clamp-toggle').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const textEl = btn.previousElementSibling;
+            if (!textEl) return;
+            const expanded = textEl.classList.toggle('is-expanded');
+            textEl.classList.toggle('line-clamp-2', !expanded);
+            btn.textContent = expanded ? 'Show less' : 'Show more';
+        });
+    });
+
     const deleteModal = document.getElementById('deleteModal');
     const deleteCustomerName = document.getElementById('deleteCustomerName');
     const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');

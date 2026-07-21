@@ -1,0 +1,31 @@
+{# Expects: pagination (Flask-SQLAlchemy Pagination). Preserves current query args except page. #}
+{% if pagination and pagination.pages > 1 %}
+{% set page_args = request.args.to_dict() %}
+{% set _ = page_args.pop('page', None) %}
+<nav class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3 border-t border-gray-200 bg-white" aria-label="Pagination">
+	<p class="text-sm text-gray-500">
+		Page <span class="font-medium text-gray-700">{{ pagination.page }}</span>
+		of <span class="font-medium text-gray-700">{{ pagination.pages }}</span>
+		<span class="text-gray-400">·</span>
+		{{ pagination.total }} total
+	</p>
+	<div class="flex items-center gap-2">
+		{% if pagination.has_prev %}
+		<a href="{{ url_for(request.endpoint, page=pagination.prev_num, **page_args) }}"
+			class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50">
+			Previous
+		</a>
+		{% else %}
+		<span class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-gray-200 text-gray-300 bg-gray-50 cursor-not-allowed">Previous</span>
+		{% endif %}
+		{% if pagination.has_next %}
+		<a href="{{ url_for(request.endpoint, page=pagination.next_num, **page_args) }}"
+			class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50">
+			Next
+		</a>
+		{% else %}
+		<span class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-gray-200 text-gray-300 bg-gray-50 cursor-not-allowed">Next</span>
+		{% endif %}
+	</div>
+</nav>
+{% endif %}

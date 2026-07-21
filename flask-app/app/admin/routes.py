@@ -4,7 +4,7 @@ import os
 from flask import render_template, redirect, url_for, flash, request, jsonify, current_app, send_file
 from flask_login import login_user, logout_user, current_user, login_required
 from sqlalchemy.orm import joinedload
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, case
 from app import db
 from app.admin import bp
 from app.admin.forms import LoginForm, TripForm, CityForm, ClientForm, TripBasicsForm, TripDescriptionForm, TripPackagesForm, TripAddonsForm, TripParticipantForm, TripCouponForm, EditBookingForm, TestimonialForm
@@ -1179,73 +1179,128 @@ def delete_city(id):
     return redirect(url_for('admin.cities'))
 
 
+ADMIN_LIST_PER_PAGE = 20
+
+
+def _parse_lead_interest_list(lead):
+    """解析 Lead.interest 为列表，挂到 lead.interest_list。"""
+    if lead.interest:
+        try:
+            interest_data = json.loads(lead.interest)
+            if isinstance(interest_data, list):
+                lead.interest_list = interest_data
+            else:
+                lead.interest_list = [interest_data]
+        except (json.JSONDecodeError, TypeError):
+            if ',' in lead.interest:
+                lead.interest_list = [item.strip() for item in lead.interest.split(',')]
+            else:
+                lead.interest_list = [lead.interest.strip()]
+    else:
+        lead.interest_list = []
+
+
+def _apply_testimonial_source_filter(query, source_filter):
+    """source=homepage 时把空 source 视为 homepage。"""
+    if source_filter == 'homepage':
+        return query.filter(
+            or_(
+                Testimonial.source == 'homepage',
+                Testimonial.source.is_(None),
+                Testimonial.source == '',
+            )
+        )
+    if source_filter == 'feedback':
+        return query.filter(Testimonial.source == 'feedback')
+    return query
+
+
 @bp.route('/customers')
 @login_required
 def customers():
-    clients = Client.query.order_by(Client.created_at.desc()).all()
-    
-    # Calculate client stats (trips and collected amount)
+    page = request.args.get('page', 1, type=int)
+    pagination = (
+        Client.query.order_by(Client.created_at.desc())
+        .paginate(page=page, per_page=ADMIN_LIST_PER_PAGE, error_out=False)
+    )
+    clients = pagination.items
+
+    # Calculate client stats (trips and collected amount) for current page only
     client_stats = {}
     for client in clients:
         bookings = client.bookings.all() if client.bookings else []
-        
-        # Calculate total collected amount
+
         total_collected = sum(b.amount_paid or 0.0 for b in bookings)
-        
-        # Get unique trip names
+
         trip_names = []
         seen_trip_ids = set()
         for booking in bookings:
             if booking.trip and booking.trip.id not in seen_trip_ids:
                 trip_names.append(booking.trip.title)
                 seen_trip_ids.add(booking.trip.id)
-        
+
         client_stats[client.id] = {
             'trips': trip_names,
             'collected_amount': total_collected
         }
-    
-    # Using the new template
-    return render_template('admin/customers/customers.html', 
-                         title='Customers', 
-                         clients=clients,
-                         client_stats=client_stats)
+
+    return render_template(
+        'admin/customers/customers.html',
+        title='Customers',
+        clients=clients,
+        client_stats=client_stats,
+        pagination=pagination,
+    )
 
 
 @bp.route('/customers/leads')
 @login_required
 def leads():
-    leads = Lead.query.order_by(Lead.created_at.desc()).all()
-    
-    # 解析 interest 字段为列表格式
-    for lead in leads:
-        if lead.interest:
-            try:
-                # 尝试解析为 JSON
-                interest_data = json.loads(lead.interest)
-                if isinstance(interest_data, list):
-                    lead.interest_list = interest_data
-                else:
-                    lead.interest_list = [interest_data]
-            except (json.JSONDecodeError, TypeError):
-                # 如果不是 JSON，尝试按逗号分割
-                if ',' in lead.interest:
-                    lead.interest_list = [item.strip() for item in lead.interest.split(',')]
-                else:
-                    lead.interest_list = [lead.interest.strip()]
-        else:
-            lead.interest_list = []
-    
-    # 计算统计数据
+    page = request.args.get('page', 1, type=int)
+    status_filter = request.args.get('status', 'all')
+    search_q = (request.args.get('q') or '').strip()
+
+    query = Lead.query
+    if status_filter == 'new':
+        query = query.filter(or_(Lead.status == 'new', Lead.status.is_(None), Lead.status == ''))
+    elif status_filter in ('replied', 'converted', 'archived'):
+        query = query.filter_by(status=status_filter)
+
+    if search_q:
+        like = f'%{search_q}%'
+        query = query.filter(
+            or_(
+                Lead.name.ilike(like),
+                Lead.email.ilike(like),
+                Lead.phone.ilike(like),
+                Lead.organization.ilike(like),
+            )
+        )
+
+    pagination = query.order_by(Lead.created_at.desc()).paginate(
+        page=page, per_page=ADMIN_LIST_PER_PAGE, error_out=False
+    )
+    leads_list = pagination.items
+    for lead in leads_list:
+        _parse_lead_interest_list(lead)
+
     stats = {
-        'total': len(leads),
-        'new': len([l for l in leads if l.status == 'new' or not l.status]),
-        'replied': len([l for l in leads if l.status == 'replied']),
-        'converted': len([l for l in leads if l.status == 'converted']),
-        'archived': len([l for l in leads if l.status == 'archived'])
+        'total': Lead.query.count(),
+        'new': Lead.query.filter(or_(Lead.status == 'new', Lead.status.is_(None), Lead.status == '')).count(),
+        'replied': Lead.query.filter_by(status='replied').count(),
+        'converted': Lead.query.filter_by(status='converted').count(),
+        'archived': Lead.query.filter_by(status='archived').count(),
     }
-    
-    return render_template('admin/customers/leads.html', title='Leads', leads=leads, stats=stats)
+
+    return render_template(
+        'admin/customers/leads.html',
+        title='Leads',
+        leads=leads_list,
+        stats=stats,
+        pagination=pagination,
+        status_filter=status_filter,
+        search_q=search_q,
+    )
 
 
 @bp.route('/customers/leads/<int:id>/update-status', methods=['POST'])
@@ -1290,45 +1345,46 @@ def testimonials():
     """首页 Testimonials 管理"""
     status_filter = request.args.get('status', 'all')
     source_filter = request.args.get('source', 'all')
+    page = request.args.get('page', 1, type=int)
+    pagination = None
+
+    def scoped(status=None):
+        q = Testimonial.query
+        if status:
+            q = q.filter_by(status=status)
+        return _apply_testimonial_source_filter(q, source_filter)
 
     if status_filter == 'approved':
+        # 全量加载，保留拖拽排序
         items = (
-            Testimonial.query.filter_by(status='approved')
+            scoped('approved')
             .order_by(Testimonial.sort_order.asc(), Testimonial.id.asc())
             .all()
         )
-    elif status_filter == 'pending':
-        items = (
-            Testimonial.query.filter_by(status='pending')
+    elif status_filter in ('pending', 'rejected'):
+        pagination = (
+            scoped(status_filter)
             .order_by(Testimonial.created_at.desc())
-            .all()
+            .paginate(page=page, per_page=ADMIN_LIST_PER_PAGE, error_out=False)
         )
-    elif status_filter == 'rejected':
-        items = (
-            Testimonial.query.filter_by(status='rejected')
-            .order_by(Testimonial.created_at.desc())
-            .all()
-        )
+        items = pagination.items
     else:
+        # All：approved 全量可拖；pending/rejected 分页
         approved = (
-            Testimonial.query.filter_by(status='approved')
+            scoped('approved')
             .order_by(Testimonial.sort_order.asc(), Testimonial.id.asc())
             .all()
         )
-        pending = (
-            Testimonial.query.filter_by(status='pending')
-            .order_by(Testimonial.created_at.desc())
-            .all()
+        inbox_q = (
+            scoped()
+            .filter(Testimonial.status.in_(['pending', 'rejected']))
+            .order_by(
+                case((Testimonial.status == 'pending', 0), else_=1),
+                Testimonial.created_at.desc(),
+            )
         )
-        rejected = (
-            Testimonial.query.filter_by(status='rejected')
-            .order_by(Testimonial.created_at.desc())
-            .all()
-        )
-        items = approved + pending + rejected
-
-    if source_filter in ('homepage', 'feedback'):
-        items = [item for item in items if (item.source or 'homepage') == source_filter]
+        pagination = inbox_q.paginate(page=page, per_page=ADMIN_LIST_PER_PAGE, error_out=False)
+        items = approved + pagination.items
 
     stats = {
         'total': Testimonial.query.count(),
@@ -1336,7 +1392,11 @@ def testimonials():
         'approved': Testimonial.query.filter_by(status='approved').count(),
         'rejected': Testimonial.query.filter_by(status='rejected').count(),
     }
-    can_reorder = status_filter in ('all', 'approved') and source_filter in ('all', 'homepage') and stats['approved'] > 0
+    can_reorder = (
+        status_filter in ('all', 'approved')
+        and source_filter in ('all', 'homepage')
+        and stats['approved'] > 0
+    )
 
     return render_template(
         'admin/customers/testimonials.html',
@@ -1346,6 +1406,7 @@ def testimonials():
         status_filter=status_filter,
         source_filter=source_filter,
         can_reorder=can_reorder,
+        pagination=pagination,
     )
 
 
