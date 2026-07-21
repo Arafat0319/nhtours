@@ -35,5 +35,8 @@ stripe==7.6.0
 # Excel 导出
 openpyxl==3.1.5
 
+# 收据 PDF
+fpdf2==2.8.3
+
 # 定时任务
 APScheduler==3.10.4

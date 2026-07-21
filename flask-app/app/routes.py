@@ -1563,17 +1563,12 @@ def api_booking_summary(booking_id):
     })
 
 
-@bp.route('/booking/<int:booking_id>/receipt')
-def booking_receipt(booking_id):
-    """客户查看/下载收据（仅允许查看自己的订单，通过 booking_id 访问；无登录时仅凭链接）"""
-    booking = Booking.query.get(booking_id)
-    if not booking:
-        abort(404)
+def _booking_receipt_context(booking):
+    """Shared receipt amounts + participants for HTML/PDF."""
     trip = Trip.query.get(booking.trip_id) if booking.trip_id else None
     if not trip:
-        abort(404)
+        return None
 
-    # 计算应付金额（与 admin generate_receipt 一致）
     expected_amount = 0.0
     has_packages = False
     for bp in booking.booking_packages:
@@ -1611,13 +1606,44 @@ def booking_receipt(booking_id):
             'addons': addons_info
         })
 
-    return render_template(
-        'booking/receipt.html',
-        trip=trip,
-        booking=booking,
-        expected_amount=expected_amount,
-        participants_info=participants_info
+    return {
+        'trip': trip,
+        'booking': booking,
+        'expected_amount': expected_amount,
+        'participants_info': participants_info,
+    }
+
+
+@bp.route('/booking/<int:booking_id>/receipt')
+def booking_receipt(booking_id):
+    """客户下载收据 PDF（默认）；?format=html 可查看网页版。"""
+    from flask import make_response
+    from app.receipt_pdf import build_booking_receipt_pdf
+
+    booking = Booking.query.get(booking_id)
+    if not booking:
+        abort(404)
+
+    ctx = _booking_receipt_context(booking)
+    if not ctx:
+        abort(404)
+
+    # 保留网页版便于调试/打印
+    if request.args.get('format') == 'html':
+        return render_template('booking/receipt.html', **ctx)
+
+    pdf_bytes = build_booking_receipt_pdf(
+        booking=ctx['booking'],
+        trip=ctx['trip'],
+        expected_amount=ctx['expected_amount'],
+        participants_info=ctx['participants_info'],
     )
+    response = make_response(pdf_bytes)
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = (
+        f'attachment; filename="NHTours-Order-{booking.id}.pdf"'
+    )
+    return response
 
 
 @bp.route('/booking/success')
@@ -3336,7 +3362,7 @@ def send_booking_confirmation_email(booking, is_full_payment):
     
     context = {
         'receipt_title': 'Payment Receipt',
-        'receipt_number': payment.id if payment else f"BK-{booking.id}",
+        'receipt_number': booking.id,
         'issued_at': issued_at,
         'booking_id': booking.id,
         'payment_status': payment_status.replace('_', ' ').title(),
@@ -3401,7 +3427,7 @@ def send_installment_confirmation_email(installment):
 
     context = {
         'receipt_title': 'Installment Payment Receipt',
-        'receipt_number': payment.id if payment else f"INST-{installment.id}",
+        'receipt_number': installment.booking_id or booking.id,
         'issued_at': issued_at,
         'booking_id': booking.id,
         'payment_status': payment_status.replace('_', ' ').title(),

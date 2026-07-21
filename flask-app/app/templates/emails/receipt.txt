@@ -1,6 +1,6 @@
 {{ receipt_title }}
 
-Receipt #: {{ receipt_number }}
+Order number: {{ receipt_number }}
 Issued: {{ issued_at }}
 Booking ID: {{ booking_id }}
 Payment Status: {{ payment_status }}

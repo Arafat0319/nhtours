@@ -140,7 +140,8 @@
             const bid = data && data.booking_id;
             if (receiptLink && bid) {
                 receiptLink.href = '/booking/' + bid + '/receipt';
-                receiptLink.target = '_blank';
+                receiptLink.setAttribute('download', 'NHTours-Order-' + bid + '.pdf');
+                receiptLink.removeAttribute('target');
                 if (receiptWrap) receiptWrap.classList.remove('hidden');
             } else if (receiptWrap) {
                 receiptWrap.classList.add('hidden');
