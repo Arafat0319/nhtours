@@ -53,8 +53,8 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 域名脚本 | `deploy/setup-domain.sh`；DNS 验证 `deploy/verify-dns.ps1` |
 | Stripe Webhook | `https://nhtours.com/webhooks/stripe`（**仅沙盒** Test mode；Live 延后） |
 | 邮件 SES | **未配置**；测邮件前读 `08` →「邮件/SES 上线前必读」 |
-| 安全审计 | `/var/log/nhtours/audit.log`；查看 **`nh-audit`** / `nh-audit -f` |
-| 安全加固 | 代码已就绪、**本地测完**；生产：**push → SSH** rotate + Nginx 头 + fail2ban（见 `06`） |
+| 安全审计 | `/var/log/nhtours/audit.log`；`nh-audit` / `nh-audit --all` / `nh-audit -f` |
+| 安全加固 | ✅ **生产已完成**（2026-07-06）；凭据轮换、审计、限流；详见 `06` / [手册/安全手册.md](../手册/安全手册.md) |
 | 生产 DB | **现网** VM 本机 MySQL → **目标** Lightsail 托管 MySQL（**方案 B 待迁移**；见 `08`） |
 
 ## Testimonials / Feedback
@@ -80,4 +80,4 @@ push 前更新 context（至少 `07`）→ 用户确认 → 同一 commit push�
 | UI | `05` |
 | 部署 | `06` |
 
-**最后更新**: 2026-07-05（安全加固本地测完，生产部署进行中）
+**最后更新**: 2026-07-06（安全加固 + nh-audit 生产验证完成）
