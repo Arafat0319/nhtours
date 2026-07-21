@@ -5,5 +5,12 @@
     delaycompress
     missingok
     notifempty
-    create 640 www-data www-data
+    # 须与 Gunicorn User=ubuntu、nh-audit 可读一致（勿用 www-data:www-data 640）
+    create 664 ubuntu www-data
+    sharedscripts
+    postrotate
+        # 若服务以不同用户运行，可再 chown；默认与 create 一致
+        /bin/chown ubuntu:www-data /var/log/nhtours/audit.log 2>/dev/null || true
+        /bin/chmod 664 /var/log/nhtours/audit.log 2>/dev/null || true
+    endscript
 }

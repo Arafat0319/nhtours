@@ -30,4 +30,26 @@ if [ -f "$SCRIPT_DIR/audit-tail.sh" ]; then
   echo "OK: nh-audit -> $SCRIPT_DIR/audit-tail.sh"
 fi
 
+# logrotate：轮转后仍保持 APP_USER 可读可写（旧配置曾 create 640 www-data）
+if [ -f "$SCRIPT_DIR/logrotate-nhtours-audit" ]; then
+  # 用当前 APP_USER/APP_GROUP 生成，避免硬编码与 systemd 不一致
+  cat > /etc/logrotate.d/nhtours-audit <<EOF
+/var/log/nhtours/audit.log {
+    daily
+    rotate 90
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 664 $APP_USER $APP_GROUP
+    sharedscripts
+    postrotate
+        /bin/chown $APP_USER:$APP_GROUP /var/log/nhtours/audit.log 2>/dev/null || true
+        /bin/chmod 664 /var/log/nhtours/audit.log 2>/dev/null || true
+    endscript
+}
+EOF
+  echo "OK: /etc/logrotate.d/nhtours-audit (create 664 $APP_USER:$APP_GROUP)"
+fi
+
 echo "OK: $LOG_FILE ready (owner $APP_USER:$APP_GROUP)"
