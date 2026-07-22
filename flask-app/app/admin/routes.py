@@ -10,7 +10,7 @@ from sqlalchemy import or_, and_, case
 from app import db
 from app.admin import bp
 from app.admin.forms import LoginForm, TripForm, CityForm, ClientForm, TripBasicsForm, TripDescriptionForm, TripPackagesForm, TripAddonsForm, TripParticipantForm, TripCouponForm, EditBookingForm, TestimonialForm
-from app.models import User, Trip, City, Client, Lead, Testimonial, TripPackage, TripAddOn, CustomQuestion, DiscountCode, Booking, BookingParticipant, BookingAddOn, BookingPackage, Payment, Message, InstallmentPayment
+from app.models import User, Trip, City, Client, Lead, Testimonial, TripPackage, TripAddOn, CustomQuestion, DiscountCode, Booking, BookingParticipant, BookingAddOn, BookingPackage, Payment, Message, InstallmentPayment, PendingBooking
 from app.payments import create_checkout_session
 from app.utils import save_image, send_email_via_ses, generate_installment_token, generate_export_token, verify_export_token
 from app.testimonial_data import assign_carousel_sort_order
@@ -1120,6 +1120,9 @@ def trip_builder(id, step):
 @login_required
 def delete_trip(id):
     trip = Trip.query.get_or_404(id)
+    # pending_bookings / messages 的 trip_id 为 NOT NULL；无 cascade 时 ORM 会尝试 SET NULL
+    PendingBooking.query.filter_by(trip_id=trip.id).delete(synchronize_session=False)
+    Message.query.filter_by(trip_id=trip.id).delete(synchronize_session=False)
     db.session.delete(trip)
     db.session.commit()
     flash('行程已删除')

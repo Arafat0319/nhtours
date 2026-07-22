@@ -21,8 +21,29 @@
     /* 组织者卡片：白底，无外框无阴影 */
     .organizer-card { border: none; box-shadow: none; border-radius: 0; }
     .organizer-card .organizer-icon { width: 1rem; height: 1rem; flex-shrink: 0; color: #0d9488; }
-    /* 强制 logo 为正圆，不被 flex 拉高 */
-    .organizer-logo-wrap { width: 5.2rem !important; height: 5.2rem !important; min-width: 5.2rem !important; min-height: 5.2rem !important; flex-shrink: 0 !important; align-self: flex-start !important; border-radius: 50% !important; }
+    /* 强制 logo 为正圆；白底展示深蓝建筑+NHTOURS 标 */
+    .organizer-logo-wrap {
+        width: 5.2rem !important;
+        height: 5.2rem !important;
+        min-width: 5.2rem !important;
+        min-height: 5.2rem !important;
+        flex-shrink: 0 !important;
+        align-self: flex-start !important;
+        border-radius: 50% !important;
+        overflow: hidden !important;
+        background-color: #004174 !important;
+        border: none !important;
+        box-sizing: border-box !important;
+        padding: 0 !important;
+    }
+    .organizer-logo-wrap img {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: contain !important;
+        object-position: center center;
+        display: block;
+        transform: scale(1.183);
+    }
     @media (min-width: 768px) {
         .organizer-logo-wrap { width: 6.5rem !important; height: 6.5rem !important; min-width: 6.5rem !important; min-height: 6.5rem !important; }
     }
@@ -74,6 +95,25 @@
     /* Book Now 与弹窗内 Continue 同款颜色与效果 */
     #bookNowBtn { background-color: #16a34a !important; color: #fff !important; border: 1px solid #16a34a !important; font-size: 14px !important; transition: transform 0.2s ease, opacity 0.2s ease, background-color 0.2s ease !important; }
     #bookNowBtn:hover:not(:disabled) { background-color: #15803d !important; opacity: 0.9; transform: translateY(-2px) !important; }
+    #bookNowBtn:disabled {
+        background-color: #9caf9f !important;
+        border-color: #9caf9f !important;
+        color: #f4f7f5 !important;
+        opacity: 1 !important;
+        cursor: not-allowed !important;
+        transform: none !important;
+        box-shadow: none !important;
+    }
+    .registration-opens-hint {
+        margin: 0 0 0.75rem;
+        padding: 0;
+        border: none;
+        background: transparent;
+        font-size: 0.875rem;
+        line-height: 1.4;
+        color: #92400e;
+        text-align: center;
+    }
     #booking-modal #submitBtn:not(.hidden) { background-color: #16a34a !important; color: #fff !important; border-color: #16a34a !important; height: 40px !important; min-height: 40px !important; font-size: 14px !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; }
     #booking-modal #submitBtn:not(.hidden):hover { background-color: #15803d !important; opacity: 0.9; }
     /* 付款结果页 Close 与 Continue 同款绿色 */
@@ -324,7 +364,15 @@
         align-items: center;
         justify-content: center;
     }
-    .trip-packages-box .package-book-now:hover { background: #f0fdfa; }
+    .trip-packages-box .package-book-now:hover:not(:disabled) { background: #f0fdfa; }
+    .trip-packages-box .package-book-now:disabled,
+    .book-now-trigger.package-book-now:disabled {
+        color: #6f8f7c;
+        background: #eef4f0;
+        border-color: #b7cfc2;
+        cursor: not-allowed;
+        opacity: 1;
+    }
     /* Available Add-Ons：与 Package 区块一致 - 浅灰圆角容器、项间分隔线、左名称/描述右价格 */
     .trip-addons-box {
         background: #fff;
@@ -402,9 +450,9 @@
             {# 组织者信息卡片：左侧 logo，右侧从上到下为行程名、地点、公司名、日期与人数（与示例图一致） #}
             <div class="organizer-card bg-white p-6 mb-8">
                 <div class="flex gap-4 md:gap-6" style="align-items: flex-start;">
-                    {# 左侧：圆形 logo，用 .organizer-logo-wrap 强制保持正圆 #}
-                    <div class="organizer-logo-wrap flex items-center justify-center p-2" style="background-color: #004174;">
-                        <img src="{{ url_for('static', filename='favicon/favicon-dark.png') }}" alt="Nexus Horizons" class="w-[55%] h-[55%] object-contain">
+                    {# 左侧：圆形 logo（建筑剪影 + NHTOURS） #}
+                    <div class="organizer-logo-wrap flex items-center justify-center" style="background-color:#004174;">
+                        <img src="{{ url_for('static', filename='images/icons/nht-organizer-mark-20260721e.png') }}" alt="NHTOURS" width="320" height="320">
                     </div>
                     {# 右侧：行程名 → 地点 → 公司名 → 日期与人数一行 #}
                     <div class="flex-1 min-w-0 flex flex-col justify-center">
@@ -494,7 +542,7 @@
                         </div>
                         <div class="package-right">
                             <span class="package-price">${{ "%.2f"|format(package.price) }}</span>
-                            <button type="button" class="package-book-now book-now-trigger">Book Now</button>
+                            <button type="button" class="package-book-now book-now-trigger"{% if registration_open is defined and not registration_open %} disabled aria-disabled="true"{% endif %}>Book Now</button>
                         </div>
                     </div>
                     {# 下面一块：仅在有 Payment plan 时显示明细 #}
@@ -569,11 +617,6 @@
         {# ========== 右侧固定栏：仅总价 + Book Now，风格与参考图一致 ========== #}
         <div class="trip-sidebar-col md:col-span-4">
             <div class="trip-sidebar-inner md:sticky md:top-24 trip-sidebar-card p-6 bg-white">
-            {% if registration_open is defined and not registration_open and registration_date %}
-            <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-                <p class="text-sm text-amber-800">Registration opens {{ registration_date.strftime('%B %d, %Y') }}.</p>
-            </div>
-            {% endif %}
             {# 顶部总价 + Deposit（WeTravel 风格） #}
             <div class="text-center pb-4">
                 {% if packages %}
@@ -586,7 +629,10 @@
                 {% endif %}
             </div>
             <div class="pt-4" style="border-top: 1px solid #e5e7eb;">
-                <button type="button" id="bookNowBtn" class="w-full text-white font-bold rounded-lg text-base shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-opacity" style="height: 40px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center;" {% if registration_open is defined and not registration_open %}disabled{% endif %}>
+                {% if registration_open is defined and not registration_open and registration_date %}
+                <p class="registration-opens-hint">Registration opens {{ registration_date.strftime('%B %d, %Y') }}.</p>
+                {% endif %}
+                <button type="button" id="bookNowBtn" class="w-full text-white font-bold rounded-lg text-base shadow-sm disabled:cursor-not-allowed transition-opacity" style="height: 40px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center;"{% if registration_open is defined and not registration_open %} disabled aria-disabled="true"{% endif %}>
                     Book Now
                 </button>
             </div>

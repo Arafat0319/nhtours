@@ -1,13 +1,75 @@
 """
 定时任务模块
-使用 APScheduler 实现分期付款提醒等功能
+使用 APScheduler 实现分期付款提醒、过期 PendingBooking 清理等功能
 """
 
 from datetime import datetime, timedelta, date
 from flask import current_app, url_for
+from sqlalchemy import or_, and_
 from app import db
-from app.models import InstallmentPayment
+from app.models import InstallmentPayment, PendingBooking
 from app.utils import send_email_via_ses, generate_installment_token
+
+
+def cleanup_expired_pending_bookings():
+    """
+    清理过期未支付的 PendingBooking（创建时 expires_at = now+24h）。
+    - status=pending 且已过期 → 标为 expired
+    - 尽量取消对应 Stripe PaymentIntent（已成功/已取消则忽略）
+    每天由 APScheduler 调用。
+    """
+    import stripe
+
+    try:
+        now = datetime.utcnow()
+        cutoff = now - timedelta(hours=24)
+        expired = (
+            PendingBooking.query.filter(
+                PendingBooking.status == 'pending',
+                or_(
+                    and_(PendingBooking.expires_at.isnot(None), PendingBooking.expires_at <= now),
+                    and_(PendingBooking.expires_at.is_(None), PendingBooking.created_at <= cutoff),
+                ),
+            )
+            .all()
+        )
+
+        if not expired:
+            current_app.logger.info("PendingBooking cleanup: nothing to expire")
+            return 0
+
+        stripe.api_key = current_app.config.get('STRIPE_SECRET_KEY')
+        cancelled_pi = 0
+        for pb in expired:
+            pi_id = pb.payment_intent_id
+            if stripe.api_key and pi_id:
+                try:
+                    pi = stripe.PaymentIntent.retrieve(pi_id)
+                    if pi.status in (
+                        'requires_payment_method',
+                        'requires_confirmation',
+                        'requires_action',
+                        'requires_capture',
+                        'processing',
+                    ):
+                        stripe.PaymentIntent.cancel(pi_id)
+                        cancelled_pi += 1
+                except Exception as e:
+                    current_app.logger.warning(
+                        f"PendingBooking cleanup: could not cancel PI {pi_id} "
+                        f"(pending_id={pb.id}): {e}"
+                    )
+            pb.status = 'expired'
+
+        db.session.commit()
+        current_app.logger.info(
+            f"PendingBooking cleanup: expired={len(expired)}, stripe_cancelled={cancelled_pi}"
+        )
+        return len(expired)
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"PendingBooking cleanup failed: {e}", exc_info=True)
+        return 0
 
 
 def send_installment_reminders():
@@ -20,89 +82,88 @@ def send_installment_reminders():
     - 到期当天：最后提醒
     - 逾期后：催款邮件（每 3 天一次，最多 3 次）
     """
-    with current_app.app_context():
-        try:
-            today = date.today()
-            
-            # 1. 3 天前提醒
-            three_days_later = today + timedelta(days=3)
-            installments_3days = InstallmentPayment.query.filter(
-                InstallmentPayment.due_date == three_days_later,
-                InstallmentPayment.status == 'pending',
-                InstallmentPayment.reminder_sent == False
-            ).all()
-            
-            for installment in installments_3days:
-                send_installment_reminder_email(installment, days_until_due=3)
-                installment.reminder_sent = True
+    try:
+        today = date.today()
+        
+        # 1. 3 天前提醒
+        three_days_later = today + timedelta(days=3)
+        installments_3days = InstallmentPayment.query.filter(
+            InstallmentPayment.due_date == three_days_later,
+            InstallmentPayment.status == 'pending',
+            InstallmentPayment.reminder_sent == False
+        ).all()
+        
+        for installment in installments_3days:
+            send_installment_reminder_email(installment, days_until_due=3)
+            installment.reminder_sent = True
+            installment.reminder_sent_at = datetime.utcnow()
+            installment.reminder_count = (installment.reminder_count or 0) + 1
+        
+        # 2. 1 天前提醒
+        one_day_later = today + timedelta(days=1)
+        installments_1day = InstallmentPayment.query.filter(
+            InstallmentPayment.due_date == one_day_later,
+            InstallmentPayment.status == 'pending',
+            InstallmentPayment.reminder_count >= 1  # 已经发送过第一次提醒
+        ).all()
+        
+        for installment in installments_1day:
+            # 检查今天是否已经发送过提醒（避免重复）
+            if installment.reminder_sent_at and installment.reminder_sent_at.date() < today:
+                send_installment_reminder_email(installment, days_until_due=1)
                 installment.reminder_sent_at = datetime.utcnow()
                 installment.reminder_count = (installment.reminder_count or 0) + 1
+        
+        # 3. 到期当天提醒
+        installments_today = InstallmentPayment.query.filter(
+            InstallmentPayment.due_date == today,
+            InstallmentPayment.status == 'pending'
+        ).all()
+        
+        for installment in installments_today:
+            # 检查今天是否已经发送过提醒
+            if not installment.reminder_sent_at or installment.reminder_sent_at.date() < today:
+                send_installment_reminder_email(installment, days_until_due=0)
+                installment.reminder_sent_at = datetime.utcnow()
+                installment.reminder_count = (installment.reminder_count or 0) + 1
+        
+        # 4. 逾期催款（每 3 天一次，最多 3 次）
+        overdue_installments = InstallmentPayment.query.filter(
+            InstallmentPayment.due_date < today,
+            InstallmentPayment.status == 'pending',
+            InstallmentPayment.reminder_count < 6  # 最多发送 6 次提醒（3次正常 + 3次催款）
+        ).all()
+        
+        for installment in overdue_installments:
+            # 检查距离上次提醒是否已经超过 3 天
+            days_overdue = (today - installment.due_date).days
+            should_send = False
             
-            # 2. 1 天前提醒
-            one_day_later = today + timedelta(days=1)
-            installments_1day = InstallmentPayment.query.filter(
-                InstallmentPayment.due_date == one_day_later,
-                InstallmentPayment.status == 'pending',
-                InstallmentPayment.reminder_count >= 1  # 已经发送过第一次提醒
-            ).all()
-            
-            for installment in installments_1day:
-                # 检查今天是否已经发送过提醒（避免重复）
-                if installment.reminder_sent_at and installment.reminder_sent_at.date() < today:
-                    send_installment_reminder_email(installment, days_until_due=1)
-                    installment.reminder_sent_at = datetime.utcnow()
-                    installment.reminder_count = (installment.reminder_count or 0) + 1
-            
-            # 3. 到期当天提醒
-            installments_today = InstallmentPayment.query.filter(
-                InstallmentPayment.due_date == today,
-                InstallmentPayment.status == 'pending'
-            ).all()
-            
-            for installment in installments_today:
-                # 检查今天是否已经发送过提醒
-                if not installment.reminder_sent_at or installment.reminder_sent_at.date() < today:
-                    send_installment_reminder_email(installment, days_until_due=0)
-                    installment.reminder_sent_at = datetime.utcnow()
-                    installment.reminder_count = (installment.reminder_count or 0) + 1
-            
-            # 4. 逾期催款（每 3 天一次，最多 3 次）
-            overdue_installments = InstallmentPayment.query.filter(
-                InstallmentPayment.due_date < today,
-                InstallmentPayment.status == 'pending',
-                InstallmentPayment.reminder_count < 6  # 最多发送 6 次提醒（3次正常 + 3次催款）
-            ).all()
-            
-            for installment in overdue_installments:
-                # 检查距离上次提醒是否已经超过 3 天
-                days_overdue = (today - installment.due_date).days
-                should_send = False
-                
-                if not installment.reminder_sent_at:
-                    # 从未发送过提醒，立即发送
+            if not installment.reminder_sent_at:
+                # 从未发送过提醒，立即发送
+                should_send = True
+            else:
+                days_since_last_reminder = (today - installment.reminder_sent_at.date()).days
+                # 每 3 天发送一次催款邮件
+                if days_since_last_reminder >= 3:
                     should_send = True
-                else:
-                    days_since_last_reminder = (today - installment.reminder_sent_at.date()).days
-                    # 每 3 天发送一次催款邮件
-                    if days_since_last_reminder >= 3:
-                        should_send = True
-                
-                if should_send:
-                    send_overdue_reminder_email(installment, days_overdue)
-                    installment.reminder_sent_at = datetime.utcnow()
-                    installment.reminder_count = (installment.reminder_count or 0) + 1
-                    # 标记为逾期状态
-                    if installment.status == 'pending':
-                        installment.status = 'overdue'
             
-            db.session.commit()
-            current_app.logger.info(f"Installment reminders processed: {len(installments_3days) + len(installments_1day) + len(installments_today)} reminders sent")
-            
-        except Exception as e:
-            db.session.rollback()
-            current_app.logger.error(f"Error sending installment reminders: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            if should_send:
+                send_overdue_reminder_email(installment, days_overdue)
+                installment.reminder_sent_at = datetime.utcnow()
+                installment.reminder_count = (installment.reminder_count or 0) + 1
+                # 标记为逾期状态
+                if installment.status == 'pending':
+                    installment.status = 'overdue'
+        
+        db.session.commit()
+        current_app.logger.info(f"Installment reminders processed: {len(installments_3days) + len(installments_1day) + len(installments_today)} reminders sent")
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error sending installment reminders: {str(e)}")
+        import traceback
+        traceback.print_exc()
 
 
 def send_installment_reminder_email(installment, days_until_due=3):

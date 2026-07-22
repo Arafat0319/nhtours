@@ -14,11 +14,13 @@
 
         function openBookingModal(ev) {
             if (!loadingOverlay || !bookingModal) return;
+            if (window.registrationOpen === false) return;
             var btn = (ev && ev.currentTarget && ev.currentTarget.nodeType === 1)
                 ? ev.currentTarget
                 : (ev && ev.target && ev.target.closest)
                     ? ev.target.closest('button') || ev.target.closest('a') || ev.target
                     : null;
+            if (btn && btn.disabled) return;
             if (btn && btn.classList) {
                 btn.classList.add('is-loading');
                 if (typeof btn.disabled !== 'undefined') btn.disabled = true;
@@ -32,7 +34,10 @@
                 if (typeof window.updateOrderSummary === 'function') window.updateOrderSummary();
                 if (btn && btn.classList) {
                     btn.classList.remove('is-loading');
-                    if (typeof btn.disabled !== 'undefined') btn.disabled = false;
+                    // 报名未开放时保持 disabled，不要被 loading 流程重新启用
+                    if (typeof btn.disabled !== 'undefined' && window.registrationOpen !== false) {
+                        btn.disabled = false;
+                    }
                 }
                 requestAnimationFrame(function() {
                     if (window.BookingWizard && typeof window.BookingWizard.syncModalBodyMinHeight === 'function') {
@@ -61,13 +66,20 @@
         document.addEventListener('wheel', onModalWheel, { passive: false });
 
         if (bookNowBtn && loadingOverlay && bookingModal) {
-            bookNowBtn.addEventListener('click', function(e) { openBookingModal(e); });
+            bookNowBtn.addEventListener('click', function(e) {
+                if (bookNowBtn.disabled || window.registrationOpen === false) return;
+                openBookingModal(e);
+            });
         }
         document.addEventListener('click', function(e) {
-            if (e.target && e.target.classList && e.target.classList.contains('book-now-trigger')) {
-                openBookingModal(e);
-            }
+            var trigger = e.target && e.target.closest
+                ? e.target.closest('.book-now-trigger')
+                : (e.target && e.target.classList && e.target.classList.contains('book-now-trigger') ? e.target : null);
+            if (!trigger) return;
+            if (trigger.disabled || window.registrationOpen === false) return;
+            openBookingModal(e);
         });
+
 
         // Close modal
         function closeModal() {

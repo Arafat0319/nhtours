@@ -35,6 +35,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 ```
 
 - `PendingBooking.payment_intent_id`（不是 `stripe_payment_intent_id`）
+- 未支付草稿：创建时 `expires_at=+24h`；每天 **03:00** `cleanup_expired_pending_bookings` → `expired` + 尽量 cancel Stripe PI
 - 报名在 `/trips/<slug>` **弹窗内** 5 步；无 `/trips` 列表、无 `/trips/<slug>/book`
 
 ## 部署

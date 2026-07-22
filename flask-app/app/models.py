@@ -552,9 +552,11 @@ class PendingBooking(db.Model):
     # 状态
     status = db.Column(db.String(20), default='pending')  # 'pending', 'completed', 'expired', 'cancelled'
     
-    # 关联
-    trip = db.relationship('Trip', backref=db.backref('pending_bookings', lazy='dynamic'))
-    
+    # 关联：删除行程时一并删除待支付草稿（trip_id 不可为 NULL）
+    trip = db.relationship(
+        'Trip',
+        backref=db.backref('pending_bookings', lazy='dynamic', cascade='all, delete-orphan'),
+    )    
     def __repr__(self):
         return f'<PendingBooking {self.id} - PI: {self.payment_intent_id}>'
 
@@ -642,7 +644,7 @@ class Message(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # 关系
-    trip = db.relationship('Trip', backref=db.backref('messages', lazy='dynamic'))
+    trip = db.relationship('Trip', backref=db.backref('messages', lazy='dynamic', cascade='all, delete-orphan'))
     created_by = db.relationship('User', backref=db.backref('messages', lazy='dynamic'))
     
     def __repr__(self):

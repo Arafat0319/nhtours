@@ -128,30 +128,48 @@ def create_app(config_name=None):
     if config_name != 'testing':
         try:
             from apscheduler.schedulers.background import BackgroundScheduler
-            from app.tasks import send_installment_reminders
-            
+            from app.tasks import send_installment_reminders, cleanup_expired_pending_bookings
+
             scheduler = BackgroundScheduler()
-            # 每天上午 9 点运行
+
+            def _run_installment_reminders():
+                with app.app_context():
+                    send_installment_reminders()
+
+            def _run_pending_booking_cleanup():
+                with app.app_context():
+                    cleanup_expired_pending_bookings()
+
+            # 每天上午 9 点：分期提醒
             scheduler.add_job(
-                send_installment_reminders,
+                _run_installment_reminders,
                 'cron',
                 hour=9,
                 minute=0,
                 id='send_installment_reminders',
-                replace_existing=True
+                replace_existing=True,
             )
-            
+            # 每天凌晨 3 点：过期 PendingBooking → expired + 取消 Stripe PI
+            scheduler.add_job(
+                _run_pending_booking_cleanup,
+                'cron',
+                hour=3,
+                minute=0,
+                id='cleanup_expired_pending_bookings',
+                replace_existing=True,
+            )
+
             try:
                 scheduler.start()
                 app.logger.info("APScheduler started successfully")
             except Exception as e:
                 app.logger.error(f"Failed to start APScheduler: {str(e)}")
-            
+
             # 保存调度器到 app 实例（用于关闭时停止）
             app.scheduler = scheduler
         except ImportError:
             app.logger.warning("APScheduler not installed. Install it with: pip install APScheduler")
-            app.logger.warning("Installment reminder feature will not be available.")
+            app.logger.warning("Installment reminder / PendingBooking cleanup will not be available.")
         except Exception as e:
             app.logger.error(f"Error initializing scheduler: {str(e)}")
 
