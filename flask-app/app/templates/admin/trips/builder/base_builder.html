@@ -238,7 +238,7 @@
         {% set step_url = url_for('admin.trip_builder', id=trip.id, step=step_id) %}
 
         <a href="{{ step_url }}"
-            class="group flex items-center px-3 py-3 text-sm font-medium rounded-md {% if isActive %}bg-gray-100 text-wetravel-cyan font-bold{% else %}text-gray-600 hover:bg-gray-50 hover:text-gray-900{% endif %}">
+            class="builder-nav-link group flex items-center px-3 py-3 text-sm font-medium rounded-md {% if isActive %}bg-gray-100 text-wetravel-cyan font-bold{% else %}text-gray-600 hover:bg-gray-50 hover:text-gray-900{% endif %}">
             <span
                 class="mr-3 flex-shrink-0 h-6 w-6 border rounded-full flex items-center justify-center text-xs {% if isActive %}border-wetravel-cyan text-wetravel-cyan{% else %}border-gray-400 text-gray-400{% endif %}">
                 {{ loop.index }}
@@ -267,6 +267,24 @@
         <div class="mt-4 px-3 text-xs text-gray-400 text-center">
             Saved as {{ trip.status }}
         </div>
+        {% if trip.status == 'draft' and publish_gaps is defined and publish_gaps %}
+        <div class="mt-2 px-3 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-md p-2">
+            <p class="font-semibold mb-1">Still needed to publish:</p>
+            <ul class="list-disc list-inside space-y-0.5 text-left">
+                {% for gap in publish_gaps %}
+                <li>
+                    {% if gap == 'title' %}Title
+                    {% elif gap == 'start_date' %}Start date
+                    {% elif gap == 'end_date' %}End date
+                    {% elif gap == 'destination' %}Destination
+                    {% elif gap == 'description' %}About this Trip (Description page)
+                    {% elif gap == 'packages' %}At least one package
+                    {% else %}{{ gap }}{% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

@@ -40,12 +40,12 @@
 | `/admin/trips/new` | GET | 创建新行程，跳转 Trip Builder |
 | `/admin/trips/<id>/manage` | GET | 行程详情 / 订单管理页 |
 | `/admin/trips/<id>/deactivate` | POST | 停用行程（`status=deactivated`） |
-| `/admin/trips/<id>/reactivate` | POST | 重新启用 |
+| `/admin/trips/<id>/reactivate` | POST | 重新启用：完整则 `published`；缺发布条件则回 **draft**（不可绕过） |
 | `/admin/trips/<id>/archive` | POST | 归档行程 |
 | `/admin/trips/<id>/copy` | POST | 复制行程 |
 | `/admin/trips/<id>/delete` | POST | 删除行程 |
 
-> **发布**：无独立 `/publish` 路由；Trip Builder 步骤完成度达标后自动 `published`，或通过 reactivate 恢复。
+> **发布**：无独立 `/publish` 路由。自动发布需：title、start/end date、destination、**非空 About this Trip**（空 Quill HTML 不算）、≥1 package。Basics/Description 的 `X-Autosave: 1` 与完整 POST 保存后都会调用 `check_trip_completion`。
 
 ### Trip Builder
 

@@ -1,6 +1,8 @@
 from datetime import date, datetime
+from html import unescape
 import json
 import os
+import re
 from flask import render_template, redirect, url_for, flash, request, jsonify, current_app, send_file
 from flask_login import login_user, logout_user, current_user, login_required
 from sqlalchemy.orm import joinedload
@@ -29,6 +31,20 @@ def get_trip_counts():
         'draft': Trip.query.filter(Trip.status == 'draft').count(),
         'deactivated': Trip.query.filter(Trip.status == 'deactivated').count()
     }
+
+
+@bp.context_processor
+def inject_trip_builder_publish_gaps():
+    """Trip Builder 侧边栏显示尚未满足的发布条件。"""
+    if request.endpoint != 'admin.trip_builder':
+        return {}
+    trip_id = (request.view_args or {}).get('id')
+    if not trip_id:
+        return {}
+    trip = Trip.query.get(trip_id)
+    if not trip:
+        return {}
+    return {'publish_gaps': get_trip_publish_gaps(trip)}
 
 def calculate_trip_stats(trip):
     """
@@ -115,28 +131,46 @@ def calculate_trip_stats(trip):
         'amount_available': amount_available
     }
 
+def _trip_description_text(description):
+    """Quill 空内容常为 <p><br></p>，需去掉 HTML 后才算有效描述。"""
+    if not description:
+        return ''
+    text = re.sub(r'<[^>]+>', ' ', description)
+    return ' '.join(unescape(text).split())
+
+
+def get_trip_publish_gaps(trip):
+    """返回尚未满足自动发布条件的字段名列表。"""
+    gaps = []
+    if not (trip.title or '').strip():
+        gaps.append('title')
+    if not trip.start_date:
+        gaps.append('start_date')
+    if not trip.end_date:
+        gaps.append('end_date')
+    if not (trip.destination_text or '').strip():
+        gaps.append('destination')
+    if not _trip_description_text(trip.description):
+        gaps.append('description')
+    if trip.packages.count() == 0:
+        gaps.append('packages')
+    return gaps
+
+
 def check_trip_completion(trip):
     """
     检查行程是否完成了所有必需步骤的设置
-    如果完成，根据日期自动更新status为published
+    如果完成，自动将 status 更新为 published
     """
-    # Step 1 (Basics): 检查必需字段
-    if not trip.title or not trip.start_date or not trip.end_date or not trip.destination_text:
+    gaps = get_trip_publish_gaps(trip)
+    if gaps:
         return False
-    
-    # Step 2 (Description): 检查描述
-    if not trip.description:
-        return False
-    
-    # Step 3 (Packages): 至少需要一个套餐
-    if trip.packages.count() == 0:
-        return False
-    
-    # 所有必需步骤都完成了，更新status
+
     if trip.status == 'draft':
         trip.status = 'published'
+        trip.is_published = True
         db.session.commit()
-    
+
     return True
 
 # Force reload
@@ -551,7 +585,8 @@ def trip_builder(id, step):
             if request.form.get('color'):
                 trip.color = request.form.get('color')
             db.session.commit()
-            return jsonify({'success': True})
+            check_trip_completion(trip)
+            return jsonify({'success': True, 'status': trip.status, 'publish_gaps': get_trip_publish_gaps(trip)})
 
         if form.validate_on_submit():
             # Handle explicit remove (优先于上传)
@@ -604,41 +639,55 @@ def trip_builder(id, step):
     
     elif step == 'description':
         form = TripDescriptionForm(obj=trip)
-        # Pre-populate JSON fields if they exist
+        # Always expose includes/excludes as JSON strings for the builder JS
         if request.method == 'GET':
-            if trip.trip_includes:
-                form.trip_includes.data = json.dumps(trip.trip_includes)
-            if trip.trip_excludes:
-                form.trip_excludes.data = json.dumps(trip.trip_excludes)
+            form.trip_includes.data = json.dumps(trip.trip_includes or [])
+            form.trip_excludes.data = json.dumps(trip.trip_excludes or [])
 
         # Autosave: XHR request with X-Autosave header, save without full validation
         if request.method == 'POST' and request.headers.get('X-Autosave') == '1':
             desc = request.form.get('description', '')
-            includes_raw = request.form.get('trip_includes', '[]')
-            excludes_raw = request.form.get('trip_excludes', '[]')
+            includes_raw = request.form.get('trip_includes', '[]') or '[]'
+            excludes_raw = request.form.get('trip_excludes', '[]') or '[]'
             try:
                 trip.description = desc
-                trip.trip_includes = json.loads(includes_raw) if includes_raw else []
-                trip.trip_excludes = json.loads(excludes_raw) if excludes_raw else []
+                trip.trip_includes = json.loads(includes_raw)
+                trip.trip_excludes = json.loads(excludes_raw)
+                if not isinstance(trip.trip_includes, list):
+                    trip.trip_includes = []
+                if not isinstance(trip.trip_excludes, list):
+                    trip.trip_excludes = []
                 db.session.commit()
-                return jsonify({'success': True})
-            except ValueError:
-                return jsonify({'success': False, 'error': 'Invalid JSON'}), 400
+                check_trip_completion(trip)
+                return jsonify({'success': True, 'status': trip.status, 'publish_gaps': get_trip_publish_gaps(trip)})
+            except (ValueError, TypeError) as e:
+                return jsonify({'success': False, 'error': str(e) or 'Invalid JSON'}), 400
 
         if form.validate_on_submit():
             trip.description = form.description.data
             try:
-                trip.trip_includes = json.loads(form.trip_includes.data) if form.trip_includes.data else []
-                trip.trip_excludes = json.loads(form.trip_excludes.data) if form.trip_excludes.data else []
-            except ValueError:
+                includes_raw = form.trip_includes.data or '[]'
+                excludes_raw = form.trip_excludes.data or '[]'
+                trip.trip_includes = json.loads(includes_raw)
+                trip.trip_excludes = json.loads(excludes_raw)
+                if not isinstance(trip.trip_includes, list):
+                    trip.trip_includes = []
+                if not isinstance(trip.trip_excludes, list):
+                    trip.trip_excludes = []
+            except (ValueError, TypeError):
                 flash("Invalid JSON data for includes/excludes", "error")
                 return render_template('admin/trips/builder/step_description.html', title='Trip Description', trip=trip, form=form, current_step='description', trip_counts=trip_counts)
-            
+
             db.session.commit()
-            # Check if trip is complete and update status
             check_trip_completion(trip)
             return redirect(url_for('admin.trip_builder', id=trip.id, step='packages'))
-        
+
+        if request.method == 'POST':
+            # Surface why Save & Continue did not advance (CSRF / field errors)
+            for field_name, errors in form.errors.items():
+                for err in errors:
+                    flash(f"{field_name}: {err}", "error")
+
         return render_template('admin/trips/builder/step_description.html', title='Trip Description', trip=trip, form=form, current_step='description', trip_counts=trip_counts)
 
     elif step == 'packages':
@@ -734,7 +783,21 @@ def trip_builder(id, step):
                 
                 db.session.commit()
                 # Check if trip is complete and update status
-                check_trip_completion(trip)
+                if not check_trip_completion(trip):
+                    gaps = get_trip_publish_gaps(trip)
+                    labels = {
+                        'title': 'title',
+                        'start_date': 'start date',
+                        'end_date': 'end date',
+                        'destination': 'destination',
+                        'description': 'About this Trip (Description)',
+                        'packages': 'at least one package',
+                    }
+                    missing = ', '.join(labels.get(g, g) for g in gaps)
+                    flash(
+                        f'Trip saved as draft. Still needed to publish: {missing}.',
+                        'warning'
+                    )
                 return redirect(url_for('admin.trip_builder', id=trip.id, step='addons'))
 
             except ValueError as e:
@@ -1105,12 +1168,34 @@ def deactivate_trip(id):
 @login_required
 def reactivate_trip(id):
     trip = Trip.query.get_or_404(id)
+    gaps = get_trip_publish_gaps(trip)
+    if gaps:
+        # 不完整行程不能靠 deactivate/reactivate「绕过」发布条件
+        trip.status = 'draft'
+        trip.is_published = False
+        db.session.commit()
+        labels = {
+            'title': 'title',
+            'start_date': 'start date',
+            'end_date': 'end date',
+            'destination': 'destination',
+            'description': 'About this Trip (Description)',
+            'packages': 'at least one package',
+        }
+        missing = ', '.join(labels.get(g, g) for g in gaps)
+        flash(
+            f'Trip restored as draft (not published). Still needed: {missing}.',
+            'warning'
+        )
+        return redirect(url_for('admin.trips', filter='draft'))
+
     trip.status = 'published'
+    trip.is_published = True
     db.session.commit()
-    
+
     today = date.today()
     target_filter = 'past' if trip.end_date and trip.end_date < today else 'upcoming'
-    
+
     flash(f'Trip reactivated and moved to {target_filter.title()} Trips')
     return redirect(url_for('admin.trips', filter=target_filter))
 

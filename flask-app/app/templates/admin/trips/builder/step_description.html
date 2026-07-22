@@ -20,14 +20,16 @@
 
 {% block builder_step_content %}
 <form method="post" id="descriptionForm" class="space-y-8 max-w-4xl">
-    {{ form.hidden_tag() }}
+    {# Explicit fields — do not rely on hidden_tag alone for includes/excludes #}
+    {{ form.csrf_token }}
+    {{ form.trip_includes(id="trip-includes-field") }}
+    {{ form.trip_excludes(id="trip-excludes-field") }}
 
     <!-- About this Trip -->
     <div>
         <label class="block text-sm font-semibold text-gray-700 mb-2">About this Trip</label>
         <div class="bg-white rounded-md shadow-sm">
-            <!-- Hidden textarea for WTForms mapping -->
-            {{ form.description(class="hidden") }}
+            {{ form.description(class="hidden", id="description-field") }}
             <div id="editor" class="h-64 border-gray-200">
                 {% if form.description.data %}{{ form.description.data|safe }}{% endif %}
             </div>
@@ -85,8 +87,8 @@
     <div class="mt-8 flex items-center justify-end gap-x-6 border-t border-gray-200 pt-6">
         <span id="autosave-indicator" class="text-xs text-gray-400 mr-auto"></span>
         <a href="{{ url_for('admin.trip_builder', id=trip.id, step='basics') }}"
-            class="text-sm font-semibold leading-6 text-gray-900">Back</a>
-        <button type="submit"
+            class="text-sm font-semibold leading-6 text-gray-900 builder-nav-link">Back</a>
+        <button type="submit" name="submit" value="Next"
             class="rounded-md bg-wetravel-cyan px-6 py-2 text-sm font-semibold text-white shadow-sm hover:bg-wetravel-cyan-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wetravel-cyan">
             Save & Continue
         </button>
@@ -122,19 +124,26 @@
         }
     });
 
-    // 2. Initial Data Loading
-    const initialIncludes = {{ form.trip_includes.data|default ('[]') | safe }};
-    const initialExcludes = {{ form.trip_excludes.data|default ('[]') | safe }};
+    // 2. Initial Data Loading (always valid JSON arrays)
+    function parseJsonList(raw) {
+        if (Array.isArray(raw)) return raw;
+        if (!raw || typeof raw !== 'string') return [];
+        try {
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+            return [];
+        }
+    }
+    const initialIncludes = parseJsonList({{ (form.trip_includes.data or '[]')|tojson }});
+    const initialExcludes = parseJsonList({{ (form.trip_excludes.data or '[]')|tojson }});
 
     function renderItems(type, items) {
         const container = document.getElementById(type + '_list');
         container.innerHTML = '';
-        items.forEach(item => {
-            addItem(type, item.title, item.description);
+        (items || []).forEach(item => {
+            addItem(type, item.title || '', item.description || '');
         });
-        if (items.length === 0) {
-            // addItem(type); // Optional: Add empty one by default? No.
-        }
     }
 
     // 3. Dynamic List Logic
@@ -149,7 +158,7 @@
         const delBtn = card.querySelector('.delete-btn');
 
         titleInput.value = title;
-        descInput.value = funcDesc; // 'description' is reserved in template vars sometimes?
+        descInput.value = funcDesc;
 
         delBtn.onclick = function () {
             card.remove();
@@ -158,13 +167,12 @@
         container.appendChild(card);
     }
 
-    // Initial Render
     document.addEventListener('DOMContentLoaded', () => {
         renderItems('includes', initialIncludes);
         renderItems('excludes', initialExcludes);
     });
 
-    // 4. Form Submission
+    // 4. Form Submission + Autosave
     function getItems(type) {
         const container = document.getElementById(type + '_list');
         const items = [];
@@ -178,48 +186,96 @@
         return JSON.stringify(items);
     }
 
-    document.getElementById('descriptionForm').onsubmit = function () {
-        document.querySelector('textarea[name=description]').value = quill.root.innerHTML;
-        document.querySelector('input[name=trip_includes]').value = getItems('includes');
-        document.querySelector('input[name=trip_excludes]').value = getItems('excludes');
-    };
+    function syncDescriptionFields() {
+        const desc = document.getElementById('description-field')
+            || document.querySelector('textarea[name=description]');
+        const includes = document.getElementById('trip-includes-field')
+            || document.querySelector('input[name=trip_includes]');
+        const excludes = document.getElementById('trip-excludes-field')
+            || document.querySelector('input[name=trip_excludes]');
+        if (desc) desc.value = quill.root.innerHTML;
+        if (includes) includes.value = getItems('includes');
+        if (excludes) excludes.value = getItems('excludes');
+    }
 
-    // 5. Autosave (debounced, prevents data loss)
-    const tripId = {{ trip.id|tojson }};
-    const autosaveUrl = "{{ url_for('admin.trip_builder', id=trip.id, step='description') }}";
+    function setAutosaveIndicator(text, tone) {
+        const el = document.getElementById('autosave-indicator');
+        if (!el) return;
+        el.textContent = text;
+        el.classList.remove('text-gray-400', 'text-amber-600', 'text-green-600', 'text-red-600');
+        el.classList.add(tone || 'text-gray-400');
+    }
+
+    const descriptionForm = document.getElementById('descriptionForm');
     let autosaveTimer = null;
     let autosavePending = false;
+    let autosaveQueued = false;
+    const AUTOSAVE_DELAY_MS = 400;
+    const autosaveUrl = "{{ url_for('admin.trip_builder', id=trip.id, step='description') }}";
+
+    descriptionForm.addEventListener('submit', function () {
+        // Never throw — a JS error would cancel the whole save.
+        try {
+            if (autosaveTimer) {
+                clearTimeout(autosaveTimer);
+                autosaveTimer = null;
+            }
+            syncDescriptionFields();
+            setAutosaveIndicator('Saving...', 'text-amber-600');
+        } catch (err) {
+            console.error('Description sync failed', err);
+        }
+    });
 
     function doAutosave() {
-        if (autosavePending) return;
+        if (autosavePending) {
+            autosaveQueued = true;
+            return;
+        }
         autosavePending = true;
+        autosaveQueued = false;
+        setAutosaveIndicator('Saving...', 'text-amber-600');
+
         const formData = new FormData();
         formData.append('description', quill.root.innerHTML);
         formData.append('trip_includes', getItems('includes'));
         formData.append('trip_excludes', getItems('excludes'));
-        formData.append('csrf_token', document.querySelector('input[name=csrf_token]').value);
+        const csrf = document.querySelector('input[name=csrf_token]');
+        if (csrf) formData.append('csrf_token', csrf.value);
 
         fetch(autosaveUrl, {
             method: 'POST',
             body: formData,
-            headers: { 'X-Autosave': '1' }
+            headers: { 'X-Autosave': '1' },
+            credentials: 'same-origin'
         })
-        .then(r => r.json())
-        .then(data => {
-            autosavePending = false;
-            if (data.success) {
-                const el = document.getElementById('autosave-indicator');
-                if (el) { el.textContent = 'Saved'; el.classList.remove('text-amber-600'); el.classList.add('text-green-600'); }
+        .then(async (r) => {
+            let data = null;
+            try { data = await r.json(); } catch (_) { data = null; }
+            if (!r.ok || !data || !data.success) {
+                throw new Error((data && data.error) || ('HTTP ' + r.status));
             }
+            return data;
         })
-        .catch(() => { autosavePending = false; });
+        .then(() => {
+            setAutosaveIndicator('Saved', 'text-green-600');
+        })
+        .catch((err) => {
+            console.error('Description autosave failed', err);
+            setAutosaveIndicator('Save failed — click Save & Continue', 'text-red-600');
+        })
+        .finally(() => {
+            autosavePending = false;
+            if (autosaveQueued) {
+                scheduleAutosave();
+            }
+        });
     }
 
     function scheduleAutosave() {
         if (autosaveTimer) clearTimeout(autosaveTimer);
-        const el = document.getElementById('autosave-indicator');
-        if (el) { el.textContent = 'Saving...'; el.classList.remove('text-green-600'); el.classList.add('text-amber-600'); }
-        autosaveTimer = setTimeout(doAutosave, 1500);
+        setAutosaveIndicator('Saving...', 'text-amber-600');
+        autosaveTimer = setTimeout(doAutosave, AUTOSAVE_DELAY_MS);
     }
 
     quill.on('text-change', scheduleAutosave);
@@ -228,7 +284,6 @@
     document.getElementById('excludes_list').addEventListener('input', scheduleAutosave);
     document.getElementById('excludes_list').addEventListener('change', scheduleAutosave);
 
-    // Trigger autosave when adding/deleting items (addItem adds new elements, delete removes)
     const origAddItem = addItem;
     addItem = function(type, title, funcDesc) {
         origAddItem(type, title, funcDesc);
@@ -239,6 +294,25 @@
     });
     document.getElementById('excludes_list').addEventListener('click', function(e) {
         if (e.target.closest('.delete-btn')) scheduleAutosave();
+    });
+
+    // Leaving via sidebar/back: flush pending edits
+    document.querySelectorAll('a.builder-nav-link').forEach((link) => {
+        link.addEventListener('click', function () {
+            const formData = new FormData();
+            formData.append('description', quill.root.innerHTML);
+            formData.append('trip_includes', getItems('includes'));
+            formData.append('trip_excludes', getItems('excludes'));
+            const csrf = document.querySelector('input[name=csrf_token]');
+            if (csrf) formData.append('csrf_token', csrf.value);
+            fetch(autosaveUrl, {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Autosave': '1' },
+                credentials: 'same-origin',
+                keepalive: true
+            }).catch(() => {});
+        });
     });
 </script>
 {% endblock %}
