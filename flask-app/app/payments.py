@@ -180,6 +180,62 @@ def retrieve_payment_intent(payment_intent_id):
         return None
 
 
+def safe_cancel_payment_intent(payment_intent_id, reason=''):
+    """
+    取消 PaymentIntent；已 canceled / succeeded 等不可取消状态不视为失败。
+    free_ 占位 ID 直接跳过。返回 True 表示已取消或无需取消。
+    """
+    if not payment_intent_id or str(payment_intent_id).startswith('free_'):
+        return True
+
+    stripe.api_key = current_app.config.get('STRIPE_SECRET_KEY')
+    if not stripe.api_key:
+        current_app.logger.warning(
+            f"safe_cancel_payment_intent: no STRIPE_SECRET_KEY ({reason})"
+        )
+        return False
+
+    try:
+        pi = stripe.PaymentIntent.retrieve(payment_intent_id)
+        status = getattr(pi, 'status', None)
+        if status == 'canceled':
+            current_app.logger.info(
+                f"PaymentIntent {payment_intent_id} already canceled ({reason})"
+            )
+            return True
+        if status in ('succeeded', 'processing'):
+            current_app.logger.info(
+                f"PaymentIntent {payment_intent_id} status={status}, skip cancel ({reason})"
+            )
+            return True
+        if status in (
+            'requires_payment_method',
+            'requires_confirmation',
+            'requires_action',
+            'requires_capture',
+        ):
+            stripe.PaymentIntent.cancel(payment_intent_id)
+            current_app.logger.info(
+                f"Cancelled PaymentIntent {payment_intent_id} ({reason})"
+            )
+            return True
+        current_app.logger.info(
+            f"PaymentIntent {payment_intent_id} status={status}, skip cancel ({reason})"
+        )
+        return True
+    except Exception as e:
+        err = str(e).lower()
+        if 'already been canceled' in err or 'already canceled' in err:
+            current_app.logger.info(
+                f"PaymentIntent {payment_intent_id} already canceled ({reason})"
+            )
+            return True
+        current_app.logger.warning(
+            f"safe_cancel_payment_intent failed for {payment_intent_id} ({reason}): {e}"
+        )
+        return False
+
+
 def retrieve_payment_method_card_details(payment_method_id):
     stripe.api_key = current_app.config.get('STRIPE_SECRET_KEY')
     if not stripe.api_key:

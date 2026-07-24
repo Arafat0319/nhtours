@@ -28,15 +28,19 @@
 ## 支付 / 报名（易错）
 
 ```
-POST /trips/<slug>（AJAX）  →  创建 PendingBooking + PaymentIntent
+POST /trips/<slug>（AJAX）
+  → 算 Due（定金+逾期+addons − 折扣）
+  → >0：PendingBooking + PaymentIntent + client_secret
+  → =0：PendingBooking(free_…) + payment_required=false（不调 Stripe）→ create-free
 POST /api/payment/quote     →  算价
 POST /api/payment/intent      →  仅更新已有 PI（卡费等），不创建 PendingBooking
 Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 ```
 
-- `PendingBooking.payment_intent_id`（不是 `stripe_payment_intent_id`）
-- 未支付草稿：创建时 `expires_at=+24h`；每天 **03:00** `cleanup_expired_pending_bookings` → `expired` + 尽量 cancel Stripe PI
-- 报名在 `/trips/<slug>` **弹窗内** 5 步；无 `/trips` 列表、无 `/trips/<slug>/book`
+- `PendingBooking.payment_intent_id`（可以是 `pi_…` 或 `free_…`）
+- 折扣抵「现在应付」；`$0` 勿建 Stripe PI
+- 未支付草稿：`expires_at=+24h`；03:00 cleanup → `expired` + `safe_cancel_payment_intent`
+- 报名在 `/trips/<slug>` **弹窗内** 5 步；File Upload：`POST /api/booking/upload`
 
 ## 部署
 

@@ -40,25 +40,12 @@ def cleanup_expired_pending_bookings():
 
         stripe.api_key = current_app.config.get('STRIPE_SECRET_KEY')
         cancelled_pi = 0
+        from app.payments import safe_cancel_payment_intent
         for pb in expired:
             pi_id = pb.payment_intent_id
-            if stripe.api_key and pi_id:
-                try:
-                    pi = stripe.PaymentIntent.retrieve(pi_id)
-                    if pi.status in (
-                        'requires_payment_method',
-                        'requires_confirmation',
-                        'requires_action',
-                        'requires_capture',
-                        'processing',
-                    ):
-                        stripe.PaymentIntent.cancel(pi_id)
-                        cancelled_pi += 1
-                except Exception as e:
-                    current_app.logger.warning(
-                        f"PendingBooking cleanup: could not cancel PI {pi_id} "
-                        f"(pending_id={pb.id}): {e}"
-                    )
+            if pi_id and not str(pi_id).startswith('free_'):
+                if safe_cancel_payment_intent(pi_id, reason=f'pending cleanup id={pb.id}'):
+                    cancelled_pi += 1
             pb.status = 'expired'
 
         db.session.commit()

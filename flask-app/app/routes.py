@@ -17,6 +17,7 @@ from app.utils import (
     send_email_via_ses,
     generate_installment_token,
     verify_installment_token,
+    save_booking_upload,
 )
 from app.models import (
     Trip, Client, Payment, Booking, db,
@@ -35,6 +36,7 @@ from app.payments import (
     retrieve_payment_intent,
     retrieve_payment_method_card_details,
     calculate_fee,
+    safe_cancel_payment_intent,
 )
 from datetime import datetime, date, timedelta
 
@@ -728,9 +730,18 @@ def handle_booking_submission(request, trip):
                         f"discount_amount={discount_amount}"
                     )
         
-        # 应用折扣（从原价中减去）
+        # 应用折扣（从「现在应付」中减去；可为 $0，例如免定金 code）
         base_amount = max(0, gross_amount - discount_amount)
         base_amount_cents = int(round(base_amount * 100))
+        if discount_amount and discount_amount >= gross_amount and gross_amount > 0:
+            current_app.logger.warning(
+                "Discount covers full amount due at booking: trip_id=%s code=%s "
+                "gross=%s discount=%s (initial payment waived)",
+                trip.id,
+                discount_code_str,
+                gross_amount,
+                discount_amount,
+            )
         
         initial_payment_info = {
             'initial_amount': base_amount,
@@ -775,49 +786,70 @@ def handle_booking_submission(request, trip):
             'overdue_details': initial_payment_info.get('overdue_details', [])
         }
         
-        # 创建Payment Intent（不创建Booking和Payment记录）
-        # 使用PendingBooking模型存储完整报名数据，避免Stripe metadata大小限制
+        # 创建 PendingBooking；应付 > 0 时再创建 Stripe PaymentIntent
         from datetime import timedelta
+        import uuid as uuid_mod
         
-        # 先创建Payment Intent（只存储关键信息在metadata中）
-        checkout_metadata = {
-            'payment_flow': 'payment_intent',
-            'payment_plan': payment_method,
-            'source': 'trip_booking',
-            'base_amount': str(base_amount_cents),  # Stripe metadata必须是字符串
-            'trip_id': str(trip.id),
-            'trip_slug': trip.slug or '',
-        }
-        
-        try:
-            payment_intent = create_payment_intent(
-                amount=base_amount,
-                currency='usd',
-                metadata=checkout_metadata
+        # Stripe USD 最低 50 美分；0 < amount < 50 视为配置/计算错误
+        if 0 < base_amount_cents < 50:
+            current_app.logger.error(
+                f"Invalid payment amount for trip {trip.id}: {base_amount_cents} cents "
+                f"(gross={gross_amount}, discount={discount_amount})"
             )
-            
-            if not payment_intent:
-                current_app.logger.error(
-                    f"Failed to create Payment Intent for trip {trip.id}. "
-                    f"Check Stripe configuration and logs."
+            return jsonify({
+                'success': False,
+                'error': 'invalid_amount',
+                'message': 'Calculated payment amount is below the minimum charge. Please contact us.',
+            }), 400
+
+        payment_required = base_amount_cents > 0
+        payment_intent = None
+        payment_intent_id = None
+
+        try:
+            if payment_required:
+                checkout_metadata = {
+                    'payment_flow': 'payment_intent',
+                    'payment_plan': payment_method,
+                    'source': 'trip_booking',
+                    'base_amount': str(base_amount_cents),
+                    'trip_id': str(trip.id),
+                    'trip_slug': trip.slug or '',
+                }
+                payment_intent = create_payment_intent(
+                    amount=base_amount,
+                    currency='usd',
+                    metadata=checkout_metadata
                 )
-                return jsonify({
-                    'success': False, 
-                    'error': 'payment_intent_not_created',
-                    'message': 'Unable to create payment. Please check your payment configuration or try again later.'
-                }), 500
-            
-            payment_intent_id = getattr(payment_intent, 'id', None)
-            if not payment_intent_id:
-                current_app.logger.error("Payment Intent created but has no ID")
-                return jsonify({
-                    'success': False,
-                    'error': 'payment_intent_not_created',
-                    'message': 'Payment Intent creation failed: No ID returned'
-                }), 500
-            
-            # 将完整报名数据存储在PendingBooking表中
-            expires_at = datetime.utcnow() + timedelta(hours=24)  # 24小时后过期
+                if not payment_intent:
+                    current_app.logger.error(
+                        f"Failed to create Payment Intent for trip {trip.id}. "
+                        f"Check Stripe configuration and logs."
+                    )
+                    return jsonify({
+                        'success': False,
+                        'error': 'payment_intent_not_created',
+                        'message': 'Unable to create payment. Please check your payment configuration or try again later.'
+                    }), 500
+
+                payment_intent_id = getattr(payment_intent, 'id', None)
+                if not payment_intent_id:
+                    current_app.logger.error("Payment Intent created but has no ID")
+                    return jsonify({
+                        'success': False,
+                        'error': 'payment_intent_not_created',
+                        'message': 'Payment Intent creation failed: No ID returned'
+                    }), 500
+            else:
+                # 免定金 / 折扣后首付为 $0：不调用 Stripe，用本地占位 ID
+                payment_intent_id = f"free_{uuid_mod.uuid4().hex}"
+                full_booking_data['payment_required'] = False
+                current_app.logger.info(
+                    f"$0 initial payment for trip {trip.id}: skipping Stripe, "
+                    f"discount={discount_amount}, gross={gross_amount}, ref={payment_intent_id}"
+                )
+
+            expires_at = datetime.utcnow() + timedelta(hours=24)
             pending_booking = PendingBooking(
                 trip_id=trip.id,
                 payment_intent_id=payment_intent_id,
@@ -827,11 +859,13 @@ def handle_booking_submission(request, trip):
             )
             db.session.add(pending_booking)
             db.session.commit()
-            
+
             current_app.logger.info(
-                f"PendingBooking created: id={pending_booking.id}, payment_intent_id={payment_intent_id}, trip_id={trip.id}"
+                f"PendingBooking created: id={pending_booking.id}, "
+                f"payment_intent_id={payment_intent_id}, trip_id={trip.id}, "
+                f"payment_required={payment_required}"
             )
-            
+
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(
@@ -843,24 +877,19 @@ def handle_booking_submission(request, trip):
                 'error': 'payment_intent_not_created',
                 'message': f'Payment creation failed: {str(e)}'
             }), 500
-        
-        current_app.logger.info(
-            f"Payment Intent created for trip {trip.id} (booking will be created after payment): "
-            f"pi={getattr(payment_intent, 'id', None)}, amount={base_amount_cents}"
-        )
-        
-        # 3DS 完成后回到行程页并在弹窗内显示结果（不再跳转独立 success 页）
+
         trip_page_url = url_for('main.trip_detail', slug=trip.slug, _external=True)
-        pi_id = getattr(payment_intent, 'id', None) or ''
+        pi_id = payment_intent_id or ''
         success_url = f'{trip_page_url}?modal=1&payment_intent_id={pi_id}'
 
         return jsonify({
             'success': True,
-            'payment_intent_id': getattr(payment_intent, 'id', None),
-            'client_secret': getattr(payment_intent, 'client_secret', None),
+            'payment_required': payment_required,
+            'payment_intent_id': payment_intent_id,
+            'client_secret': getattr(payment_intent, 'client_secret', None) if payment_intent else None,
             'payment_plan': payment_method,
             'base_amount_cents': base_amount_cents,
-            'publishable_key': current_app.config.get('STRIPE_PUBLISHABLE_KEY'),
+            'publishable_key': current_app.config.get('STRIPE_PUBLISHABLE_KEY') if payment_required else None,
             'success_url': success_url,
         })
         
@@ -1186,6 +1215,21 @@ def api_payment_quote():
     else:
         return jsonify({'error': 'missing_parameters'}), 400
 
+    # $0 / free_ 占位：不查卡、不更新 Stripe
+    if (
+        (base_amount_cents is not None and int(base_amount_cents) <= 0)
+        or (payment_intent_id and str(payment_intent_id).startswith('free_'))
+    ):
+        return jsonify({
+            'funding': 'unknown',
+            'brand': 'unknown',
+            'base_amount': 0,
+            'fee': 0,
+            'tax_amount': 0,
+            'final_amount': 0,
+            'payment_required': False,
+        })
+
     funding, brand = retrieve_payment_method_card_details(payment_method_id)
     fee_cents = calculate_fee(base_amount_cents, funding, brand)
     tax_amount_cents = 0
@@ -1249,6 +1293,19 @@ def api_payment_intent():
         current_app.logger.info(
             f"Updating Payment Intent {payment_intent_id} with base_amount_cents={base_amount_cents}"
         )
+
+        if (
+            int(base_amount_cents or 0) <= 0
+            or str(payment_intent_id).startswith('free_')
+        ):
+            return jsonify({
+                'success': True,
+                'payment_required': False,
+                'payment_intent_id': payment_intent_id,
+                'final_amount': 0,
+                'base_amount': 0,
+                'fee': 0,
+            })
     
     # 优先处理 installment_id（分期付款场景）
     # 这样可以确保分期付款使用正确的金额（installment.amount），而不是 booking.total
@@ -1808,6 +1865,40 @@ def api_payment_status():
     }), 200
 
 
+@bp.route('/api/booking/upload', methods=['POST'])
+def api_booking_upload():
+    """
+    报名流程文件上传（护照页截图等）。
+    multipart field: file
+    返回: path（相对 static/）、url、original_filename
+    """
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+
+    upload = request.files['file']
+    if not upload or not upload.filename:
+        return jsonify({'error': 'No file selected'}), 400
+
+    try:
+        rel_path = save_booking_upload(upload)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except Exception:
+        current_app.logger.exception('Booking file upload failed')
+        return jsonify({'error': 'Upload failed'}), 500
+
+    if not rel_path:
+        return jsonify({'error': 'Upload failed'}), 400
+
+    from werkzeug.utils import secure_filename
+    original = secure_filename(upload.filename) or 'file'
+    return jsonify({
+        'path': rel_path,
+        'url': url_for('static', filename=rel_path),
+        'original_filename': original,
+    }), 200
+
+
 @bp.route('/api/discount/validate', methods=['POST'])
 def api_validate_discount():
     """
@@ -1906,12 +1997,35 @@ def api_apply_discount():
     # 计算新的 base_amount（应用折扣后）
     new_base_amount = max(0, gross_amount - discount_amount)
     new_base_amount_cents = int(round(new_base_amount * 100))
+
+    if 0 < new_base_amount_cents < 50:
+        return jsonify({
+            'success': False,
+            'message': 'Discount would leave a payment below the minimum charge. Please contact us.',
+        }), 400
     
     # 更新 booking_data
     booking_data['discount_code_id'] = discount_code_id
     booking_data['discount_amount'] = discount_amount
     booking_data['base_amount_cents'] = new_base_amount_cents
     booking_data['gross_amount'] = gross_amount  # 保存原始金额以便后续计算
+    booking_data['payment_required'] = new_base_amount_cents > 0
+
+    if discount_amount and discount_amount >= gross_amount and gross_amount > 0:
+        current_app.logger.warning(
+            "Discount covers full amount due at booking (apply): pi=%s "
+            "gross=%s discount=%s",
+            payment_intent_id,
+            gross_amount,
+            discount_amount,
+        )
+
+    # 折扣把应付打成 $0：取消已有 Stripe PI（free_ 占位则跳过）
+    if new_base_amount_cents == 0 and payment_intent_id:
+        safe_cancel_payment_intent(
+            payment_intent_id,
+            reason='discount reduced amount to $0',
+        )
     
     # 重新赋值整个字典并标记为已修改（确保 SQLAlchemy 检测到 JSON 字段变更）
     pending_booking.booking_data = dict(booking_data)
@@ -1930,26 +2044,57 @@ def api_apply_discount():
         'gross_amount': gross_amount,
         'discount_amount': discount_amount,
         'base_amount': new_base_amount,
-        'base_amount_cents': new_base_amount_cents
+        'base_amount_cents': new_base_amount_cents,
+        'payment_required': new_base_amount_cents > 0,
     }), 200
 
 
 @bp.route('/api/booking/create-free', methods=['POST'])
 def api_create_free_booking():
     """
-    处理 $0 付款的情况（例如 100% 折扣）
-    直接创建 Booking，无需通过 Stripe
+    处理 $0 首付（免定金 code / 折扣刚好覆盖 Due at Booking）。
+    直接创建 Booking，无需 Stripe Payment Element。
+    幂等：同一 payment_intent_id 重复提交返回已有 booking_id。
     
     请求参数:
-    - payment_intent_id: Payment Intent ID
+    - payment_intent_id: PendingBooking 关联 ID（真实 pi_… 或 free_…）
     """
     data = request.get_json(silent=True) or {}
     payment_intent_id = data.get('payment_intent_id')
     
     if not payment_intent_id:
         return jsonify({'success': False, 'message': 'payment_intent_id is required'}), 400
+
+    def _free_success_payload(booking_id, already_confirmed=False):
+        return {
+            'success': True,
+            'booking_id': booking_id,
+            'already_confirmed': already_confirmed,
+            'message': (
+                'Booking already confirmed'
+                if already_confirmed
+                else 'Booking created successfully (no payment required)'
+            ),
+            'redirect_url': url_for('main.booking_success', booking_id=booking_id, _external=True),
+        }
+
+    # 幂等：已有 Payment → Booking
+    existing_payment = Payment.query.filter_by(
+        stripe_payment_intent_id=payment_intent_id
+    ).first()
+    if existing_payment and existing_payment.booking_id:
+        return jsonify(_free_success_payload(existing_payment.booking_id, already_confirmed=True)), 200
+
+    # 幂等：Pending 已 completed，读回 created_booking_id
+    any_pending = PendingBooking.query.filter_by(
+        payment_intent_id=payment_intent_id
+    ).first()
+    if any_pending and any_pending.status == 'completed':
+        completed_data = any_pending.booking_data or {}
+        existing_id = completed_data.get('created_booking_id')
+        if existing_id and Booking.query.get(existing_id):
+            return jsonify(_free_success_payload(existing_id, already_confirmed=True)), 200
     
-    # 查找 PendingBooking
     pending_booking = PendingBooking.query.filter_by(
         payment_intent_id=payment_intent_id,
         status='pending'
@@ -1958,10 +2103,9 @@ def api_create_free_booking():
     if not pending_booking:
         return jsonify({'success': False, 'message': 'Pending booking not found'}), 404
     
-    booking_data = pending_booking.booking_data
+    booking_data = pending_booking.booking_data or {}
     base_amount_cents = booking_data.get('base_amount_cents', 0)
     
-    # 验证金额确实为 0
     if base_amount_cents > 0:
         return jsonify({
             'success': False, 
@@ -1970,55 +2114,59 @@ def api_create_free_booking():
         }), 400
     
     try:
-        # 复用现有的 booking 创建逻辑
         booking = _create_booking_from_metadata(payment_intent_id)
         
         if not booking:
             return jsonify({'success': False, 'message': 'Failed to create booking'}), 500
         
-        # 更新 Booking 状态为 deposit_paid（定金已支付，即使是 $0）
-        booking.status = 'deposit_paid'
-        booking.amount_paid = 0.0  # 实际支付金额为 0
+        packages_data = booking_data.get('packages') or []
+        has_installment = any(
+            (p.get('payment_plan_type') == 'deposit_installment') for p in packages_data
+        )
+        if has_installment:
+            booking.status = 'deposit_paid'
+            package_status = 'deposit_paid'
+        else:
+            booking.status = 'fully_paid'
+            package_status = 'fully_paid'
+        booking.amount_paid = 0.0
         
-        # 更新 BookingPackage 状态
         for bp in booking.booking_packages.all():
-            bp.status = 'confirmed'
+            bp.status = package_status
             bp.amount_paid = 0.0
             
-            # 如果是分期付款计划，创建 InstallmentPayment 记录
             if bp.payment_plan_type == 'deposit_installment' and bp.package and bp.package.payment_plan_config:
                 config = bp.package.payment_plan_config
                 if config and config.get('enabled'):
-                    create_installment_payments(booking, bp, config)
+                    # 避免重复创建分期（幂等二次进入）
+                    from app.models import InstallmentPayment
+                    existing_inst = InstallmentPayment.query.filter_by(
+                        booking_id=booking.id
+                    ).first()
+                    if not existing_inst:
+                        create_installment_payments(booking, bp, config)
         
-        # 更新 PendingBooking 状态
         pending_booking.status = 'completed'
+        updated_data = dict(pending_booking.booking_data or {})
+        updated_data['created_booking_id'] = booking.id
+        pending_booking.booking_data = updated_data
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(pending_booking, 'booking_data')
         db.session.commit()
         
-        # 取消 Stripe Payment Intent（因为不需要实际付款）
-        try:
-            stripe.PaymentIntent.cancel(payment_intent_id)
-            current_app.logger.info(f"Cancelled Payment Intent {payment_intent_id} for $0 booking")
-        except Exception as e:
-            current_app.logger.warning(f"Failed to cancel Payment Intent {payment_intent_id}: {e}")
+        safe_cancel_payment_intent(payment_intent_id, reason='$0 free booking confirm')
         
         current_app.logger.info(
             f"Free booking created: booking_id={booking.id}, payment_intent_id={payment_intent_id}, "
-            f"discount_amount={booking_data.get('discount_amount', 0)}"
+            f"status={booking.status}, discount_amount={booking_data.get('discount_amount', 0)}"
         )
         
-        # 发送确认邮件（$0 付款也发送确认邮件）
         try:
-            send_booking_confirmation_email(booking, is_full_payment=False)
+            send_booking_confirmation_email(booking, is_full_payment=(booking.status == 'fully_paid'))
         except Exception as e:
             current_app.logger.error(f"Failed to send confirmation email for free booking {booking.id}: {e}")
         
-        return jsonify({
-            'success': True,
-            'booking_id': booking.id,
-            'message': 'Booking created successfully (no payment required)',
-            'redirect_url': url_for('main.booking_success', booking_id=booking.id, _external=True)
-        }), 200
+        return jsonify(_free_success_payload(booking.id, already_confirmed=False)), 200
         
     except Exception as e:
         db.session.rollback()
@@ -2865,6 +3013,12 @@ def _create_booking_from_metadata(payment_intent_id):
             if isinstance(v, dict):
                 if 'details' in v:  # yesno_text 类型
                     question_answers[k] = {'value': v.get('value', 'no'), 'details': v.get('details', '')}
+                elif v.get('type') == 'file' or v.get('original_filename') is not None:
+                    question_answers[k] = {
+                        'type': 'file',
+                        'value': v.get('value', ''),
+                        'original_filename': v.get('original_filename', ''),
+                    }
                 else:
                     question_answers[k] = v.get('value', '')
             else:

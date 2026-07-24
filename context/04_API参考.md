@@ -107,12 +107,13 @@
 
 | 路由 | 方法 | 说明 |
 |------|------|------|
-| `POST /trips/<slug>` | POST | **AJAX 报名首步**：创建 PendingBooking + Stripe PaymentIntent，返回 `client_secret` |
+| `POST /trips/<slug>` | POST | **AJAX 报名首步**：创建 PendingBooking；应付>0 时建 Stripe PaymentIntent 返回 `client_secret`；应付=$0 时 `payment_required=false` + `free_…` 占位 ID |
 | `/api/payment/quote` | POST | 根据 PendingBooking 计算报价 |
 | `/api/payment/intent` | POST | 更新已有 PaymentIntent 的金额与 metadata（用于确认前写入手续费等） |
 | `/api/payment/status` | GET | 查询支付状态 |
 | `/api/payment/fee` | POST | 计算手续费 |
-| `/api/booking/create-free` | POST | 零元订单直接创建 Booking |
+| `/api/booking/create-free` | POST | 零元首付直接创建 Booking（幂等；`payment_intent_id` 可为 `pi_…` 或 `free_…`） |
+| `/api/booking/upload` | POST | 报名文件上传（护照等），multipart `file` → `uploads/booking/` |
 | `/api/booking/<id>/summary` | GET | 订单摘要 JSON |
 | `/booking/payment/<id>` | GET | 独立支付页（邮件链接等） |
 | `/booking/<id>/receipt` | GET | 前台收据页 |

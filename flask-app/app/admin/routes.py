@@ -486,7 +486,8 @@ def manage_trip(id):
                 'buyer_email': buyer_email or '-',
                 'payment_status': booking.status,
                 'packages': package_names,
-                'addons': participant_addons
+                'addons': participant_addons,
+                'question_answers': participant.question_answers or {},
             })
             total_participants_count += 1
     
@@ -2942,7 +2943,20 @@ def _get_participants_export_data(trip):
             row = [row_num, first_name, middle_name, last_name, gender, dob_str, reg_type, dietary_str, medical_str]
             for q in custom_questions:
                 ans = qa.get(str(q.id), qa.get(q.id))
-                row.append(ans.get('details', ans.get('value', '-')) if isinstance(ans, dict) else (ans or '-'))
+                if isinstance(ans, dict):
+                    if ans.get('type') == 'file' or (
+                        'original_filename' in ans and 'details' not in ans
+                    ):
+                        row.append(ans.get('original_filename') or ans.get('value') or '-')
+                    elif 'details' in ans:
+                        if ans.get('value') == 'yes' and ans.get('details'):
+                            row.append(f"Yes: {ans.get('details')}")
+                        else:
+                            row.append(ans.get('value') or ans.get('details') or '-')
+                    else:
+                        row.append(ans.get('value') or '-')
+                else:
+                    row.append(ans or '-')
             row.extend([participant.email or '-', buyer_name, package_str, addons_str, status_display, booking_date_str])
             rows.append(row)
             row_num += 1

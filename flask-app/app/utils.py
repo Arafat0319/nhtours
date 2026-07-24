@@ -490,6 +490,52 @@ def allowed_image_file(filename):
            filename.rsplit('.', 1)[1].lower() in ALLOWED_IMAGE_EXTENSIONS
 
 
+# 报名文件上传：护照页等（图片 + PDF）
+ALLOWED_BOOKING_UPLOAD_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp', 'pdf'}
+MAX_BOOKING_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
+
+
+def allowed_booking_upload_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_BOOKING_UPLOAD_EXTENSIONS
+
+
+def save_booking_upload(file, folder='uploads/booking', max_size=None):
+    """
+    保存报名流程上传的文件（护照截图等）。
+    Returns: relative path under static/ e.g. 'uploads/booking/uuid_name.jpg'
+    """
+    if not file or not file.filename:
+        return None
+
+    if not allowed_booking_upload_file(file.filename):
+        raise ValueError(
+            f'Unsupported file type. Allowed: {", ".join(sorted(ALLOWED_BOOKING_UPLOAD_EXTENSIONS))}'
+        )
+
+    file.seek(0, 2)
+    file_size = file.tell()
+    file.seek(0)
+
+    max_allowed = max_size or MAX_BOOKING_UPLOAD_SIZE
+    if file_size > max_allowed:
+        max_mb = max_allowed / (1024 * 1024)
+        raise ValueError(f'File too large (max {max_mb:.0f}MB)')
+
+    if file_size == 0:
+        raise ValueError('Empty file')
+
+    filename = secure_filename(file.filename) or 'upload.bin'
+    unique_filename = f"{uuid.uuid4().hex}_{filename}"
+
+    upload_path = os.path.join(current_app.root_path, 'static', folder)
+    os.makedirs(upload_path, exist_ok=True)
+
+    file_path = os.path.join(upload_path, unique_filename)
+    file.save(file_path)
+
+    return f"{folder}/{unique_filename}"
+
+
 def save_image(file, folder='uploads', max_size=None):
     """
     保存上传的图片（带验证）

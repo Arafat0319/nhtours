@@ -62,10 +62,16 @@
         if (!selectEl || selectEl.getAttribute('data-booking-uiverse') === 'true') return;
         var options = [];
         for (var i = 0; i < selectEl.options.length; i++) {
-            options.push({ value: selectEl.options[i].value, text: selectEl.options[i].text });
+            var o = selectEl.options[i];
+            // 跳过占位项（空 value / disabled / hidden），避免下拉里出现 “Select...”
+            if (o.disabled || o.hidden) continue;
+            if (!(o.value || '').trim()) continue;
+            options.push({ value: o.value, text: o.text });
         }
-        var idx = selectEl.selectedIndex >= 0 ? selectEl.selectedIndex : 0;
-        var selectedText = selectEl.options[idx] ? selectEl.options[idx].text : (options[0] ? options[0].text : '');
+        var selectedText = '';
+        if (selectEl.value && selectEl.selectedIndex >= 0 && selectEl.options[selectEl.selectedIndex]) {
+            selectedText = selectEl.options[selectEl.selectedIndex].text || '';
+        }
         var wrap = document.createElement('div');
         wrap.className = 'booking-select-uiverse select';
         wrap.setAttribute('data-for-select', selectEl.name || '');
@@ -1211,6 +1217,16 @@
                             value: radio ? radio.value : 'no',
                             details: detailsInput ? detailsInput.value : ''
                         };
+                    } else if (question.type === 'file') {
+                        const fieldName = `participant_question_${question.id}_${dataIndex}`;
+                        const input = form.querySelector(`[name="${fieldName}"]`);
+                        participant.custom_answers[question.id] = {
+                            question_id: question.id,
+                            label: question.label,
+                            type: 'file',
+                            value: input ? (input.value || '') : '',
+                            original_filename: input ? (input.dataset.originalFilename || '') : ''
+                        };
                     } else {
                         const fieldName = `participant_question_${question.id}_${dataIndex}`;
                         const input = form.querySelector(`[name="${fieldName}"]`);
@@ -1315,7 +1331,7 @@
                     <label class="text-sm font-medium mb-1">Gender${reqStar}</label>
                     <select name="participant_gender_${participantIndex}" 
                         class="w-full min-w-0" required>
-                        <option value="">Select...</option>
+                        <option value="" disabled selected hidden></option>
                         <option value="Male">Male</option>
                         <option value="Female">Female</option>
                         <option value="Other">Other</option>
@@ -1332,7 +1348,7 @@
                     <label class="text-sm font-medium mb-1">Registration Type${reqStar}</label>
                     <select name="participant_registration_type_${participantIndex}" 
                         class="w-full min-w-0" required>
-                        <option value="">Select...</option>
+                        <option value="" disabled selected hidden></option>
                         <option value="Student">Student</option>
                         <option value="Faculty">Faculty</option>
                         <option value="Parent">Parent</option>
@@ -1427,6 +1443,21 @@
                                 placeholder="YYYY-MM-DD" ${requiredAttr}>
                         </div>
                     `;
+                } else if (question.type === 'file') {
+                    const acceptAttr = 'image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf';
+                    fieldsHtml += `
+                        <div class="mt-4 participant-file-field" data-question-id="${question.id}">
+                            <label class="text-sm font-medium mb-1">${question.label}${requiredMark}</label>
+                            <input type="file" class="participant-file-input w-full min-w-0 text-sm"
+                                accept="${acceptAttr}"
+                                data-question-id="${question.id}">
+                            <input type="hidden" name="${fieldName}" value=""
+                                class="participant-file-path"
+                                data-original-filename=""
+                                ${requiredAttr}>
+                            <p class="participant-file-status text-xs text-gray-500 mt-1">JPG, PNG, WEBP or PDF · max 10MB</p>
+                        </div>
+                    `;
                 } else if (question.type === 'yesno_text') {
                     fieldsHtml += `
                         <div class="mt-4 participant-yesno-field" data-question-id="${question.id}">
@@ -1483,9 +1514,16 @@
         if (typeof window.initFlatpickrOnDates === 'function') {
             window.initFlatpickrOnDates();
         }
+
+        // 报名文件上传（护照等）
+        const formEl = participantsContainer.querySelector(`.participant-form[data-index="${participantIndex}"]`);
+        if (formEl) {
+            formEl.querySelectorAll('.participant-file-input').forEach(function(fileInput) {
+                fileInput.addEventListener('change', handleParticipantFileUpload);
+            });
+        }
         
         // 第二章风格：折叠/展开 Participant Information
-        const formEl = participantsContainer.querySelector(`.participant-form[data-index="${participantIndex}"]`);
         const headerEl = formEl && formEl.querySelector('.participant-section-header');
         const bodyEl = formEl && formEl.querySelector('.participant-form-body');
         if (headerEl && bodyEl) {
@@ -1496,6 +1534,94 @@
                 const chevron = headerEl.querySelector('.participant-chevron');
                 if (chevron) chevron.style.transform = collapsed ? 'rotate(0deg)' : 'rotate(-180deg)';
             });
+        }
+    }
+
+    /**
+     * 参与者自定义问题：上传文件到 /api/booking/upload，路径写入 hidden
+     */
+    async function handleParticipantFileUpload(event) {
+        const fileInput = event.target;
+        const wrap = fileInput.closest('.participant-file-field');
+        if (!wrap) return;
+        const pathInput = wrap.querySelector('.participant-file-path');
+        const statusEl = wrap.querySelector('.participant-file-status');
+        const file = fileInput.files && fileInput.files[0];
+
+        if (!file) {
+            if (pathInput) {
+                pathInput.value = '';
+                pathInput.dataset.originalFilename = '';
+            }
+            if (statusEl) {
+                statusEl.textContent = 'JPG, PNG, WEBP or PDF · max 10MB';
+                statusEl.classList.remove('text-red-600');
+                statusEl.classList.add('text-gray-500');
+            }
+            return;
+        }
+
+        const maxBytes = 10 * 1024 * 1024;
+        if (file.size > maxBytes) {
+            if (pathInput) {
+                pathInput.value = '';
+                pathInput.dataset.originalFilename = '';
+            }
+            fileInput.value = '';
+            if (statusEl) {
+                statusEl.textContent = 'File too large (max 10MB).';
+                statusEl.classList.add('text-red-600');
+                statusEl.classList.remove('text-gray-500', 'text-gray-600');
+            }
+            return;
+        }
+
+        if (statusEl) {
+            statusEl.textContent = 'Uploading…';
+            statusEl.classList.remove('text-red-600');
+            statusEl.classList.add('text-gray-500');
+        }
+        fileInput.disabled = true;
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const response = await fetch('/api/booking/upload', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json().catch(function() { return {}; });
+            if (!response.ok) {
+                throw new Error(data.error || 'Upload failed');
+            }
+            if (pathInput) {
+                pathInput.value = data.path || '';
+                pathInput.dataset.originalFilename = data.original_filename || file.name || '';
+                pathInput.classList.remove('border-red-500');
+                pathInput.style.borderColor = '';
+                pathInput.style.borderWidth = '';
+            }
+            if (statusEl) {
+                const name = data.original_filename || file.name;
+                const href = data.url || (data.path ? '/static/' + data.path : '#');
+                statusEl.innerHTML = 'Uploaded: <a href="' + href + '" target="_blank" rel="noopener" class="text-wetravel-cyan underline">' + name + '</a>';
+                statusEl.classList.remove('text-red-600', 'text-gray-500');
+                statusEl.classList.add('text-gray-600');
+            }
+        } catch (err) {
+            if (pathInput) {
+                pathInput.value = '';
+                pathInput.dataset.originalFilename = '';
+            }
+            fileInput.value = '';
+            if (statusEl) {
+                statusEl.textContent = (err && err.message) ? err.message : 'Upload failed. Please try again.';
+                statusEl.classList.add('text-red-600');
+                statusEl.classList.remove('text-gray-500', 'text-gray-600');
+            }
+        } finally {
+            fileInput.disabled = false;
         }
     }
 
@@ -1586,6 +1712,19 @@
                                 if (radio) radio.checked = true;
                                 if (detailsInput) detailsInput.value = answer.details || '';
                                 if (detailsDiv) detailsDiv.classList.toggle('hidden', (answer.value || 'no') !== 'yes');
+                            } else if (question.type === 'file') {
+                                const pathInput = form.querySelector(`[name="participant_question_${question.id}_${dataIndex}"]`);
+                                const statusEl = form.querySelector(`.participant-file-field[data-question-id="${question.id}"] .participant-file-status`);
+                                if (pathInput && answer.value) {
+                                    pathInput.value = answer.value;
+                                    pathInput.dataset.originalFilename = answer.original_filename || '';
+                                    if (statusEl) {
+                                        const name = answer.original_filename || answer.value.split('/').pop();
+                                        statusEl.innerHTML = `Uploaded: <a href="/static/${answer.value}" target="_blank" class="text-wetravel-cyan underline">${name}</a>`;
+                                        statusEl.classList.remove('text-red-600');
+                                        statusEl.classList.add('text-gray-600');
+                                    }
+                                }
                             } else {
                                 const input = form.querySelector(`[name="participant_question_${question.id}_${dataIndex}"]`);
                                 if (input) input.value = answer.value || '';
@@ -1874,9 +2013,20 @@
                         });
                         const applyResult = await applyResponse.json();
                         console.log('Discount applied to PendingBooking:', applyResult);
-                        
-                        // 重新请求 quote 以获取正确的 fee
-                        if (paymentElementInstance && elementsInstance) {
+
+                        if (applyResult.success && applyResult.payment_required === false) {
+                            if (paymentElementInstance) {
+                                try { paymentElementInstance.unmount(); } catch (e) { /* ignore */ }
+                            }
+                            paymentElementInstance = null;
+                            elementsInstance = null;
+                            stripeInstance = null;
+                            lastPaymentMethodId = null;
+                            embeddedPaymentSession.payment_required = false;
+                            embeddedPaymentSession.client_secret = null;
+                            embeddedPaymentSession.base_amount_cents = 0;
+                            showFreePaymentUI();
+                        } else if (paymentElementInstance && elementsInstance) {
                             console.log('Requesting new quote after discount applied...');
                             await requestEmbeddedQuote(true);
                         }
@@ -1947,9 +2097,12 @@
                 });
                 const applyResult = await applyResponse.json();
                 console.log('Discount removed from PendingBooking:', applyResult);
-                
-                // 重新请求 quote 以获取正确的 fee
-                if (paymentElementInstance && elementsInstance) {
+
+                // 从 $0 免改回需付款：整段支付会话重初始化
+                if (embeddedPaymentSession.payment_required === false || !paymentElementInstance) {
+                    resetEmbeddedPaymentSession();
+                    await initEmbeddedPaymentSession();
+                } else if (paymentElementInstance && elementsInstance) {
                     console.log('Requesting new quote after discount removed...');
                     await requestEmbeddedQuote(true);
                 }
@@ -2038,7 +2191,25 @@
             addons: bookingData.addons,
             participants: bookingData.participants,
             payment_method: bookingData.payment_method,
+            discount_code: bookingData.discount_code || null,
+            discount_amount: bookingData.discount_amount || 0,
         });
+    }
+
+    function showFreePaymentUI() {
+        const paymentContainer = document.getElementById('payment-element');
+        if (paymentContainer) {
+            paymentContainer.innerHTML = `
+                <div class="py-6 px-4 text-center rounded-lg border border-gray-200 bg-gray-50">
+                    <p class="text-gray-900 text-sm font-medium mb-1">No payment due right now</p>
+                    <p class="text-gray-600 text-sm">Your discount covers the amount due at booking. Click <strong>Confirm Booking</strong> to reserve your spot. Any remaining balance will be collected later as scheduled.</p>
+                </div>
+            `;
+        }
+        setPaymentElementLoading(false);
+        clearPaymentMessage();
+        lastQuote = { base_amount: 0, fee: 0, tax_amount: 0, final_amount: 0 };
+        updateOrderSummary();
     }
 
     async function initEmbeddedPaymentSession() {
@@ -2076,23 +2247,36 @@
             });
             const result = await response.json();
             if (!response.ok || !result.success) {
-                throw new Error(result.error || 'Payment initialization failed.');
+                throw new Error(result.message || result.error || 'Payment initialization failed.');
             }
 
+            const paymentRequired = result.payment_required !== false
+                && (result.base_amount_cents == null || result.base_amount_cents > 0)
+                && !!result.client_secret;
+
             embeddedPaymentSession = {
-                booking_id: result.booking_id || null,  // 新流程中可能为null
-                payment_intent_id: result.payment_intent_id,  // 新流程中必须有
-                client_secret: result.client_secret,
+                booking_id: result.booking_id || null,
+                payment_intent_id: result.payment_intent_id,
+                client_secret: result.client_secret || null,
                 payment_plan: result.payment_plan,
                 success_url: result.success_url,
                 publishable_key: result.publishable_key || window.paymentConfig?.publishableKey,
+                payment_required: paymentRequired,
+                base_amount_cents: result.base_amount_cents != null ? result.base_amount_cents : null,
             };
-            
+
             console.log("Embedded payment session initialized:", {
                 booking_id: embeddedPaymentSession.booking_id,
                 payment_intent_id: embeddedPaymentSession.payment_intent_id,
+                payment_required: paymentRequired,
+                base_amount_cents: embeddedPaymentSession.base_amount_cents,
                 has_client_secret: !!embeddedPaymentSession.client_secret
             });
+
+            if (!paymentRequired) {
+                showFreePaymentUI();
+                return;
+            }
 
             if (!embeddedPaymentSession.client_secret || !embeddedPaymentSession.publishable_key) {
                 throw new Error('Payment is not ready. Please refresh the page.');
@@ -2151,6 +2335,11 @@
     }
 
     async function requestEmbeddedQuote(silent = false) {
+        if (embeddedPaymentSession && embeddedPaymentSession.payment_required === false) {
+            lastQuote = { base_amount: 0, fee: 0, tax_amount: 0, final_amount: 0 };
+            updateOrderSummary();
+            return true;
+        }
         if (quoteInFlight || !elementsInstance) {
             console.log("Quote request blocked:", { quoteInFlight, hasElements: !!elementsInstance });
             return false;
@@ -2261,38 +2450,13 @@
             }
         }
 
-        // 检查是否为 $0 付款（例如 100% 折扣）
-        // 计算折扣后的实际金额
-        let actualPaymentAmount = 0;
-        
-        // 从 bookingData 计算 subtotal
-        let subtotal = 0;
-        for (const pkg of (bookingData.packages || [])) {
-            const pkgData = tripData.packages?.find(p => p.id === pkg.package_id);
-            if (pkgData) {
-                if (pkg.payment_plan_type === 'deposit_installment' && pkgData.payment_plan_config?.enabled) {
-                    const deposit = pkgData.payment_plan_config.deposit_amount || pkgData.payment_plan_config.deposit || pkgData.price;
-                    subtotal += deposit * (pkg.quantity || 1);
-                } else {
-                    subtotal += pkgData.price * (pkg.quantity || 1);
-                }
-            }
-        }
-        for (const addon of (bookingData.addons || [])) {
-            const addonData = tripData.addons?.find(a => a.id === addon.addon_id);
-            if (addonData && addonData.price) {
-                subtotal += addonData.price * (addon.quantity || 1);
-            }
-        }
-        
-        // 应用折扣
-        const discountAmount = bookingData.discount_amount || 0;
-        actualPaymentAmount = Math.max(0, subtotal - discountAmount);
-        
-        console.log('Payment amount check:', { subtotal, discountAmount, actualPaymentAmount });
-        
-        // 如果付款金额为 0，直接创建订单，不通过 Stripe
-        if (actualPaymentAmount <= 0 && embeddedPaymentSession.payment_intent_id) {
+        // $0 首付（免定金 / 折扣覆盖 Due at Booking）：不走 Stripe
+        const isFreeCheckout = embeddedPaymentSession.payment_required === false
+            || (embeddedPaymentSession.base_amount_cents != null && embeddedPaymentSession.base_amount_cents <= 0)
+            || (typeof embeddedPaymentSession.payment_intent_id === 'string'
+                && embeddedPaymentSession.payment_intent_id.indexOf('free_') === 0);
+
+        if (isFreeCheckout && embeddedPaymentSession.payment_intent_id) {
             console.log('$0 payment detected, creating booking directly...');
             showBookingModalResult('loading');
             try {
@@ -2399,6 +2563,10 @@
             } catch (err) {
                 console.warn('Payment element unmount failed', err);
             }
+        }
+        const paymentContainer = document.getElementById('payment-element');
+        if (paymentContainer) {
+            paymentContainer.innerHTML = '';
         }
         embeddedPaymentSession = null;
         embeddedPaymentSignature = null;

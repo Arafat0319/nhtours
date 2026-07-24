@@ -349,10 +349,24 @@
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <div class="text-sm text-gray-500">{{ participant.email or '-' }}</div>
                             </td>
-                            {# All custom questions from trip builder (answers not stored yet, show '-') #}
+                            {# Custom questions from trip builder #}
                             {% for question in custom_questions %}
+                            {% set qa = participant.question_answers or {} %}
+                            {% set ans = qa.get(question.id) if qa.get(question.id) is not none else qa.get(question.id|string) %}
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                -
+                                {% if ans is mapping %}
+                                    {% if ans.get('type') == 'file' or (ans.get('original_filename') and ans.get('details') is none) %}
+                                        {% if ans.get('value') %}
+                                        <a href="{{ url_for('static', filename=ans.value) }}" target="_blank" rel="noopener" class="text-wetravel-cyan underline">{{ ans.get('original_filename') or 'View file' }}</a>
+                                        {% else %}-{% endif %}
+                                    {% elif ans.get('details') is not none %}
+                                        {% if ans.get('value') == 'yes' and ans.get('details') %}Yes: {{ ans.details }}{% else %}{{ ans.get('value') or '-' }}{% endif %}
+                                    {% else %}
+                                        {{ ans.get('value') or '-' }}
+                                    {% endif %}
+                                {% else %}
+                                    {{ ans or '-' }}
+                                {% endif %}
                             </td>
                             {% endfor %}
                             {# Other fields #}
@@ -1786,7 +1800,7 @@
                                 }
                                 break;
                             case 'file':
-                                inputHtml = `<input type="file" id="${fieldId}" name="${fieldName}" class="p-field border rounded p-1 text-sm w-full" data-field="${fieldName}" data-question-id="${q.id}" ${q.required ? 'required' : ''}>`;
+                                inputHtml = `<p class="text-xs text-gray-500 mb-1">Guests upload files on the booking form. Optional: paste a stored path, or leave empty.</p><input type="text" id="${fieldId}" name="${fieldName}" class="p-field border rounded p-1 text-sm w-full" data-field="${fieldName}" data-question-id="${q.id}" data-type="file" placeholder="uploads/booking/... (optional)" ${q.required ? '' : ''}>`;
                                 break;
                             default: // text
                                 inputHtml = `<input type="text" id="${fieldId}" name="${fieldName}" class="p-field border rounded p-1 text-sm w-full" data-field="${fieldName}" data-question-id="${q.id}" placeholder="${q.label}" ${q.required ? 'required' : ''}>`;
@@ -1954,7 +1968,17 @@
                 const questionAnswers = {};
                 row.querySelectorAll('.p-field[data-question-id]').forEach(field => {
                     const questionId = field.getAttribute('data-question-id');
-                    if (questionId && field.value) {
+                    if (!questionId) return;
+                    if (field.dataset.type === 'file') {
+                        const path = (field.value || '').trim();
+                        if (path) {
+                            questionAnswers[questionId] = {
+                                type: 'file',
+                                value: path,
+                                original_filename: path.split('/').pop() || path
+                            };
+                        }
+                    } else if (field.value) {
                         questionAnswers[questionId] = field.value;
                     }
                 });
@@ -2505,12 +2529,12 @@
                                     tripCustomQuestions.forEach(q => {
                                         const fieldId = `participant-${p.id}-q-${q.id}`;
                                         const fieldName = `question_${q.id}`;
-                                        const existingValue = questionAnswers[q.id] || '';
+                                        const existingValue = questionAnswers[q.id] || questionAnswers[String(q.id)] || '';
                                         let inputHtml = '';
                                         
                                         switch(q.type) {
                                             case 'textarea':
-                                                inputHtml = `<textarea id="${fieldId}" name="${fieldName}" class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm" rows="3" placeholder="${q.label}" data-field="${fieldName}" data-question-id="${q.id}" ${q.required ? 'required' : ''}>${existingValue}</textarea>`;
+                                                inputHtml = `<textarea id="${fieldId}" name="${fieldName}" class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm" rows="3" placeholder="${q.label}" data-field="${fieldName}" data-question-id="${q.id}" ${q.required ? 'required' : ''}>${typeof existingValue === 'object' ? (existingValue.value || '') : existingValue}</textarea>`;
                                                 break;
                                             case 'number':
                                                 inputHtml = `<input type="text" inputmode="numeric" pattern="[0-9]*\\.?[0-9]*" id="${fieldId}" name="${fieldName}" class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm" placeholder="${q.label}" data-field="${fieldName}" data-question-id="${q.id}" value="${existingValue}" ${q.required ? 'required' : ''}>`;
@@ -2534,9 +2558,21 @@
                                                 const yesnoName = `participant-${p.id}-question-${q.id}`;
                                                 inputHtml = `<div class="participant-yesno-field participant-default-yesno"><div class="flex gap-4 mb-1"><label class="inline-flex items-center cursor-pointer"><input type="radio" name="${yesnoName}" value="no" ${(qYesno.value||'no')==='no'?'checked':''} class="participant-yesno-radio"><span class="ml-2">No</span></label><label class="inline-flex items-center cursor-pointer"><input type="radio" name="${yesnoName}" value="yes" ${(qYesno.value||'no')==='yes'?'checked':''} class="participant-yesno-radio"><span class="ml-2">Yes</span></label></div><div class="yesno-details mt-1 ${(qYesno.value||'no')==='yes'?'':'hidden'}"><label class="block text-xs text-gray-600 mb-0.5">If yes, please explain:</label><input type="text" id="${fieldId}-details" data-question-id="${q.id}" class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 sm:text-sm" value="${(qYesno.details||'').replace(/"/g,'&quot;')}"></div></div>`;
                                                 break;
-                                            case 'file':
-                                                inputHtml = `<input type="file" id="${fieldId}" name="${fieldName}" class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm" data-field="${fieldName}" data-question-id="${q.id}" ${q.required ? 'required' : ''}>`;
+                                            case 'file': {
+                                                const fileVal = (typeof existingValue === 'object' && existingValue)
+                                                    ? existingValue
+                                                    : { value: existingValue || '', original_filename: '' };
+                                                const filePath = fileVal.value || '';
+                                                const fileName = (fileVal.original_filename || (filePath ? filePath.split('/').pop() : '') || '').replace(/"/g, '&quot;');
+                                                const fileUrl = filePath ? `/static/${filePath}` : '';
+                                                const safePath = String(filePath).replace(/"/g, '&quot;');
+                                                if (filePath) {
+                                                    inputHtml = `<div class="text-sm"><a href="${fileUrl}" target="_blank" rel="noopener" class="text-wetravel-cyan underline">${fileName || 'View file'}</a><input type="hidden" id="${fieldId}" name="${fieldName}" data-field="${fieldName}" data-question-id="${q.id}" data-type="file" data-original-filename="${fileName}" value="${safePath}"></div>`;
+                                                } else {
+                                                    inputHtml = `<div class="text-sm text-gray-400">No file uploaded<input type="hidden" id="${fieldId}" name="${fieldName}" data-field="${fieldName}" data-question-id="${q.id}" data-type="file" data-original-filename="" value=""></div>`;
+                                                }
                                                 break;
+                                            }
                                             default: // text
                                                 inputHtml = `<input type="text" id="${fieldId}" name="${fieldName}" class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm" placeholder="${q.label}" data-field="${fieldName}" data-question-id="${q.id}" value="${existingValue}" ${q.required ? 'required' : ''}>`;
                                         }
@@ -2655,6 +2691,13 @@
                                             questionAnswers[q.id] = {
                                                 value: radio ? radio.value : 'no',
                                                 details: detailsEl ? detailsEl.value.trim() : ''
+                                            };
+                                        } else if (q.type === 'file') {
+                                            const field = document.getElementById(fieldId);
+                                            questionAnswers[q.id] = {
+                                                type: 'file',
+                                                value: field ? (field.value || '') : '',
+                                                original_filename: field ? (field.dataset.originalFilename || '') : ''
                                             };
                                         } else {
                                             const field = document.getElementById(fieldId);
