@@ -1890,8 +1890,9 @@ def api_booking_upload():
     if not rel_path:
         return jsonify({'error': 'Upload failed'}), 400
 
-    from werkzeug.utils import secure_filename
-    original = secure_filename(upload.filename) or 'file'
+    # 展示名用落盘文件名去掉 uuid 前缀（保证带正确扩展名）
+    stored = rel_path.rsplit('/', 1)[-1]
+    original = stored.split('_', 1)[-1] if '_' in stored else stored
     return jsonify({
         'path': rel_path,
         'url': url_for('static', filename=rel_path),

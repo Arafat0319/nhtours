@@ -524,7 +524,17 @@ def save_booking_upload(file, folder='uploads/booking', max_size=None):
     if file_size == 0:
         raise ValueError('Empty file')
 
-    filename = secure_filename(file.filename) or 'upload.bin'
+    # 保留真实扩展名：secure_filename('.jpg') 会变成 'jpg'（丢掉点），
+    # 导致 nginx 以 octet-stream + nosniff 提供，浏览器无法当图片打开。
+    raw_name = (file.filename or '').strip()
+    ext = raw_name.rsplit('.', 1)[-1].lower() if '.' in raw_name else ''
+    if ext not in ALLOWED_BOOKING_UPLOAD_EXTENSIONS:
+        raise ValueError(
+            f'Unsupported file type. Allowed: {", ".join(sorted(ALLOWED_BOOKING_UPLOAD_EXTENSIONS))}'
+        )
+
+    base = secure_filename(raw_name.rsplit('.', 1)[0]) or 'upload'
+    filename = f'{base}.{ext}'
     unique_filename = f"{uuid.uuid4().hex}_{filename}"
 
     upload_path = os.path.join(current_app.root_path, 'static', folder)
