@@ -1684,33 +1684,50 @@ def _booking_receipt_context(booking):
 def booking_receipt(booking_id):
     """客户下载收据 PDF（默认）；?format=html 可查看网页版。"""
     from flask import make_response
-    from app.receipt_pdf import build_booking_receipt_pdf
 
-    booking = Booking.query.get(booking_id)
+    try:
+        booking = Booking.query.get(booking_id)
+    except Exception as e:
+        current_app.logger.exception(f'receipt: load booking {booking_id} failed: {e}')
+        abort(500)
+
     if not booking:
         abort(404)
 
-    ctx = _booking_receipt_context(booking)
+    try:
+        ctx = _booking_receipt_context(booking)
+    except Exception as e:
+        current_app.logger.exception(f'receipt: context for booking {booking_id} failed: {e}')
+        abort(500)
+
     if not ctx:
         abort(404)
 
-    # 保留网页版便于调试/打印
+    # 网页版不依赖 fpdf，便于诊断与打印
     if request.args.get('format') == 'html':
-        return render_template('booking/receipt.html', **ctx)
+        try:
+            return render_template('booking/receipt.html', **ctx)
+        except Exception as e:
+            current_app.logger.exception(f'receipt HTML render failed for {booking_id}: {e}')
+            abort(500)
 
     try:
+        from app.receipt_pdf import build_booking_receipt_pdf
         pdf_bytes = build_booking_receipt_pdf(
             booking=ctx['booking'],
             trip=ctx['trip'],
             expected_amount=ctx['expected_amount'],
             participants_info=ctx['participants_info'],
         )
+    except ImportError as e:
+        current_app.logger.exception(f'receipt PDF dependency missing: {e}')
+        # 依赖缺失时回退 HTML，避免邮件按钮完全不可用
+        return render_template('booking/receipt.html', **ctx)
     except Exception as e:
         current_app.logger.exception(f'receipt PDF failed for booking {booking_id}: {e}')
         abort(500)
 
     order_label = getattr(booking, 'order_number', None) or booking.id
-    # ASCII 文件名，避免部分客户端对 Content-Disposition 处理异常
     safe_name = ''.join(c if c.isalnum() or c in '-_' else '-' for c in str(order_label))
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
