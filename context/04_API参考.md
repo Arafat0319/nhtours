@@ -72,7 +72,7 @@
 | `/admin/trips/<id>/bookings/add` | POST | 后台手动添加订单 |
 | `/admin/trips/<trip_id>/bookings/<booking_id>` | GET/POST | 订单详情 / 编辑 |
 | `/admin/trips/<trip_id>/bookings/<booking_id>/receipt` | GET | 生成收据 |
-| `/admin/trips/<trip_id>/bookings/<booking_id>/refund` | POST | 发起退款 |
+| `/admin/trips/<trip_id>/bookings/<booking_id>/refund` | POST | 退款：JSON `{ payment_id, amount, reason, cancel_booking?, manual_only? }`；按 PI 调 Stripe |
 
 ### 客户管理
 
@@ -244,7 +244,7 @@
 | `payment_intent.succeeded` | `handle_booking_payment_intent_succeeded` + `handle_payment_intent_succeeded` | 支付成功（双处理器） |
 | `payment_intent.payment_failed` | `handle_payment_intent_failed` | 支付失败 |
 | `checkout.session.completed` | `handle_checkout_completed` | Checkout 完成 |
-| `charge.refunded` | `handle_refund` | 退款完成 |
+| `charge.refunded` | `handle_refund` | Charge.`amount_refunded` 幂等同步 Payment / Booking |
 
 ### 本地测试
 

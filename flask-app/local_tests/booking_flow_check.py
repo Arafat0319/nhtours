@@ -7,6 +7,9 @@ from dotenv import load_dotenv
 
 
 def run():
+    """
+    冒烟：报名 API 在应付 >0 时创建 PendingBooking + Stripe PI（正式 Booking 在支付成功后才生成）。
+    """
     load_dotenv(".env")
     os.environ.setdefault("FLASK_ENV", "testing")
 
@@ -15,7 +18,7 @@ def run():
         sys.path.insert(0, str(root_dir))
 
     from app import create_app, db
-    from app.models import Trip, Booking, BookingPackage, BookingAddOn, BookingParticipant, Client
+    from app.models import Trip, PendingBooking
     from local_tests.setup_test_trip import run as ensure_trip
 
     ensure_trip()
@@ -89,41 +92,43 @@ def run():
         )
         if resp.status_code != 200:
             print(f"[ERROR] Booking API status={resp.status_code}")
-            ok = False
-            return ok
+            return False
 
-        data = resp.get_json()
-        if not data or not data.get("success"):
+        data = resp.get_json() or {}
+        if not data.get("success"):
             print(f"[ERROR] Booking API response={data}")
-            ok = False
-        booking_id = data.get("booking_id")
-        if not booking_id:
-            print("[ERROR] Booking ID missing in response.")
-            ok = False
-            return ok
+            return False
 
-        booking = Booking.query.get(booking_id)
-        if not booking:
-            print("[ERROR] Booking not found in DB.")
-            ok = False
-        else:
-            pkg_count = BookingPackage.query.filter_by(booking_id=booking.id).count()
-            addon_count = BookingAddOn.query.filter_by(booking_id=booking.id).count()
-            participant_count = BookingParticipant.query.filter_by(booking_id=booking.id).count()
-            print(f"booking_id={booking.id} packages={pkg_count} addons={addon_count} participants={participant_count}")
-            if pkg_count == 0:
-                ok = False
-            if participant_count == 0:
-                ok = False
+        if not data.get("payment_required"):
+            print(f"[ERROR] Expected payment_required=true for deposit path, got={data}")
+            return False
 
-        # Cleanup
-        BookingAddOn.query.filter_by(booking_id=booking_id).delete()
-        BookingParticipant.query.filter_by(booking_id=booking_id).delete()
-        BookingPackage.query.filter_by(booking_id=booking_id).delete()
-        Booking.query.filter_by(id=booking_id).delete()
-        remaining = Booking.query.filter_by(client_id=booking.client_id).count() if booking else 0
-        if booking and remaining == 0:
-            Client.query.filter_by(id=booking.client_id).delete()
+        pi = data.get("payment_intent_id")
+        if not pi or not str(pi).startswith("pi_"):
+            print(f"[ERROR] Missing Stripe payment_intent_id: {data}")
+            return False
+
+        if not data.get("client_secret"):
+            print(f"[ERROR] Missing client_secret: {data}")
+            return False
+
+        pending = PendingBooking.query.filter_by(payment_intent_id=pi).first()
+        if not pending:
+            print(f"[ERROR] PendingBooking not found for {pi}")
+            return False
+
+        print(
+            f"pending_booking_id={pending.id} pi={pi} "
+            f"base_cents={data.get('base_amount_cents')} status={pending.status}"
+        )
+
+        # Cleanup draft (cancel PI best-effort, delete pending)
+        try:
+            from app.payments import safe_cancel_payment_intent
+            safe_cancel_payment_intent(pi, reason="qa booking_flow_check cleanup")
+        except Exception as e:
+            print(f"[WARN] cancel PI: {e}")
+        db.session.delete(pending)
         db.session.commit()
 
     return ok

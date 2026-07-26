@@ -4,121 +4,188 @@
     <meta charset="utf-8">
     <title>{{ receipt_title }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body { margin: 0; padding: 0; background: #f5f5f5; font-family: Arial, sans-serif; }
-        .container { max-width: 640px; margin: 0 auto; background: #ffffff; }
-        .header { padding: 24px 32px; border-bottom: 1px solid #e5e7eb; }
-        .brand { font-size: 20px; font-weight: 700; color: #111827; }
-        .subtitle { font-size: 14px; color: #6b7280; margin-top: 4px; }
-        .section { padding: 20px 32px; }
-        .title { font-size: 18px; font-weight: 600; color: #111827; margin: 0 0 8px; }
-        .text { font-size: 14px; color: #374151; margin: 4px 0; }
-        .muted { color: #6b7280; }
-        .row { display: flex; justify-content: space-between; gap: 12px; }
-        .card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px; }
-        .table { width: 100%; border-collapse: collapse; }
-        .table th, .table td { padding: 8px 0; font-size: 14px; border-bottom: 1px solid #e5e7eb; text-align: left; }
-        .table th { color: #6b7280; font-weight: 500; }
-        .table tfoot td { border-bottom: none; }
-        .total { font-weight: 700; }
-        .footer { padding: 20px 32px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #6b7280; text-align: center; }
-    </style>
 </head>
-<body>
-    <div class="container">
-        <div class="header">
-            <div class="brand">Nexus Horizons Tours</div>
-            <div class="subtitle">{{ receipt_title }}</div>
-        </div>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;-webkit-font-smoothing:antialiased;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f3f4f6;padding:24px 12px;">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;border:1px solid #e5e7eb;">
+                    <!-- Brand bar -->
+                    <tr>
+                        <td style="background:#0f172a;padding:20px 28px;">
+                            <p style="margin:0;font-size:18px;font-weight:700;color:#ffffff;letter-spacing:0.02em;">Nexus Horizons Tours</p>
+                            <p style="margin:6px 0 0;font-size:13px;color:#94a3b8;">{{ receipt_title }}</p>
+                        </td>
+                    </tr>
 
-        <div class="section">
-            <div class="row">
-                <div>
-                    <p class="text"><strong>Order number:</strong> {{ receipt_number }}</p>
-                    <p class="text"><strong>Issued:</strong> {{ issued_at }}</p>
-                    <p class="text"><strong>Booking ID:</strong> {{ booking_id }}</p>
-                </div>
-                <div>
-                    <p class="text"><strong>Payment Status:</strong> {{ payment_status }}</p>
-                    {% if payment_intent_id %}
-                    <p class="text"><strong>Payment Intent:</strong> {{ payment_intent_id }}</p>
-                    {% endif %}
-                    {% if payment_method_summary %}
-                    <p class="text"><strong>Payment Method:</strong> {{ payment_method_summary }}</p>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
+                    <!-- Greeting -->
+                    <tr>
+                        <td style="padding:28px 28px 8px;">
+                            <p style="margin:0 0 8px;font-size:20px;font-weight:700;color:#111827;line-height:1.3;">
+                                {% if customer_name and customer_name != 'Customer' %}
+                                Thanks for your payment, {{ customer_name }}!
+                                {% else %}
+                                Thanks for your payment!
+                                {% endif %}
+                            </p>
+                            <p style="margin:0;font-size:14px;color:#6b7280;line-height:1.5;">
+                                Here is a summary of your booking. A PDF receipt is attached to this email — you can also download it with the button below.
+                            </p>
+                        </td>
+                    </tr>
 
-        <div class="section">
-            <p class="title">Trip Details</p>
-            <div class="card">
-                <p class="text"><strong>{{ trip_title }}</strong></p>
-                <p class="text muted">{{ trip_dates }}</p>
-            </div>
-        </div>
+                    <!-- Amount highlight -->
+                    <tr>
+                        <td style="padding:16px 28px 8px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;">
+                                <tr>
+                                    <td style="padding:16px 18px;">
+                                        <p style="margin:0 0 4px;font-size:12px;color:#0369a1;text-transform:uppercase;letter-spacing:0.04em;font-weight:600;">
+                                            {{ amount_charged_label|default('Amount charged today') }}
+                                        </p>
+                                        <p style="margin:0;font-size:28px;font-weight:700;color:#0c4a6e;line-height:1.2;">
+                                            ${{ (total_amount)|format_price }}
+                                        </p>
+                                        {% if payment_method_summary %}
+                                        <p style="margin:8px 0 0;font-size:13px;color:#0369a1;">Paid with {{ payment_method_summary }}</p>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
 
-        <div class="section">
-            <p class="title">Customer</p>
-            <div class="card">
-                <p class="text"><strong>{{ customer_name }}</strong></p>
-                <p class="text muted">{{ customer_email }}</p>
-            </div>
-        </div>
-
-        <div class="section">
-            <p class="title">Line Items</p>
-            <table class="table">
-                <thead>
+                    <!-- Download CTA -->
+                    {% if receipt_download_url %}
                     <tr>
-                        <th>Description</th>
-                        <th style="text-align:right;">Amount</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for item in line_items %}
-                    <tr>
-                        <td>{{ item.label }}</td>
-                        <td style="text-align:right;">${{ (item.amount)|format_price }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                <tfoot>
-                    {% if discount_amount is defined and discount_amount > 0 %}
-                    <tr>
-                        <td>Subtotal</td>
-                        <td style="text-align:right;">${{ (base_amount + discount_amount)|format_price }}</td>
-                    </tr>
-                    <tr style="color: #10b981;">
-                        <td>Discount{% if discount_code %} ({{ discount_code }}){% endif %}</td>
-                        <td style="text-align:right;">-${{ (discount_amount)|format_price }}</td>
-                    </tr>
-                    <tr>
-                        <td>Amount After Discount</td>
-                        <td style="text-align:right;">${{ (base_amount)|format_price }}</td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td>Base Amount</td>
-                        <td style="text-align:right;">${{ (base_amount)|format_price }}</td>
+                        <td style="padding:16px 28px 8px;" align="center">
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                                <tr>
+                                    <td align="center" bgcolor="#0066ff" style="border-radius:6px;">
+                                        <a href="{{ receipt_download_url }}"
+                                           style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:6px;background:#0066ff;">
+                                            Download Receipt (PDF)
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                            <p style="margin:10px 0 0;font-size:12px;color:#9ca3af;">
+                                Or open: <a href="{{ receipt_download_url }}" style="color:#0066ff;word-break:break-all;">{{ receipt_download_url }}</a>
+                            </p>
+                        </td>
                     </tr>
                     {% endif %}
-                    <tr>
-                        <td>Card Fee</td>
-                        <td style="text-align:right;">${{ (fee_amount)|format_price }}</td>
-                    </tr>
-                    <tr class="total">
-                        <td>Total</td>
-                        <td style="text-align:right;">${{ (total_amount)|format_price }}</td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
 
-        <div class="footer">
-            <p>Thank you for your payment.</p>
-            <p>Questions? Contact us at info@nhtours.com</p>
-        </div>
-    </div>
+                    <!-- Order meta -->
+                    <tr>
+                        <td style="padding:20px 28px 8px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #e5e7eb;padding-top:4px;">
+                                <tr>
+                                    <td width="50%" valign="top" style="padding:12px 8px 12px 0;">
+                                        <p style="margin:0 0 4px;font-size:12px;color:#9ca3af;">Order number</p>
+                                        <p style="margin:0;font-size:14px;font-weight:600;color:#111827;">{{ order_number or receipt_number }}</p>
+                                    </td>
+                                    <td width="50%" valign="top" style="padding:12px 0 12px 8px;">
+                                        <p style="margin:0 0 4px;font-size:12px;color:#9ca3af;">Issued</p>
+                                        <p style="margin:0;font-size:14px;font-weight:600;color:#111827;">{{ issued_at }}</p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td width="50%" valign="top" style="padding:0 8px 12px 0;">
+                                        <p style="margin:0 0 4px;font-size:12px;color:#9ca3af;">Status</p>
+                                        <p style="margin:0;font-size:14px;font-weight:600;color:#111827;">{{ payment_status }}</p>
+                                    </td>
+                                    <td width="50%" valign="top" style="padding:0 0 12px 8px;">
+                                        {% if payment_method_summary %}
+                                        <p style="margin:0 0 4px;font-size:12px;color:#9ca3af;">Payment method</p>
+                                        <p style="margin:0;font-size:14px;font-weight:600;color:#111827;">{{ payment_method_summary }}</p>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Trip -->
+                    <tr>
+                        <td style="padding:8px 28px;">
+                            <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#111827;text-transform:uppercase;letter-spacing:0.04em;">Trip</p>
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;">
+                                <tr>
+                                    <td style="padding:14px 16px;">
+                                        <p style="margin:0 0 4px;font-size:15px;font-weight:700;color:#111827;">{{ trip_title }}</p>
+                                        <p style="margin:0;font-size:13px;color:#6b7280;">{{ trip_dates }}</p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Customer -->
+                    <tr>
+                        <td style="padding:16px 28px 8px;">
+                            <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#111827;text-transform:uppercase;letter-spacing:0.04em;">Customer</p>
+                            <p style="margin:0;font-size:14px;font-weight:600;color:#111827;">{{ customer_name }}</p>
+                            {% if customer_email %}
+                            <p style="margin:4px 0 0;font-size:13px;color:#6b7280;">{{ customer_email }}</p>
+                            {% endif %}
+                        </td>
+                    </tr>
+
+                    <!-- Line items -->
+                    <tr>
+                        <td style="padding:16px 28px 8px;">
+                            <p style="margin:0 0 10px;font-size:13px;font-weight:700;color:#111827;text-transform:uppercase;letter-spacing:0.04em;">Payment details</p>
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                {% for item in line_items %}
+                                <tr>
+                                    <td style="padding:8px 0;font-size:14px;color:#374151;border-bottom:1px solid #f3f4f6;">{{ item.label }}</td>
+                                    <td align="right" style="padding:8px 0;font-size:14px;color:#111827;border-bottom:1px solid #f3f4f6;white-space:nowrap;">${{ (item.amount)|format_price }}</td>
+                                </tr>
+                                {% endfor %}
+
+                                {% if discount_amount is defined and discount_amount > 0 %}
+                                <tr>
+                                    <td style="padding:8px 0;font-size:14px;color:#059669;border-bottom:1px solid #f3f4f6;">Discount{% if discount_code %} ({{ discount_code }}){% endif %}</td>
+                                    <td align="right" style="padding:8px 0;font-size:14px;color:#059669;border-bottom:1px solid #f3f4f6;white-space:nowrap;">-${{ (discount_amount)|format_price }}</td>
+                                </tr>
+                                {% endif %}
+
+                                <tr>
+                                    <td style="padding:8px 0;font-size:14px;color:#374151;border-bottom:1px solid #f3f4f6;">Subtotal</td>
+                                    <td align="right" style="padding:8px 0;font-size:14px;color:#111827;border-bottom:1px solid #f3f4f6;white-space:nowrap;">${{ (base_amount)|format_price }}</td>
+                                </tr>
+
+                                {% if fee_amount and fee_amount > 0 %}
+                                <tr>
+                                    <td style="padding:8px 0;font-size:14px;color:#374151;border-bottom:1px solid #f3f4f6;">Card processing fee</td>
+                                    <td align="right" style="padding:8px 0;font-size:14px;color:#111827;border-bottom:1px solid #f3f4f6;white-space:nowrap;">${{ (fee_amount)|format_price }}</td>
+                                </tr>
+                                {% endif %}
+
+                                <tr>
+                                    <td style="padding:12px 0 4px;font-size:15px;font-weight:700;color:#111827;">{{ amount_charged_label|default('Total charged') }}</td>
+                                    <td align="right" style="padding:12px 0 4px;font-size:15px;font-weight:700;color:#111827;white-space:nowrap;">${{ (total_amount)|format_price }}</td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding:24px 28px;border-top:1px solid #e5e7eb;background:#fafafa;">
+                            <p style="margin:0 0 8px;font-size:13px;color:#6b7280;line-height:1.5;">
+                                Questions? Reply to this email or contact us at
+                                <a href="mailto:info@nhtours.com" style="color:#0066ff;text-decoration:none;">info@nhtours.com</a>.
+                            </p>
+                            <p style="margin:0;font-size:12px;color:#9ca3af;">
+                                Nexus Horizons Tours · <a href="https://nhtours.com" style="color:#9ca3af;text-decoration:none;">nhtours.com</a>
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
 </body>
 </html>

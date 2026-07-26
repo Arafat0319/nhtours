@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from html import unescape
 import json
 import os
@@ -348,6 +348,7 @@ def manage_trip(id):
     total_gross = 0.0  # 原价总额（未扣除折扣）
     total_discount = 0.0  # 折扣总额
     total_expected = 0.0  # 净应收金额（扣除折扣后）
+    booking_balances = {}  # booking_id -> pending balance (None = cancelled / n/a)
     
     for b in bookings:
         booking_gross = 0.0  # 该订单原价
@@ -391,7 +392,13 @@ def manage_trip(id):
         
         total_gross += booking_gross
         total_discount += discount
-        total_expected += booking_expected 
+        total_expected += booking_expected
+
+        paid = float(b.amount_paid) if b.amount_paid is not None else 0.0
+        if b.status == 'cancelled':
+            booking_balances[b.id] = None
+        else:
+            booking_balances[b.id] = round(max(0.0, booking_expected - paid), 2)
 
     total_pending = total_expected - total_paid
 
@@ -420,6 +427,13 @@ def manage_trip(id):
         
         booking_addons_summary[booking.id] = addons_map
     
+    # Booking buyers for New Message (not participants)
+    from app.messaging import collect_message_buyers, forced_reply_to_email, recipient_counts_for_trip
+    message_buyers = collect_message_buyers(trip)
+    buyer_count = len(message_buyers)
+    message_recipient_counts = recipient_counts_for_trip(trip)
+    balance_due_buyer_count = message_recipient_counts.get('payment_due', 0)
+
     # Collect all participants with their booking and package info
     all_participants = []
     total_participants_count = 0
@@ -505,10 +519,12 @@ def manage_trip(id):
     scheduled_messages = Message.query.filter_by(trip_id=trip.id, status='scheduled').order_by(Message.scheduled_at.asc()).all()
     draft_messages = Message.query.filter_by(trip_id=trip.id, status='draft').order_by(Message.created_at.desc()).all()
     
-    # Get sender email from config
+    # Get sender email from config (SES verified From address)
     sender_email = current_app.config.get('SENDER_EMAIL', 'noreply@nhtours.com')
-    # Get sender name (current user's username)
-    sender_name = current_user.username if current_user else 'Admin'
+    # Display name in customer inbox (not admin username)
+    sender_name = current_app.config.get('SENDER_DISPLAY_NAME', 'Nexus Horizons Tours')
+    # Messages Reply-To：工作邮箱（与 RECIPIENT_EMAIL 解耦）
+    reply_to_default = forced_reply_to_email()
     
     # Calculate trip counts for sidebar navigation
     trip_counts = get_trip_counts()
@@ -518,8 +534,13 @@ def manage_trip(id):
                            trip=trip, 
                            bookings=bookings,
                            booking_addons_summary=booking_addons_summary,
+                           booking_balances=booking_balances,
                            all_participants=all_participants,
                            total_participants_count=total_participants_count,
+                           message_buyers=message_buyers,
+                           buyer_count=buyer_count,
+                           balance_due_buyer_count=balance_due_buyer_count,
+                           message_recipient_counts=message_recipient_counts,
                            custom_questions=custom_questions,
                            total_gross=total_gross,
                            total_discount=total_discount,
@@ -531,6 +552,7 @@ def manage_trip(id):
                            draft_messages=draft_messages,
                            sender_email=sender_email,
                            sender_name=sender_name,
+                           reply_to_default=reply_to_default,
                            trip_counts=trip_counts,
                            form=form)
 
@@ -566,6 +588,14 @@ def trip_builder(id, step):
             trip.title = request.form.get('title') or trip.title or ''
             trip.slug = request.form.get('slug') or trip.slug or ''
             trip.destination_text = request.form.get('destination_text') or trip.destination_text or ''
+            from app.order_numbers import ensure_unique_trip_abbr, normalize_trip_abbr, suggest_trip_abbr
+            abbr_raw = request.form.get('trip_abbr')
+            if abbr_raw is not None and str(abbr_raw).strip():
+                cleaned = normalize_trip_abbr(abbr_raw)
+                if 2 <= len(cleaned) <= 4:
+                    trip.trip_abbr = ensure_unique_trip_abbr(cleaned, exclude_trip_id=trip.id)
+            elif not trip.trip_abbr and trip.title:
+                trip.trip_abbr = suggest_trip_abbr(trip.title, exclude_trip_id=trip.id)
             for f in ('start_date', 'end_date', 'registration_date'):
                 v = request.form.get(f)
                 if v:
@@ -587,7 +617,12 @@ def trip_builder(id, step):
                 trip.color = request.form.get('color')
             db.session.commit()
             check_trip_completion(trip)
-            return jsonify({'success': True, 'status': trip.status, 'publish_gaps': get_trip_publish_gaps(trip)})
+            return jsonify({
+                'success': True,
+                'status': trip.status,
+                'publish_gaps': get_trip_publish_gaps(trip),
+                'trip_abbr': trip.trip_abbr,
+            })
 
         if form.validate_on_submit():
             # Handle explicit remove (优先于上传)
@@ -627,6 +662,12 @@ def trip_builder(id, step):
             trip.capacity = form.capacity.data
             trip.min_capacity = form.min_capacity.data
             trip.color = form.color.data
+
+            from app.order_numbers import ensure_unique_trip_abbr, suggest_trip_abbr
+            if form.trip_abbr.data:
+                trip.trip_abbr = ensure_unique_trip_abbr(form.trip_abbr.data, exclude_trip_id=trip.id)
+            elif not trip.trip_abbr:
+                trip.trip_abbr = suggest_trip_abbr(trip.title or '', exclude_trip_id=trip.id)
             
             db.session.commit()
             # Check if trip is complete and update status
@@ -636,6 +677,10 @@ def trip_builder(id, step):
                 flash('Cover photo removed.', 'success')
                 return redirect(url_for('admin.trip_builder', id=trip.id, step='basics'))
             return redirect(url_for('admin.trip_builder', id=trip.id, step='description'))
+        # Prefill abbr suggestion when empty
+        if request.method == 'GET' and not form.trip_abbr.data:
+            from app.order_numbers import suggest_trip_abbr
+            form.trip_abbr.data = trip.trip_abbr or suggest_trip_abbr(trip.title or '', exclude_trip_id=trip.id)
         return render_template('admin/trips/builder/step_basics.html', title='Trip Basics', trip=trip, form=form, current_step='basics', min_date=date.today().isoformat(), trip_counts=trip_counts)
     
     elif step == 'description':
@@ -1853,12 +1898,15 @@ def payments():
             # 对于 Trip，使用子查询来避免 join 歧义
             from sqlalchemy import exists, select
             
-            # Booking ID 搜索
+            # Booking ID / Order number 搜索
             booking_condition = exists(
                 select(1).where(
                     and_(
                         Payment.booking_id == Booking.id,
-                        Booking.id.cast(db.String).ilike(f'%{search}%')
+                        or_(
+                            Booking.id.cast(db.String).ilike(f'%{search}%'),
+                            Booking.order_number.ilike(f'%{search}%'),
+                        )
                     )
                 )
             )
@@ -1960,12 +2008,15 @@ def payments():
         # 搜索功能
         if search:
             from sqlalchemy import exists, select
-            # Booking ID 搜索
+            # Booking ID / Order number 搜索
             booking_condition = exists(
                 select(1).where(
                     and_(
                         InstallmentPayment.booking_id == Booking.id,
-                        Booking.id.cast(db.String).ilike(f'%{search}%')
+                        or_(
+                            Booking.id.cast(db.String).ilike(f'%{search}%'),
+                            Booking.order_number.ilike(f'%{search}%'),
+                        )
                     )
                 )
             )
@@ -2415,7 +2466,8 @@ def installment_payments_api():
         installments_data.append({
             'id': inst.id,
             'booking_id': inst.booking_id,
-            'booking_number': inst.booking.id if inst.booking else None,
+            'booking_number': (inst.booking.order_number if inst.booking and inst.booking.order_number else (inst.booking.id if inst.booking else None)),
+            'order_number': inst.booking.order_number if inst.booking else None,
             'trip_title': inst.booking.trip.title if inst.booking and inst.booking.trip else None,
             'buyer_name': inst.booking.buyer_name if inst.booking else None,
             'buyer_email': inst.booking.buyer_email if inst.booking else None,
@@ -2464,7 +2516,7 @@ def send_installment_reminder(installment_id):
         - Installment #{installment.installment_number}
         - Amount: ${installment.amount:.2f}
         - Due Date: {installment.due_date.strftime('%B %d, %Y') if installment.due_date else 'N/A'}
-        - Booking ID: {installment.booking.id}
+        - Order number: {installment.booking.order_number or installment.booking.id}
         
         Please complete your payment here: {payment_link}
         
@@ -2629,259 +2681,428 @@ def export_payments():
 @bp.route('/trips/<int:id>/bookings/export')
 @login_required
 def export_bookings(id):
+    """导出行程预订快照 Excel（静态预填；含退款与取消信息，风格参考 WeTravel）。"""
     import io
     from flask import Response
     from openpyxl import Workbook
-    from openpyxl.styles import Font, Alignment
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
     from datetime import datetime
-    import os
-    
+
     trip = Trip.query.get_or_404(id)
-    bookings = trip.bookings.all()
-    
-    # 优先使用预配置 Power Query 的模板（若存在）：替换 URL 后直接返回
-    template_path = os.path.join(
-        current_app.static_folder or '', 'templates', 'participants_template.xlsx'
-    )
-    base_url = current_app.config.get('EXCEL_REFRESH_BASE_URL')
-    if base_url:
-        html_url = base_url + url_for('admin.export_bookings_csv', token=generate_export_token(trip.id), format='html', _external=False)
-    else:
-        html_url = url_for('admin.export_bookings_csv', token=generate_export_token(trip.id), format='html', _external=True)
-    try:
-        from app.utils_excel_connection import prepare_template_with_url
-        xlsx_bytes = prepare_template_with_url(template_path, html_url)
-        if xlsx_bytes:
-            return Response(
-                xlsx_bytes,
-                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                headers={"Content-Disposition": f"attachment;filename=bookings_trip_{id}_{datetime.now().strftime('%Y%m%d')}.xlsx"}
-            )
-    except Exception:
-        pass
-    
-    # Create Excel workbook
+    bookings = list(trip.bookings.order_by(Booking.created_at.asc()).all())
+
     wb = Workbook()
-    
-    # Remove default sheet
     wb.remove(wb.active)
-    
-    # Define Microsoft YaHei font
-    yahei_font = Font(name='Microsoft YaHei', size=11)
-    yahei_bold_font = Font(name='Microsoft YaHei', size=11, bold=True)
-    
-    # ===== Sheet 1: Participants (参与者信息) - 与 HTML 刷新接口列结构一致 =====
+
+    # WeTravel 风格：深灰表头 + 白字；正文 Arial
+    header_fill = PatternFill(start_color='3D3D3D', end_color='3D3D3D', fill_type='solid')
+    header_font = Font(name='Arial', size=11, bold=True, color='FFFFFF')
+    body_font = Font(name='Arial', size=11)
+    body_bold = Font(name='Arial', size=11, bold=True)
+    cancelled_font = Font(name='Arial', size=11, color='9CA3AF')
+    header_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    cell_align = Alignment(horizontal='left', vertical='center', wrap_text=False)
+    money_align = Alignment(horizontal='right', vertical='center', wrap_text=False)
+    thin = Border(
+        left=Side(style='thin', color='E5E7EB'),
+        right=Side(style='thin', color='E5E7EB'),
+        top=Side(style='thin', color='E5E7EB'),
+        bottom=Side(style='thin', color='E5E7EB'),
+    )
+    money_format = '#,##0.00'
+    dash = '-'
+
+    def _display_width(value):
+        if value is None:
+            return 0
+        width = 0
+        for ch in str(value):
+            o = ord(ch)
+            width += 2 if o > 0x2E80 else 1
+        return width
+
+    def _autosize(ws, min_width=8, max_width=120):
+        from openpyxl.utils import get_column_letter
+        for col_idx in range(1, (ws.max_column or 0) + 1):
+            max_len = 0
+            for row_idx in range(1, (ws.max_row or 0) + 1):
+                cell = ws.cell(row=row_idx, column=col_idx)
+                max_len = max(max_len, _display_width(cell.value))
+            ws.column_dimensions[get_column_letter(col_idx)].width = min(
+                max(max_len + 3, min_width), max_width
+            )
+
+    def _write_header(ws, headers):
+        ws.row_dimensions[1].height = 28
+        for col_idx, header in enumerate(headers, start=1):
+            cell = ws.cell(row=1, column=col_idx, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_align
+            cell.border = thin
+
+    def _booking_expected(booking):
+        booking_gross = 0.0
+        has_packages = False
+        seen_addon_ids = set()
+        for bp in booking.booking_packages:
+            if bp.package:
+                package_price = float(bp.package.price) if bp.package.price is not None else 0.0
+                quantity = int(bp.quantity) if bp.quantity is not None else 1
+                booking_gross += package_price * quantity
+                has_packages = True
+        for participant in booking.participants:
+            for booking_addon in participant.addons:
+                if booking_addon.addon and booking_addon.id not in seen_addon_ids:
+                    addon_price = float(booking_addon.addon.price) if booking_addon.addon.price is not None else 0.0
+                    quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 0
+                    booking_gross += addon_price * quantity
+                    seen_addon_ids.add(booking_addon.id)
+        for booking_addon in booking.addons:
+            if booking_addon.addon and booking_addon.id not in seen_addon_ids:
+                addon_price = float(booking_addon.addon.price) if booking_addon.addon.price is not None else 0.0
+                quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 0
+                booking_gross += addon_price * quantity
+                seen_addon_ids.add(booking_addon.id)
+        discount = float(booking.discount_amount) if booking.discount_amount else 0.0
+        if not has_packages:
+            return round(float(booking.amount_paid) if booking.amount_paid is not None else 0.0, 2)
+        return round(max(0.0, booking_gross - discount), 2)
+
+    def _booking_payment_totals(booking):
+        """返回 (payments_received 实扣合计, refunds 已退合计)。"""
+        received = 0.0
+        refunds = 0.0
+        for payment in Payment.query.filter_by(booking_id=booking.id).all():
+            if payment.status in ('succeeded', 'partially_refunded', 'refunded'):
+                received += float(payment.amount or 0.0)
+                refunds += float(payment.refunded_amount or 0.0)
+        return round(received, 2), round(refunds, 2)
+
+    def _participant_names(booking, mark_cancelled=False):
+        names = []
+        for p in booking.participants:
+            n = (p.name or '').strip() or (
+                f"{getattr(p, 'first_name', '') or ''} {getattr(p, 'last_name', '') or ''}".strip()
+            )
+            if not n:
+                continue
+            if mark_cancelled or booking.status == 'cancelled':
+                names.append(f'{n} (cancelled)')
+            else:
+                names.append(n)
+        return '; '.join(names) if names else dash
+
+    # ===== Sheet 1: Participants（活跃订单）=====
     ws_participants = wb.create_sheet("Participants")
-    participants_headers, participants_rows = _get_participants_export_data(trip)
-    
-    # Write header row with bold formatting (except first column)
-    for col_idx, header in enumerate(participants_headers, start=1):
-        cell = ws_participants.cell(row=1, column=col_idx, value=header)
-        if col_idx > 1:
-            cell.font = yahei_bold_font
-        else:
-            cell.font = yahei_font
-        cell.alignment = Alignment(horizontal='left', vertical='center')
-    
-    # Write participant data（始终预填，确保下载即有数据；内置连接刷新不生效时用户可手动「自网站」）
+    participants_headers, participants_rows = _get_participants_export_data(
+        trip, include_cancelled=False
+    )
+    _write_header(ws_participants, participants_headers)
     for row_idx, row_data in enumerate(participants_rows, start=2):
         for col_idx, value in enumerate(row_data, start=1):
             cell = ws_participants.cell(row=row_idx, column=col_idx, value=value)
-            cell.font = yahei_font
-            cell.alignment = Alignment(horizontal='left', vertical='center')
-    
-    # Auto-adjust column widths for Participants sheet
-    for col in ws_participants.columns:
-        max_length = 0
-        col_letter = col[0].column_letter
-        for cell in col:
-            try:
-                if len(str(cell.value)) > max_length:
-                    max_length = len(str(cell.value))
-            except:
-                pass
-        adjusted_width = min(max_length + 2, 50)  # Cap at 50 characters
-        ws_participants.column_dimensions[col_letter].width = adjusted_width
-    
-    # ===== Sheet 2: Contact (联系人信息) =====
+            cell.font = body_font
+            cell.alignment = cell_align
+            cell.border = thin
+    _autosize(ws_participants)
+
+    # ===== Sheet 2: Contact =====
     ws_contact = wb.create_sheet("Contact")
-    
-    contact_headers = ['Invoice #', 'Sign up #', 'Contact First Name', 'Contact Last Name', 
-                       'Attendee', 'Contact Email', 'Phone', 'Address', 'City', 'State', 
-                       'ZIP', 'Home Phone', 'Emergency Contact Name', 'EC Email', 'EC Phone']
-    
-    # Write contact header
-    for col_idx, header in enumerate(contact_headers, start=1):
-        cell = ws_contact.cell(row=1, column=col_idx, value=header)
-        if col_idx > 1:
-            cell.font = yahei_bold_font
-        else:
-            cell.font = yahei_font
-        cell.alignment = Alignment(horizontal='left', vertical='center')
-    
-    # Write contact data (one row per booking/client)
+    contact_headers = [
+        'Order number', 'Sign up #', 'Contact First Name', 'Contact Last Name',
+        'Attendee', 'Contact Email', 'Phone', 'Address', 'City', 'State',
+        'ZIP', 'Home Phone', 'Emergency Contact Name', 'EC Email', 'EC Phone', 'Status',
+    ]
+    _write_header(ws_contact, contact_headers)
+
     contact_row = 2
-    for idx, booking in enumerate(bookings, start=1):
+    active_idx = 0
+    for booking in bookings:
+        if booking.status == 'cancelled':
+            continue
+        active_idx += 1
         client = booking.client
-        
-        # Parse client name
-        client_name_parts = (client.name or '').strip().split(None, 1)
-        client_first_name = client_name_parts[0] if len(client_name_parts) > 0 else ''
-        client_last_name = client_name_parts[1] if len(client_name_parts) > 1 else ''
-        
-        # Get all attendees (participants) for this booking
-        attendees_list = [p.name for p in booking.participants if p.name]
-        attendees_str = ', '.join(attendees_list) if attendees_list else '-'
-        
+        buyer_first = booking.buyer_first_name or ''
+        buyer_last = booking.buyer_last_name or ''
+        if not buyer_first and not buyer_last and client:
+            parts = (client.name or '').strip().split(None, 1)
+            buyer_first = parts[0] if parts else ''
+            buyer_last = parts[1] if len(parts) > 1 else ''
+        attendees_str = _participant_names(booking)
+        order_no = booking.order_number or f'#{booking.id}'
         contact_row_data = [
-            idx,  # Invoice #
-            idx,  # Sign up #
-            client_first_name,  # Contact First Name
-            client_last_name,  # Contact Last Name
-            attendees_str,  # Attendee
-            client.email or '-',  # Contact Email
-            client.phone or '-',  # Phone
-            '-',  # Address (not stored)
-            '-',  # City (not stored)
-            '-',  # State (not stored)
-            '-',  # ZIP (not stored)
-            client.phone or '-',  # Home Phone
-            '-',  # Emergency Contact Name (not stored)
-            '-',  # EC Email (not stored)
-            '-'   # EC Phone (not stored)
+            order_no,
+            active_idx,
+            buyer_first or dash,
+            buyer_last or dash,
+            attendees_str,
+            booking.buyer_email or (client.email if client else None) or dash,
+            booking.buyer_phone or (client.phone if client else None) or dash,
+            booking.buyer_address or dash,
+            booking.buyer_city or dash,
+            booking.buyer_state or dash,
+            booking.buyer_zip_code or dash,
+            booking.buyer_home_phone or booking.buyer_phone or (client.phone if client else None) or dash,
+            booking.buyer_emergency_contact_name or dash,
+            booking.buyer_emergency_contact_email or dash,
+            booking.buyer_emergency_contact_phone or dash,
+            (booking.status or '').replace('_', ' ').title(),
         ]
-        
         for col_idx, value in enumerate(contact_row_data, start=1):
             cell = ws_contact.cell(row=contact_row, column=col_idx, value=value)
-            cell.font = yahei_font
-            cell.alignment = Alignment(horizontal='left', vertical='center')
-        
+            cell.font = body_font
+            cell.alignment = cell_align
+            cell.border = thin
         contact_row += 1
-    
-    # Auto-adjust column widths for Contact sheet
-    for col in ws_contact.columns:
-        max_length = 0
-        col_letter = col[0].column_letter
-        for cell in col:
-            try:
-                if len(str(cell.value)) > max_length:
-                    max_length = len(str(cell.value))
-            except:
-                pass
-        adjusted_width = min(max_length + 2, 50)
-        ws_contact.column_dimensions[col_letter].width = adjusted_width
-    
-    # ===== Sheet 3: Bookings Summary (预订汇总) =====
+    _autosize(ws_contact)
+
+    # ===== Sheet 3: Bookings Summary（含 Refunds，取消单也列出）=====
     ws_bookings = wb.create_sheet("Bookings Summary")
-    
-    booking_headers = ['Booking ID', 'Client Name', 'Email', 'Phone', 'Packages', 
-                       'Participants', 'Add-ons', 'Amount Paid', 'Status', 'Booking Date']
-    
-    # Write booking header
-    for col_idx, header in enumerate(booking_headers, start=1):
-        cell = ws_bookings.cell(row=1, column=col_idx, value=header)
-        if col_idx > 1:
-            cell.font = yahei_bold_font
-        else:
-            cell.font = yahei_font
-        cell.alignment = Alignment(horizontal='left', vertical='center')
-    
-    # Write booking data
+    booking_headers = [
+        'Order number', 'Internal ID', 'Buyer First Name', 'Buyer Last Name',
+        'Participant Names', 'Packages', 'Participants', 'Add-ons',
+        'Expected', 'Payments Received', 'Refunds', 'Net Paid', 'Balance due',
+        'Status', 'Booking Date',
+    ]
+    _write_header(ws_bookings, booking_headers)
+
+    money_cols = {9, 10, 11, 12, 13}  # Expected … Balance due
+    total_expected = 0.0
+    total_received = 0.0
+    total_refunds = 0.0
+    total_net_paid = 0.0
+    total_balance = 0.0
+    active_bookings = 0
+    total_participants = 0
+    cancelled_bookings = 0
+
     booking_row = 2
-    for idx, booking in enumerate(bookings, start=1):
-        # Get package names
+    for booking in bookings:
         package_names = []
         for bp in booking.booking_packages:
             if bp.package:
                 package_names.append(f"{bp.package.name} x{bp.quantity}")
-        package_str = ', '.join(package_names) if package_names else '-'
-        
-        # Get add-ons summary (从两个来源获取)
+        package_str = ', '.join(package_names) if package_names else dash
+
         addons_map = {}
         seen_addon_ids = set()
-        
-        # 方法1：通过 participant.addons 获取
         for participant in booking.participants:
             for booking_addon in participant.addons:
                 if booking_addon.addon and booking_addon.id not in seen_addon_ids:
                     addon_name = booking_addon.addon.name
-                    if addon_name in addons_map:
-                        addons_map[addon_name] += booking_addon.quantity
-                    else:
-                        addons_map[addon_name] = booking_addon.quantity
+                    addons_map[addon_name] = addons_map.get(addon_name, 0) + booking_addon.quantity
                     seen_addon_ids.add(booking_addon.id)
-        
-        # 方法2：通过 booking.addons 获取
         for booking_addon in booking.addons:
             if booking_addon.addon and booking_addon.id not in seen_addon_ids:
                 addon_name = booking_addon.addon.name
-                if addon_name in addons_map:
-                    addons_map[addon_name] += booking_addon.quantity
-                else:
-                    addons_map[addon_name] = booking_addon.quantity
+                addons_map[addon_name] = addons_map.get(addon_name, 0) + booking_addon.quantity
                 seen_addon_ids.add(booking_addon.id)
-        
-        addons_str = ', '.join([f"{name} x{qty}" if qty > 1 else name for name, qty in addons_map.items()]) if addons_map else '-'
-        
-        # Format booking date
-        booking_date_str = booking.created_at.strftime('%d %b %Y').upper()
-        
+        addons_str = ', '.join(
+            [f"{name} x{qty}" if qty > 1 else name for name, qty in addons_map.items()]
+        ) if addons_map else dash
+
+        expected = _booking_expected(booking)
+        payments_received, refunds = _booking_payment_totals(booking)
+        net_paid = round(float(booking.amount_paid) if booking.amount_paid is not None else 0.0, 2)
+        is_cancelled = booking.status == 'cancelled'
+        pax_count = int(booking.passenger_count or booking.participants.count() or 0)
+
+        buyer_first = booking.buyer_first_name or ''
+        buyer_last = booking.buyer_last_name or ''
+        if not buyer_first and not buyer_last and booking.client:
+            parts = (booking.client.name or '').strip().split(None, 1)
+            buyer_first = parts[0] if parts else ''
+            buyer_last = parts[1] if len(parts) > 1 else ''
+
+        if is_cancelled:
+            # WeTravel 风格：取消单 Trip Price 可显示 -，仍展示已收款与退款
+            expected_cell = dash
+            balance_cell = dash
+            participants_cell = f'0 ({pax_count} canceled)' if pax_count else '0 (canceled)'
+            names_cell = _participant_names(booking, mark_cancelled=True)
+            cancelled_bookings += 1
+            # 退款合计仍计入汇总（便于对账）
+            total_received += payments_received
+            total_refunds += refunds
+        else:
+            expected_cell = expected
+            balance_cell = round(max(0.0, expected - net_paid), 2)
+            participants_cell = pax_count
+            names_cell = _participant_names(booking)
+            total_expected += expected
+            total_received += payments_received
+            total_refunds += refunds
+            total_net_paid += net_paid
+            total_balance += balance_cell
+            active_bookings += 1
+            total_participants += pax_count
+
+        booking_date_str = booking.created_at.strftime('%d %b %Y').upper() if booking.created_at else ''
         booking_row_data = [
-            idx,  # Booking ID (序号，从1开始)
-            booking.client.name,  # Client Name
-            booking.client.email or '-',  # Email
-            booking.client.phone or '-',  # Phone
-            package_str,  # Packages
-            booking.passenger_count,  # Participants
-            addons_str,  # Add-ons
-            f"${booking.amount_paid:.2f}" if booking.amount_paid else '-',  # Amount Paid
-            booking.status.replace('_', ' ').title(),  # Status
-            booking_date_str  # Booking Date
+            booking.order_number or f'#{booking.id}',
+            booking.id,
+            buyer_first or dash,
+            buyer_last or dash,
+            names_cell,
+            package_str,
+            participants_cell,
+            addons_str,
+            expected_cell,
+            payments_received if payments_received else dash,
+            refunds if refunds else dash,
+            net_paid,
+            balance_cell,
+            (booking.status or '').replace('_', ' ').title(),
+            booking_date_str,
         ]
-        
+        row_font = cancelled_font if is_cancelled else body_font
         for col_idx, value in enumerate(booking_row_data, start=1):
             cell = ws_bookings.cell(row=booking_row, column=col_idx, value=value)
-            cell.font = yahei_font
-            cell.alignment = Alignment(horizontal='left', vertical='center')
-        
+            cell.font = row_font
+            cell.border = thin
+            if col_idx in money_cols:
+                cell.alignment = money_align
+                if isinstance(value, (int, float)):
+                    cell.number_format = money_format
+            else:
+                cell.alignment = cell_align
         booking_row += 1
-    
-    # Auto-adjust column widths for Bookings Summary sheet
-    for col in ws_bookings.columns:
-        max_length = 0
-        col_letter = col[0].column_letter
-        for cell in col:
-            try:
-                if len(str(cell.value)) > max_length:
-                    max_length = len(str(cell.value))
-            except:
-                pass
-        adjusted_width = min(max_length + 2, 50)
-        ws_bookings.column_dimensions[col_letter].width = adjusted_width
-    
-    # Save to BytesIO
+
+    # Totals
+    totals_row = booking_row + 1
+    totals_label = ws_bookings.cell(
+        row=totals_row, column=1,
+        value=f'Totals (active {active_bookings}; cancelled {cancelled_bookings})'
+    )
+    totals_label.font = body_bold
+    totals_label.alignment = cell_align
+    cell_p = ws_bookings.cell(row=totals_row, column=7, value=total_participants)
+    cell_p.font = body_bold
+    cell_p.alignment = cell_align
+    for col_idx, value in (
+        (9, total_expected),
+        (10, total_received),
+        (11, total_refunds),
+        (12, total_net_paid),
+        (13, total_balance),
+    ):
+        cell = ws_bookings.cell(row=totals_row, column=col_idx, value=round(value, 2))
+        cell.font = body_bold
+        cell.number_format = money_format
+        cell.alignment = money_align
+        cell.border = thin
+
+    # Collected Funds 摘要（参考 WeTravel 底部）
+    summary_row = totals_row + 2
+    ws_bookings.cell(row=summary_row, column=1, value='Collected Funds').font = body_bold
+    ws_bookings.cell(row=summary_row + 1, column=1, value='Expected (active):').font = body_font
+    c = ws_bookings.cell(row=summary_row + 1, column=2, value=round(total_expected, 2))
+    c.number_format = money_format
+    c.font = body_font
+    ws_bookings.cell(row=summary_row + 2, column=1, value='Payments received:').font = body_font
+    c = ws_bookings.cell(row=summary_row + 2, column=2, value=round(total_received, 2))
+    c.number_format = money_format
+    c.font = body_font
+    ws_bookings.cell(row=summary_row + 3, column=1, value='Refunds:').font = body_font
+    c = ws_bookings.cell(row=summary_row + 3, column=2, value=round(total_refunds, 2))
+    c.number_format = money_format
+    c.font = body_font
+    ws_bookings.cell(row=summary_row + 4, column=1, value='Net paid (active):').font = body_font
+    c = ws_bookings.cell(row=summary_row + 4, column=2, value=round(total_net_paid, 2))
+    c.number_format = money_format
+    c.font = body_font
+    ws_bookings.cell(row=summary_row + 5, column=1, value='Balance due (active):').font = body_font
+    c = ws_bookings.cell(row=summary_row + 5, column=2, value=round(total_balance, 2))
+    c.number_format = money_format
+    c.font = body_font
+
+    _autosize(ws_bookings)
+
+    # ===== Sheet 4: Canceled（取消订单参与者，参考 WeTravel Canceled Information）=====
+    ws_canceled = wb.create_sheet("Canceled")
+    canceled_headers = [
+        'Order number', 'Buyer First Name', 'Buyer Last Name',
+        'Participant First Name', 'Participant Last Name', 'Email',
+        'Package', 'Payments Received', 'Refunds', 'Net Paid', 'Status', 'Booking Date',
+    ]
+    _write_header(ws_canceled, canceled_headers)
+    canceled_row = 2
+    for booking in bookings:
+        if booking.status != 'cancelled':
+            continue
+        payments_received, refunds = _booking_payment_totals(booking)
+        net_paid = round(float(booking.amount_paid) if booking.amount_paid is not None else 0.0, 2)
+        buyer_first = booking.buyer_first_name or ''
+        buyer_last = booking.buyer_last_name or ''
+        if not buyer_first and not buyer_last and booking.client:
+            parts = (booking.client.name or '').strip().split(None, 1)
+            buyer_first = parts[0] if parts else ''
+            buyer_last = parts[1] if len(parts) > 1 else ''
+        package_names = [
+            f"{bp.package.name} x{bp.quantity}" for bp in booking.booking_packages if bp.package
+        ]
+        package_str = ', '.join(package_names) if package_names else dash
+        booking_date_str = booking.created_at.strftime('%d %b %Y').upper() if booking.created_at else ''
+        order_no = booking.order_number or f'#{booking.id}'
+        participants = list(booking.participants)
+        if not participants:
+            participants = [None]
+        for participant in participants:
+            if participant:
+                first_name = getattr(participant, 'first_name', None) or (
+                    (participant.name or '').split(None, 1)[0] if participant.name else ''
+                )
+                last_name = getattr(participant, 'last_name', None) or (
+                    (participant.name or '').split(None, 1)[-1]
+                    if participant.name and len((participant.name or '').split()) > 1 else ''
+                )
+                email = participant.email or booking.buyer_email or (
+                    booking.client.email if booking.client else ''
+                ) or dash
+            else:
+                first_name = last_name = dash
+                email = booking.buyer_email or (booking.client.email if booking.client else '') or dash
+            row_data = [
+                order_no,
+                buyer_first or dash,
+                buyer_last or dash,
+                first_name or dash,
+                last_name or dash,
+                email,
+                package_str,
+                payments_received if payments_received else dash,
+                refunds if refunds else dash,
+                net_paid,
+                'Cancelled',
+                booking_date_str,
+            ]
+            for col_idx, value in enumerate(row_data, start=1):
+                cell = ws_canceled.cell(row=canceled_row, column=col_idx, value=value)
+                cell.font = cancelled_font
+                cell.border = thin
+                if col_idx in (8, 9, 10) and isinstance(value, (int, float)):
+                    cell.number_format = money_format
+                    cell.alignment = money_align
+                else:
+                    cell.alignment = cell_align
+            canceled_row += 1
+    if canceled_row == 2:
+        cell = ws_canceled.cell(row=2, column=1, value='No cancelled bookings')
+        cell.font = body_font
+    _autosize(ws_canceled)
+
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
-    xlsx_bytes = output.getvalue()
 
-    # 注入 Web 连接，使下载的 Excel 自动连到后台。本地时需设 EXCEL_REFRESH_BASE_URL 否则 localhost 无法刷新
-    base_url = current_app.config.get('EXCEL_REFRESH_BASE_URL')
-    if base_url:
-        path = url_for('admin.export_bookings_csv', token=generate_export_token(trip.id), format='html', _external=False)
-        html_url = base_url + path
-    else:
-        html_url = url_for('admin.export_bookings_csv', token=generate_export_token(trip.id), format='html', _external=True)
-    try:
-        from app.utils_excel_connection import inject_web_connection
-        xlsx_bytes = inject_web_connection(xlsx_bytes, html_url)
-    except Exception:
-        pass  # 注入失败时返回原始 xlsx
+    safe_title = ''.join(ch if ch.isalnum() or ch in ('-', '_') else '_' for ch in (trip.title or 'trip'))[:40]
+    filename = f"Booking_Summary_{safe_title}_{id}_{datetime.now().strftime('%Y%m%d')}.xlsx"
 
     return Response(
-        xlsx_bytes,
+        output.getvalue(),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment;filename=bookings_trip_{id}_{datetime.now().strftime('%Y%m%d')}.xlsx"}
+        headers={"Content-Disposition": f"attachment;filename={filename}"},
     )
 
 
@@ -2900,8 +3121,10 @@ def get_export_data_source_url(id):
     return jsonify({'success': True, 'url': url})
 
 
-def _get_participants_export_data(trip):
-    """提取参与者导出数据，供 CSV 和 HTML 共用"""
+def _get_participants_export_data(trip, include_cancelled=True):
+    """提取参与者导出数据，供 CSV 和 HTML 共用。
+    include_cancelled=False 时跳过已取消订单（Canceled sheet 单独列出）。
+    """
     bookings = trip.bookings.all()
     custom_questions = list(trip.questions.order_by(CustomQuestion.id).all()) if trip.questions else []
     headers = ['No', 'First Name', 'Middle Name', 'Last Name', 'Gender', 'Date of Birth', 'Registration Type',
@@ -2913,6 +3136,8 @@ def _get_participants_export_data(trip):
     rows = []
     row_num = 1
     for booking in bookings:
+        if not include_cancelled and booking.status == 'cancelled':
+            continue
         package_names = [f"{bp.package.name} x{bp.quantity}" for bp in booking.booking_packages if bp.package]
         package_str = ', '.join(package_names) if package_names else '-'
         addons_map = {}
@@ -2926,7 +3151,10 @@ def _get_participants_export_data(trip):
         addons_str = ', '.join([f"{n} x{q}" if q > 1 else n for n, q in addons_map.items()]) if addons_map else '-'
         status_display = booking.status.replace('_', ' ').title()
         booking_date_str = booking.created_at.strftime('%d %b %Y').upper() if booking.created_at else '-'
-        buyer_name = booking.client.name if booking.client else '-'
+        buyer_name = (
+            f"{booking.buyer_first_name or ''} {booking.buyer_last_name or ''}".strip()
+            or (booking.client.name if booking.client else '-')
+        )
 
         for participant in booking.participants:
             first_name = getattr(participant, 'first_name', None) or ((participant.name or '').split(None, 1)[0] if participant.name else '')
@@ -3145,6 +3373,9 @@ def add_participant(id):
             )
             db.session.add(booking)
             db.session.flush()
+
+            from app.order_numbers import assign_order_number
+            assign_order_number(booking, trip=trip)
             
             # 2a. Create BookingPackages
             for pkg_data in packages_data:
@@ -3363,31 +3594,45 @@ def manage_booking(trip_id, booking_id):
             total_charged = 0.0
             total_fee_dollars = 0.0
             net_received = 0.0
+            from app.payments import (
+                payment_charged_amount,
+                payment_base_amount,
+                payment_fee_amount,
+                payment_refundable_remaining,
+                payment_max_refund,
+                booking_deposit_reserved,
+            )
             for payment in Payment.query.filter_by(booking_id=booking.id).order_by(Payment.created_at.desc()).all():
-                amt = float(payment.amount) if payment.amount else 0.0
-                fee_cents = payment.fee_cents if payment.fee_cents is not None else None
-                base_cents = payment.base_amount_cents if payment.base_amount_cents is not None else None
-                if fee_cents is not None:
-                    fee_dollars = fee_cents / 100.0
-                elif base_cents is not None:
-                    fee_dollars = amt - (base_cents / 100.0)
-                else:
-                    fee_dollars = 0.0
-                refunded = float(payment.refunded_amount) if payment.refunded_amount else 0.0
-                base_from_payment = amt - fee_dollars
-                net_from_payment = base_from_payment - refunded
+                amt = payment_charged_amount(payment)
+                fee_dollars = payment_fee_amount(payment)
+                base_dollars = payment_base_amount(payment)
+                refunded = round(float(payment.refunded_amount or 0.0), 2)
+                remaining = payment_refundable_remaining(payment)
+                # 实收：基础金额 − 已退（已为基础口径）
+                net_from_payment = round(max(0.0, base_dollars - refunded), 2)
 
                 payments.append({
                     'id': payment.id,
                     'amount': amt,
+                    'base_amount': base_dollars,
+                    'fee_amount': fee_dollars,
                     'status': payment.status,
                     'paid_at': payment.paid_at.strftime('%Y-%m-%d %H:%M') if payment.paid_at else None,
+                    'created_at': payment.created_at.strftime('%Y-%m-%d %H:%M') if payment.created_at else None,
                     'stripe_payment_intent_id': payment.stripe_payment_intent_id,
                     'fee_cents': payment.fee_cents,
                     'funding': payment.funding,
-                    'brand': payment.brand
+                    'brand': payment.brand,
+                    'refunded_amount': refunded,
+                    'refundable_remaining': remaining,
+                    # 默认不含定金的可退上限；勾选 include_deposit 后用 refundable_remaining
+                    'max_refund_without_deposit': payment_max_refund(
+                        payment, booking, include_deposit=False, deposit_hint=None
+                    ),
+                    'refund_reason': payment.refund_reason or '',
+                    'can_refund': payment.status in ('succeeded', 'partially_refunded') and remaining > 0.001,
                 })
-                if payment.status == 'succeeded':
+                if payment.status in ('succeeded', 'partially_refunded', 'refunded'):
                     total_charged += amt
                     total_fee_dollars += fee_dollars
                     net_received += net_from_payment
@@ -3401,7 +3646,20 @@ def manage_booking(trip_id, booking_id):
             }
             # 有支付记录时用汇总实收作为“已付金额”显示（与 Payment 表一致，避免 DB 存错）
             amount_paid_display = round(net_received if total_charged > 0 else (float(booking.amount_paid) if booking.amount_paid else 0.0), 2)
-            
+
+            # 定金参考：取首个套餐的 deposit
+            deposit_hint = None
+            for bp in booking.booking_packages:
+                cfg = (bp.package.payment_plan_config if bp.package else None) or {}
+                dep = cfg.get('deposit_amount') or cfg.get('deposit')
+                if dep is not None:
+                    try:
+                        deposit_hint = float(dep) * (int(bp.quantity) if bp.quantity else 1)
+                        break
+                    except (TypeError, ValueError):
+                        pass
+            deposit_reserved = booking_deposit_reserved(booking, deposit_hint=deposit_hint)
+
             # 获取分期付款记录
             installments = []
             for inst in InstallmentPayment.query.filter_by(booking_id=booking.id).order_by(InstallmentPayment.installment_number).all():
@@ -3428,6 +3686,8 @@ def manage_booking(trip_id, booking_id):
                 'success': True,
                 'booking': {
                     'id': booking.id,
+                    'order_number': booking.order_number,
+                    'order_seq': booking.order_seq,
                     # Buyer 详细信息
                     'buyer': {
                         'first_name': booking.buyer_first_name or '',
@@ -3466,6 +3726,9 @@ def manage_booking(trip_id, booking_id):
                     'expected_amount': expected_amount,
                     'pending_amount': max(0.0, expected_amount - amount_paid_display),
                     'payment_summary': payment_summary,
+                    'deposit_hint': deposit_hint,
+                    'deposit_reserved': deposit_reserved,
+                    'fees_non_refundable': True,
                     # 其他信息
                     'passenger_count': booking.passenger_count,
                     'special_requests': booking.special_requests or '',
@@ -3621,7 +3884,7 @@ def generate_receipt(trip_id, booking_id):
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = (
-        f'attachment; filename="NHTours-Order-{booking.id}.pdf"'
+        f'attachment; filename="NHTours-Order-{getattr(booking, "order_number", None) or booking.id}.pdf"'
     )
     return response
 
@@ -3701,69 +3964,154 @@ def get_trip_financials(id):
 @bp.route('/trips/<int:trip_id>/bookings/<int:booking_id>/refund', methods=['POST'])
 @login_required
 def refund_booking(trip_id, booking_id):
-    """处理预订退款"""
+    """
+    处理预订退款：
+    - 金额为基础口径（不含卡手续费；手续费永不退）
+    - 默认不含定金；include_deposit=true 时可退定金部分
+    - $0 / 无可退金额时允许仅 cancel_booking（不调 Stripe）
+    """
     trip = Trip.query.get_or_404(trip_id)
     booking = Booking.query.get_or_404(booking_id)
-    
+
     if booking.trip_id != trip.id:
         return jsonify({'success': False, 'message': 'Booking does not belong to this trip'}), 400
-    
-    data = request.get_json()
-    refund_amount = float(data.get('amount', 0))
-    refund_type = data.get('type', 'full')
-    reason = data.get('reason', '')
-    
-    if refund_amount <= 0:
-        return jsonify({'success': False, 'message': 'Invalid refund amount'}), 400
-    
-    if refund_amount > booking.amount_paid:
-        return jsonify({'success': False, 'message': 'Refund amount cannot exceed amount paid'}), 400
-    
+
+    data = request.get_json() or {}
     try:
-        # TODO: Get Stripe Payment Intent ID from booking
-        # For now, we'll check if there's a Payment record with stripe_charge_id
-        # In future, we should store payment_intent_id in Booking model
-        payment = Payment.query.filter_by(
-            client_id=booking.client_id,
-            trip_id=booking.trip_id
-        ).filter(Payment.stripe_charge_id.isnot(None)).first()
-        
-        # Process Stripe refund if payment exists and Stripe is configured
-        stripe_refund = None
-        if payment and payment.stripe_charge_id:
-            from app.payments import process_refund
-            stripe_refund = process_refund(payment.stripe_charge_id, refund_amount, reason)
-            
-            if not stripe_refund:
-                # If Stripe refund fails, we can still record it manually
-                current_app.logger.warning(f"Stripe refund failed for booking {booking_id}, but continuing with manual refund")
-        
-        # Store original amount for comparison
-        original_amount_paid = booking.amount_paid
-        
-        # Update booking amount_paid
-        booking.amount_paid = max(0, booking.amount_paid - refund_amount)
-        
-        # Update booking status based on refund
-        if booking.amount_paid == 0:
+        refund_amount = float(data.get('amount', 0) or 0)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'Invalid refund amount'}), 400
+
+    reason = (data.get('reason') or '').strip()
+    payment_id = data.get('payment_id')
+    manual_only = bool(data.get('manual_only'))
+    cancel_booking = bool(data.get('cancel_booking'))
+    include_deposit = bool(data.get('include_deposit'))
+
+    if not reason:
+        return jsonify({'success': False, 'message': 'Refund reason is required'}), 400
+
+    # --- $0 / 仅取消：无退款金额时只改订单状态 ---
+    if refund_amount <= 0.001:
+        if not cancel_booking:
+            return jsonify({
+                'success': False,
+                'message': 'Invalid refund amount (or check “Cancel booking” for $0 / no-refund cancel)'
+            }), 400
+        try:
             booking.status = 'cancelled'
-        elif refund_amount < original_amount_paid:
-            # Partial refund - status might need adjustment
-            if booking.status == 'fully_paid':
-                booking.status = 'deposit_paid'
-        
-        # Create refund record (you may want to create a Refund model for this)
-        # For now, we'll just update the booking
-        
+            if float(booking.amount_paid or 0) <= 0.001:
+                booking.amount_paid = 0.0
+            db.session.commit()
+            return jsonify({
+                'success': True,
+                'message': 'Booking cancelled (no refund amount)',
+                'stripe_refund_id': None,
+                'manual_only': True,
+                'new_amount_paid': float(booking.amount_paid or 0),
+                'booking_status': booking.status,
+                'payment_refunded_amount': None,
+            })
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error cancelling $0 booking: {str(e)}")
+            return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
+
+    if not payment_id:
+        return jsonify({'success': False, 'message': 'payment_id is required'}), 400
+
+    payment = Payment.query.filter_by(id=payment_id, booking_id=booking.id).first()
+    if not payment:
+        return jsonify({'success': False, 'message': 'Payment not found for this booking'}), 404
+
+    if payment.status not in ('succeeded', 'partially_refunded'):
+        return jsonify({
+            'success': False,
+            'message': f'Payment status "{payment.status}" is not refundable'
+        }), 400
+
+    from app.payments import (
+        process_refund,
+        apply_refund_to_ledger,
+        payment_max_refund,
+        extract_stripe_charge_id,
+        retrieve_payment_intent,
+    )
+
+    max_allowed = payment_max_refund(payment, booking, include_deposit=include_deposit)
+    if max_allowed <= 0.001:
+        return jsonify({
+            'success': False,
+            'message': (
+                'Nothing refundable under current settings '
+                '(card fees are never refunded; deposit is withheld unless “Also refund deposit” is checked). '
+                'You can still cancel with amount 0 + Cancel booking checked.'
+            )
+        }), 400
+
+    if refund_amount > max_allowed + 0.001:
+        return jsonify({
+            'success': False,
+            'message': (
+                f'Refund amount cannot exceed ${max_allowed:.2f} '
+                f'({"including" if include_deposit else "excluding"} deposit; fees never refunded)'
+            )
+        }), 400
+
+    try:
+        stripe_refund = None
+        stripe_refund_id = None
+
+        if not manual_only:
+            pi = payment.stripe_payment_intent_id
+            if not pi or not str(pi).startswith('pi_'):
+                return jsonify({
+                    'success': False,
+                    'message': 'This payment has no Stripe PaymentIntent. Use “Manual only” to record a local refund, or refund in Stripe Dashboard.'
+                }), 400
+
+            if not payment.stripe_charge_id:
+                try:
+                    intent = retrieve_payment_intent(pi)
+                    charge_id = extract_stripe_charge_id(intent)
+                    if charge_id:
+                        payment.stripe_charge_id = charge_id
+                except Exception as e:
+                    current_app.logger.warning(f'Could not fetch charge for {pi}: {e}')
+
+            stripe_refund, err = process_refund(pi, refund_amount, reason)
+            if err or not stripe_refund:
+                return jsonify({
+                    'success': False,
+                    'message': f'Stripe refund failed: {err or "unknown error"}'
+                }), 400
+            stripe_refund_id = getattr(stripe_refund, 'id', None)
+
+        ledger = apply_refund_to_ledger(
+            payment,
+            booking,
+            refund_amount,
+            reason=reason,
+            stripe_refund_id=stripe_refund_id,
+            cancel_booking=cancel_booking,
+            manual_only=manual_only,
+        )
         db.session.commit()
-        
+
         return jsonify({
             'success': True,
-            'message': 'Refund processed successfully',
-            'stripe_refund_id': stripe_refund.id if stripe_refund else None,
-            'new_amount_paid': booking.amount_paid
+            'message': 'Refund processed successfully' if not manual_only else 'Manual refund recorded',
+            'stripe_refund_id': stripe_refund_id,
+            'manual_only': manual_only,
+            'include_deposit': include_deposit,
+            'new_amount_paid': ledger['booking_amount_paid'],
+            'booking_status': ledger['booking_status'],
+            'payment_refunded_amount': ledger['payment_refunded_amount'],
         })
-        
+
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 400
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error processing refund: {str(e)}")
@@ -3877,7 +4225,7 @@ def send_booking_email(trip_id, booking_id):
             </div>
             <div class="footer">
                 <p>This email is regarding your booking for: <strong>{trip.title}</strong></p>
-                <p>Booking ID: #{booking.id}</p>
+                <p>Order number: {booking.order_number or ('#' + str(booking.id))}</p>
             </div>
         </div>
     </body>
@@ -3894,7 +4242,7 @@ Nexus Horizons Tours Team
 
 ---
 This email is regarding your booking for: {trip.title}
-Booking ID: #{booking.id}
+Order number: {booking.order_number or ('#' + str(booking.id))}
     """
     
     # 发送邮件
@@ -3916,155 +4264,189 @@ Booking ID: #{booking.id}
 @bp.route('/trips/<int:id>/messages/create', methods=['POST'])
 @login_required
 def create_message(id):
-    """创建新消息（发送、保存草稿或定时发送）"""
+    """创建或更新消息（发送、保存草稿或定时发送）"""
+    from app.messaging import (
+        ALLOWED_RECIPIENT_TYPES,
+        deliver_message,
+        forced_reply_to_email,
+        get_recipients_for_trip,
+    )
+
     trip = Trip.query.get_or_404(id)
-    
+
     try:
-        # 获取表单数据
-        sender_name = request.form.get('sender_name', current_user.username if current_user else 'Admin')
-        reply_to_email = request.form.get('reply_to_email', current_app.config.get('SENDER_EMAIL', 'noreply@nhtours.com'))
+        sender_name = request.form.get(
+            'sender_name',
+            current_app.config.get('SENDER_DISPLAY_NAME', 'Nexus Horizons Tours'),
+        )
+        reply_to_email = forced_reply_to_email()
         subject = request.form.get('subject', '')
         body_html = request.form.get('body_html', '')
         recipient_config_json = request.form.get('recipient_config', '{}')
-        status = request.form.get('status', 'draft')  # draft, sent, scheduled
+        # 仅当显式传 status=draft 才当草稿；缺省按 send_option 发送/定时
+        status = (request.form.get('status') or '').strip().lower()
         send_option = request.form.get('send_option', 'now')
         scheduled_at_str = request.form.get('scheduled_at', '')
-        
-        # 解析收件人配置
+        message_id_raw = (request.form.get('message_id') or '').strip()
+
         recipient_config = json.loads(recipient_config_json) if recipient_config_json else {}
-        
-        # 获取收件人列表
+        rtype = recipient_config.get('type') or 'all'
+        if rtype not in ALLOWED_RECIPIENT_TYPES:
+            return jsonify({'success': False, 'message': 'Invalid recipient type'}), 400
+        recipient_config['type'] = rtype
+        if rtype == 'package':
+            if not recipient_config.get('package_id') and not recipient_config.get('addon_id'):
+                return jsonify({'success': False, 'message': 'Select a package or add-on'}), 400
+
         recipients = get_recipients_for_trip(trip, recipient_config)
-        
-        # 创建消息记录
-        message = Message(
-            trip_id=trip.id,
-            sender_name=sender_name,
-            reply_to_email=reply_to_email,
-            subject=subject,
-            body_html=body_html,
-            body_text=extract_text_from_html(body_html),  # 简单的HTML转文本
-            recipient_config=recipient_config,
-            total_recipients=len(recipients),
-            status=status,
-            created_by_id=current_user.id if current_user else None
-        )
-        
-        # 处理定时发送
-        if send_option == 'schedule' and scheduled_at_str:
-            from datetime import datetime
+        is_draft = (status == 'draft')
+
+        message = None
+        if message_id_raw:
             try:
-                scheduled_at = datetime.strptime(scheduled_at_str, '%Y-%m-%dT%H:%M')
-                message.scheduled_at = scheduled_at
-                message.status = 'scheduled'
+                mid = int(message_id_raw)
             except ValueError:
+                return jsonify({'success': False, 'message': 'Invalid message id'}), 400
+            message = Message.query.filter_by(id=mid, trip_id=trip.id).first()
+            if not message:
+                return jsonify({'success': False, 'message': 'Message not found'}), 404
+            if message.status not in ('draft', 'scheduled'):
+                return jsonify({'success': False, 'message': 'Only drafts/scheduled messages can be updated'}), 400
+
+        if message is None:
+            message = Message(
+                trip_id=trip.id,
+                sender_name=sender_name,
+                reply_to_email=reply_to_email,
+                subject=subject or '(No subject)',
+                body_html=body_html or '',
+                body_text=extract_text_from_html(body_html),
+                recipient_config=recipient_config,
+                total_recipients=len(recipients),
+                status='draft',
+                created_by_id=current_user.id if current_user else None,
+            )
+            db.session.add(message)
+        else:
+            message.sender_name = sender_name
+            message.reply_to_email = reply_to_email
+            message.subject = subject or '(No subject)'
+            message.body_html = body_html or ''
+            message.body_text = extract_text_from_html(body_html)
+            message.recipient_config = recipient_config
+            message.total_recipients = len(recipients)
+
+        if is_draft:
+            message.status = 'draft'
+            message.scheduled_at = None
+        elif send_option == 'schedule':
+            if not scheduled_at_str:
+                return jsonify({'success': False, 'message': 'Scheduled time is required'}), 400
+            try:
+                scheduled_at = None
+                for fmt in ('%Y-%m-%dT%H:%M', '%Y-%m-%d %H:%M', '%Y-%m-%dT%H:%M:%S'):
+                    try:
+                        scheduled_at = datetime.strptime(scheduled_at_str.strip(), fmt)
+                        break
+                    except ValueError:
+                        continue
+                if scheduled_at is None:
+                    return jsonify({'success': False, 'message': 'Invalid scheduled date format'}), 400
+            except Exception:
                 return jsonify({'success': False, 'message': 'Invalid scheduled date format'}), 400
-        
-        db.session.add(message)
-        db.session.commit()
-        
-        # 如果是立即发送，发送邮件
-        if status == 'sent' or (send_option == 'now' and status != 'draft'):
-            sent_count = 0
-            failed_count = 0
-            
-            for recipient in recipients:
-                success, _ = send_email_via_ses(
-                    sender=reply_to_email,
-                    recipient=recipient['email'],
-                    subject=subject,
-                    html_body=body_html,
-                    text_body=message.body_text,
-                    reply_to=reply_to_email
-                )
-                if success:
-                    sent_count += 1
-                else:
-                    failed_count += 1
-            
-            # 更新发送统计
-            message.sent_at = datetime.utcnow()
-            message.sent_count = sent_count
-            message.failed_count = failed_count
+            if scheduled_at < datetime.utcnow() - timedelta(minutes=2):
+                return jsonify({'success': False, 'message': 'Scheduled time must be after the current time'}), 400
+            max_year = datetime.utcnow().year + 30
+            if scheduled_at.year > max_year:
+                return jsonify({'success': False, 'message': f'Scheduled year cannot be after {max_year}'}), 400
+            if not recipients:
+                return jsonify({'success': False, 'message': 'No recipients for this selection'}), 400
+            message.scheduled_at = scheduled_at
+            message.status = 'scheduled'
+        else:
+            subj = (subject or '').strip()
+            if not subj or subj == '(No subject)':
+                return jsonify({'success': False, 'message': 'Subject is required'}), 400
+            if not recipients:
+                return jsonify({'success': False, 'message': 'No recipients for this selection'}), 400
             message.status = 'sent'
-            db.session.commit()
-        
+
+        db.session.commit()
+
+        if not is_draft and message.status == 'sent':
+            try:
+                deliver_message(message, recipients=recipients)
+                db.session.commit()
+            except Exception as send_err:
+                db.session.rollback()
+                current_app.logger.error(f'Message {message.id} deliver failed: {send_err}', exc_info=True)
+                # 保留记录但标回 draft，避免假装已发送
+                message = Message.query.get(message.id)
+                if message:
+                    message.status = 'draft'
+                    db.session.commit()
+                return jsonify({
+                    'success': False,
+                    'message': f'Email send failed: {send_err}',
+                    'message_id': message.id if message else None,
+                    'status': 'draft',
+                }), 500
+
         return jsonify({
             'success': True,
-            'message': 'Message created successfully',
-            'message_id': message.id
+            'message': 'Message saved successfully',
+            'message_id': message.id,
+            'status': message.status,
+            'total_recipients': message.total_recipients,
+            'sent_count': message.sent_count or 0,
+            'failed_count': message.failed_count or 0,
         })
-        
+
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f'Error creating message: {str(e)}')
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
 
 
-def get_recipients_for_trip(trip, recipient_config):
-    """根据收件人配置获取收件人列表"""
-    recipients = []
-    recipient_type = recipient_config.get('type', 'all')
-    
-    if recipient_type == 'all':
-        # 获取所有参与者
-        for booking in trip.bookings:
-            for participant in booking.participants:
-                if participant.email:
-                    recipients.append({
-                        'email': participant.email,
-                        'name': participant.name or 'Participant'
-                    })
-    
-    elif recipient_type == 'specific':
-        # 特定收件人
-        specific_recipients = recipient_config.get('recipients', [])
-        recipients = specific_recipients
-    
-    elif recipient_type == 'payment_due':
-        # 付款逾期的参与者
-        for booking in trip.bookings:
-            if booking.status in ['pending', 'deposit_paid']:
-                # 检查是否有逾期付款
-                # 这里简化处理，实际应该检查支付计划中的逾期分期
-                for participant in booking.participants:
-                    if participant.email:
-                        recipients.append({
-                            'email': participant.email,
-                            'name': participant.name or 'Participant'
-                        })
-    
-    elif recipient_type == 'package':
-        # 特定套餐的参与者
-        package_id = recipient_config.get('package_id')
-        if package_id:
-            for booking in trip.bookings:
-                for bp in booking.booking_packages:
-                    if bp.package_id == package_id:
-                        for participant in booking.participants:
-                            if participant.email:
-                                recipients.append({
-                                    'email': participant.email,
-                                    'name': participant.name or 'Participant'
-                                })
-    
-    # 去重（基于邮箱）
-    seen_emails = set()
-    unique_recipients = []
-    for recipient in recipients:
-        if recipient['email'] not in seen_emails:
-            seen_emails.add(recipient['email'])
-            unique_recipients.append(recipient)
-    
-    return unique_recipients
+@bp.route('/trips/<int:id>/messages/<int:message_id>', methods=['GET'])
+@login_required
+def get_message(id, message_id):
+    from app.messaging import message_to_dict
+    trip = Trip.query.get_or_404(id)
+    message = Message.query.filter_by(id=message_id, trip_id=trip.id).first_or_404()
+    return jsonify({
+        'success': True,
+        'message': message_to_dict(message, include_recipients=True),
+    })
+
+
+@bp.route('/trips/<int:id>/messages/<int:message_id>', methods=['DELETE'])
+@login_required
+def delete_message(id, message_id):
+    trip = Trip.query.get_or_404(id)
+    message = Message.query.filter_by(id=message_id, trip_id=trip.id).first_or_404()
+    if message.status == 'sent':
+        return jsonify({'success': False, 'message': 'Sent messages cannot be deleted'}), 400
+    db.session.delete(message)
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Message deleted'})
+
+
+@bp.route('/trips/<int:id>/messages/<int:message_id>/cancel-schedule', methods=['POST'])
+@login_required
+def cancel_scheduled_message(id, message_id):
+    trip = Trip.query.get_or_404(id)
+    message = Message.query.filter_by(id=message_id, trip_id=trip.id).first_or_404()
+    if message.status not in ('scheduled', 'sending'):
+        return jsonify({'success': False, 'message': 'Message is not scheduled'}), 400
+    message.status = 'draft'
+    message.scheduled_at = None
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Schedule cancelled; saved as draft'})
 
 
 def extract_text_from_html(html):
     """从HTML中提取纯文本（简单实现）"""
-    import re
-    # 移除HTML标签
-    text = re.sub('<[^<]+?>', '', html)
-    # 解码HTML实体
-    import html as html_module
-    text = html_module.unescape(text)
+    text = re.sub('<[^<]+?>', '', html or '')
+    text = unescape(text)
     return text.strip()

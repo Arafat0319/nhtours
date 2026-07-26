@@ -201,7 +201,7 @@ def send_installment_reminder_email(installment, days_until_due=3):
     - Installment #{installment.installment_number if installment.installment_number > 0 else 'Deposit'}
     - Amount: ${installment.amount:.2f}
     - Due Date: {installment.due_date.strftime('%B %d, %Y') if installment.due_date else 'N/A'}
-    - Booking ID: {booking.id}
+    - Order number: {booking.order_number or booking.id}
     
     Please complete your payment here: {payment_link}
     
@@ -263,7 +263,7 @@ def send_overdue_reminder_email(installment, days_overdue):
     - Amount: ${installment.amount:.2f}
     - Due Date: {installment.due_date.strftime('%B %d, %Y') if installment.due_date else 'N/A'}
     - Days Overdue: {days_overdue}
-    - Booking ID: {booking.id}
+    - Order number: {booking.order_number or booking.id}
     
     Please complete your payment immediately: {payment_link}
     
@@ -284,3 +284,20 @@ def send_overdue_reminder_email(installment, days_overdue):
         current_app.logger.info(f"Overdue reminder email sent for installment {installment.id} ({days_overdue} days overdue)")
     except Exception as e:
         current_app.logger.error(f"Failed to send overdue reminder email for installment {installment.id}: {str(e)}")
+
+
+def send_scheduled_messages():
+    """
+    发送到期的 Trip Message（Manage → Schedule）。
+    每分钟由 APScheduler 调用；实现见 app.messaging.send_due_scheduled_messages。
+    """
+    from app.messaging import send_due_scheduled_messages
+
+    try:
+        n = send_due_scheduled_messages()
+        if n:
+            current_app.logger.info(f"Scheduled messages processed: {n}")
+        return n
+    except Exception as e:
+        current_app.logger.error(f"send_scheduled_messages failed: {e}", exc_info=True)
+        return 0

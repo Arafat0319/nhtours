@@ -37,6 +37,10 @@ from app.payments import (
     retrieve_payment_method_card_details,
     calculate_fee,
     safe_cancel_payment_intent,
+    extract_stripe_charge_id,
+    payment_charged_amount,
+    payment_base_amount,
+    stripe_refunded_as_base,
 )
 from datetime import datetime, date, timedelta
 
@@ -436,6 +440,9 @@ def trip_detail(slug):
             buyer_custom_info=json.loads(form.buyer_custom_info.data) if form.buyer_custom_info.data else None
         )
         db.session.add(booking)
+        db.session.flush()
+        from app.order_numbers import assign_order_number
+        assign_order_number(booking, trip=trip)
         
         # 创建新的待支付记录（保留用于兼容）
         payment = Payment(
@@ -1595,7 +1602,6 @@ def api_booking_summary(booking_id):
             lines.append({'label': addon_rel.addon.name + ' x' + str(qty), 'amount': round(line_total, 2)})
 
     discount = float(booking.discount_amount or 0)
-    subtotal_after_discount = max(0.0, round(trip_total - discount, 2))
 
     payment = Payment.query.filter(
         Payment.booking_id == booking_id,
@@ -1607,14 +1613,17 @@ def api_booking_summary(booking_id):
         due_at_booking = payment.final_amount_cents / 100.0
         trip_total_display = (payment.base_amount_cents / 100.0) if payment.base_amount_cents is not None else round(trip_total, 2)
     else:
+        # $0 / 折扣免付：无卡支付记录时，Due/Amount Paid = 实际已付（通常为 0），勿用整单余额
         fee_dollars = 0.0
-        due_at_booking = subtotal_after_discount
+        due_at_booking = float(booking.amount_paid or 0.0)
         trip_total_display = round(trip_total, 2)
 
     return jsonify({
         'trip_total': round(trip_total_display, 2),
         'fee': round(fee_dollars, 2),
         'due_at_booking': round(due_at_booking, 2),
+        'amount_paid': round(float(booking.amount_paid or 0.0), 2),
+        'order_number': booking.order_number or str(booking.id),
         'order_summary_lines': lines,
         'discount_amount': round(discount, 2),
     })
@@ -1689,16 +1698,24 @@ def booking_receipt(booking_id):
     if request.args.get('format') == 'html':
         return render_template('booking/receipt.html', **ctx)
 
-    pdf_bytes = build_booking_receipt_pdf(
-        booking=ctx['booking'],
-        trip=ctx['trip'],
-        expected_amount=ctx['expected_amount'],
-        participants_info=ctx['participants_info'],
-    )
+    try:
+        pdf_bytes = build_booking_receipt_pdf(
+            booking=ctx['booking'],
+            trip=ctx['trip'],
+            expected_amount=ctx['expected_amount'],
+            participants_info=ctx['participants_info'],
+        )
+    except Exception as e:
+        current_app.logger.exception(f'receipt PDF failed for booking {booking_id}: {e}')
+        abort(500)
+
+    order_label = getattr(booking, 'order_number', None) or booking.id
+    # ASCII 文件名，避免部分客户端对 Content-Disposition 处理异常
+    safe_name = ''.join(c if c.isalnum() or c in '-_' else '-' for c in str(order_label))
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = (
-        f'attachment; filename="NHTours-Order-{booking.id}.pdf"'
+        f'attachment; filename="NHTours-Order-{safe_name}.pdf"'
     )
     return response
 
@@ -2146,6 +2163,39 @@ def api_create_free_booking():
                     ).first()
                     if not existing_inst:
                         create_installment_payments(booking, bp, config)
+
+        # 写一条 $0 Payment，与卡支付路径统一（收据邮件 / summary / 幂等）
+        zero_payment = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
+        if not zero_payment:
+            zero_payment = Payment(
+                booking_id=booking.id,
+                client_id=booking.client_id,
+                trip_id=booking.trip_id,
+                amount=0.0,
+                stripe_payment_intent_id=payment_intent_id,
+                status='succeeded',
+                paid_at=datetime.utcnow(),
+                currency='USD',
+                payment_method_type='none',
+                base_amount_cents=0,
+                fee_cents=0,
+                tax_amount_cents=0,
+                final_amount_cents=0,
+                payment_metadata={
+                    'free_checkout': True,
+                    'discount_amount': booking_data.get('discount_amount', 0),
+                    'discount_code': booking_data.get('discount_code'),
+                },
+            )
+            db.session.add(zero_payment)
+        else:
+            zero_payment.booking_id = booking.id
+            zero_payment.status = 'succeeded'
+            zero_payment.paid_at = zero_payment.paid_at or datetime.utcnow()
+            zero_payment.amount = 0.0
+            zero_payment.base_amount_cents = 0
+            zero_payment.fee_cents = 0
+            zero_payment.final_amount_cents = 0
         
         pending_booking.status = 'completed'
         updated_data = dict(pending_booking.booking_data or {})
@@ -2960,6 +3010,9 @@ def _create_booking_from_metadata(payment_intent_id):
     )
     db.session.add(booking)
     db.session.flush()
+
+    from app.order_numbers import assign_order_number
+    assign_order_number(booking, trip=trip)
     
     # 更新折扣码使用次数
     if discount_code_id:
@@ -3183,6 +3236,10 @@ def handle_booking_payment_intent_succeeded(payment_intent):
     if brand:
         payment.brand = brand
 
+    charge_id = extract_stripe_charge_id(payment_intent)
+    if charge_id and not payment.stripe_charge_id:
+        payment.stripe_charge_id = charge_id
+
     total_info = calculate_booking_total(booking)
     # amount_paid 只记录基础金额（不含手续费），因为这是客户实际购买的金额
     booking.amount_paid = (booking.amount_paid or 0.0) + base_amount
@@ -3340,6 +3397,10 @@ def handle_payment_intent_succeeded(payment_intent):
         payment.funding = funding
     if brand:
         payment.brand = brand
+
+    charge_id = extract_stripe_charge_id(payment_intent)
+    if charge_id and not payment.stripe_charge_id:
+        payment.stripe_charge_id = charge_id
     
     db.session.commit()
     
@@ -3368,36 +3429,112 @@ def handle_payment_intent_failed(payment_intent):
     # 但通常不需要更新 Booking 状态（因为支付未成功）
 
 
-def handle_refund(refund_data):
+def handle_refund(charge_data):
     """
-    处理退款事件
+    处理 charge.refunded：object 是 Charge。
+    Stripe amount_refunded 为实扣口径；本地 refunded_amount 为基础金额（手续费不退）。
+    幂等：仅当本地基础已退落后于 Stripe 映射值时补齐 Booking.amount_paid。
     """
-    charge_id = refund_data.get('charge')
-    amount = refund_data['amount'] / 100.0
-    
-    # 查找关联的 Payment
-    payment = Payment.query.filter_by(stripe_charge_id=charge_id).first()
-    if not payment:
-        # 也可能通过 payment_intent_id 查找
-        payment_intent_id = refund_data.get('payment_intent')
-        if payment_intent_id:
-            payment = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
-    
-    if not payment:
-        current_app.logger.warning(f"Payment not found for refund {refund_data['id']}")
+    if not charge_data:
         return
-    
-    # 更新 Payment 状态
-    payment.refunded_amount = (payment.refunded_amount or 0.0) + amount
-    if payment.refunded_amount >= payment.amount:
-        payment.status = 'refunded'
-    else:
-        payment.status = 'partially_refunded'
-    payment.refunded_at = datetime.utcnow()
-    
+
+    charge_id = charge_data.get('id')
+    payment_intent_id = charge_data.get('payment_intent')
+    amount_refunded_cents = charge_data.get('amount_refunded')
+    if amount_refunded_cents is None:
+        current_app.logger.warning(f"charge.refunded missing amount_refunded for {charge_id}")
+        return
+
+    stripe_refunded_charged = round(float(amount_refunded_cents) / 100.0, 2)
+
+    payment = None
+    if charge_id:
+        payment = Payment.query.filter_by(stripe_charge_id=charge_id).first()
+    if not payment and payment_intent_id:
+        payment = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
+
+    if not payment:
+        current_app.logger.warning(
+            f"Payment not found for charge.refunded charge={charge_id} pi={payment_intent_id}"
+        )
+        return
+
+    if charge_id and not payment.stripe_charge_id:
+        payment.stripe_charge_id = charge_id
+
+    base = payment_base_amount(payment)
+    stripe_base = stripe_refunded_as_base(payment, stripe_refunded_charged)
+    local_refunded = round(float(payment.refunded_amount or 0.0), 2)
+
+    def _set_status_from_base(refunded_base):
+        if refunded_base >= base - 0.001:
+            payment.status = 'refunded'
+            payment.refunded_amount = base
+        elif refunded_base > 0.001:
+            payment.status = 'partially_refunded'
+            payment.refunded_amount = refunded_base
+        else:
+            payment.status = 'succeeded'
+            payment.refunded_amount = 0.0
+
+    # 已与 Stripe（基础口径）一致：只校正 status
+    if abs(local_refunded - stripe_base) < 0.005:
+        _set_status_from_base(stripe_base)
+        if not payment.refunded_at and stripe_base > 0:
+            payment.refunded_at = datetime.utcnow()
+        db.session.commit()
+        current_app.logger.info(
+            f"Refund webhook idempotent for payment {payment.id} "
+            f"(base refunded=${stripe_base:.2f}; stripe charged refunded=${stripe_refunded_charged:.2f})"
+        )
+        return
+
+    # 本地落后于 Stripe：补基础差额（卡费部分已在 stripe_refunded_as_base 截断）
+    if stripe_base > local_refunded:
+        delta = round(stripe_base - local_refunded, 2)
+        booking = payment.booking or (Booking.query.get(payment.booking_id) if payment.booking_id else None)
+
+        payment.refunded_at = datetime.utcnow()
+        _set_status_from_base(stripe_base)
+
+        meta = dict(payment.payment_metadata or {})
+        history = list(meta.get('refund_history') or [])
+        history.append({
+            'amount': delta,
+            'reason': 'synced_from_stripe_webhook',
+            'stripe_refund_id': None,
+            'manual_only': False,
+            'excludes_fee': True,
+            'source': 'charge.refunded',
+            'stripe_charged_refunded': stripe_refunded_charged,
+            'at': datetime.utcnow().isoformat() + 'Z',
+        })
+        meta['refund_history'] = history
+        payment.payment_metadata = meta
+
+        if booking and delta > 0:
+            booking.amount_paid = max(0.0, round(float(booking.amount_paid or 0.0) - delta, 2))
+            if booking.amount_paid <= 0.001:
+                booking.amount_paid = 0.0
+                booking.status = 'cancelled'
+            elif booking.status == 'fully_paid':
+                booking.status = 'deposit_paid'
+
+        db.session.commit()
+        current_app.logger.info(
+            f"Refund webhook synced payment {payment.id}: +${delta:.2f} base "
+            f"(total base refunded=${payment.refunded_amount:.2f}; "
+            f"stripe charged=${stripe_refunded_charged:.2f})"
+        )
+        return
+
+    # 本地高于 Stripe 映射（少见）：以 Stripe 基础值为准收敛 Payment，不回加 Booking
+    _set_status_from_base(stripe_base)
     db.session.commit()
-    
-    current_app.logger.info(f"Refund processed for payment {payment.id}")
+    current_app.logger.warning(
+        f"Refund webhook local base>${stripe_base:.2f} for payment {payment.id}; "
+        f"Payment.refunded_amount converged without increasing Booking.amount_paid"
+    )
 
 
 def create_installment_payments(booking, booking_package, payment_plan_config):
@@ -3458,6 +3595,37 @@ def create_installment_payments(booking, booking_package, payment_plan_config):
             continue
 
 
+def _receipt_public_download_url(booking_id):
+    """客户邮件中的收据 PDF 链接（公开路由 /booking/<id>/receipt）。"""
+    base = (current_app.config.get('BASE_URL') or '').rstrip('/') or 'https://nhtours.com'
+    return f'{base}/booking/{int(booking_id)}/receipt'
+
+
+def _receipt_pdf_attachment(booking):
+    """生成收据 PDF 附件；失败返回 None（邮件仍可发，仅无附件）。"""
+    try:
+        from app.receipt_pdf import build_booking_receipt_pdf
+        ctx = _booking_receipt_context(booking)
+        if not ctx:
+            return None
+        pdf_bytes = build_booking_receipt_pdf(
+            booking=ctx['booking'],
+            trip=ctx['trip'],
+            expected_amount=ctx['expected_amount'],
+            participants_info=ctx['participants_info'],
+        )
+        order_label = getattr(booking, 'order_number', None) or booking.id
+        safe_name = ''.join(c if c.isalnum() or c in '-_' else '-' for c in str(order_label))
+        return {
+            'filename': f'NHTours-Order-{safe_name}.pdf',
+            'content': pdf_bytes,
+            'mime_subtype': 'pdf',
+        }
+    except Exception as e:
+        current_app.logger.exception(f'receipt PDF attachment failed for booking {getattr(booking, "id", "?")}: {e}')
+        return None
+
+
 def send_booking_confirmation_email(booking, is_full_payment):
     """
     发送报名确认邮件
@@ -3472,9 +3640,24 @@ def send_booking_confirmation_email(booking, is_full_payment):
     ).order_by(Payment.paid_at.desc()).first()
 
     total_info = calculate_booking_total(booking)
-    base_amount_cents = payment.base_amount_cents if payment and payment.base_amount_cents is not None else int(round(total_info['total'] * 100))
-    fee_cents = payment.fee_cents if payment and payment.fee_cents is not None else 0
-    total_cents = payment.final_amount_cents if payment and payment.final_amount_cents is not None else base_amount_cents + fee_cents
+    # 本次收据金额 = 本笔实收；无 Payment / $0 时绝不能回落到「整单余额」
+    if payment and payment.base_amount_cents is not None:
+        base_amount_cents = int(payment.base_amount_cents)
+        fee_cents = int(payment.fee_cents or 0)
+        total_cents = (
+            int(payment.final_amount_cents)
+            if payment.final_amount_cents is not None
+            else base_amount_cents + fee_cents
+        )
+    elif payment:
+        base_amount_cents = int(round(float(payment.amount or 0) * 100))
+        fee_cents = int(payment.fee_cents or 0)
+        total_cents = base_amount_cents + fee_cents
+    else:
+        base_amount_cents = 0
+        fee_cents = 0
+        total_cents = 0
+
     payment_status = payment.status if payment else ('fully_paid' if is_full_payment else 'deposit_paid')
     # 处理 $0 订单：没有 Payment 记录时使用当前时间
     if payment and payment.paid_at:
@@ -3502,7 +3685,7 @@ def send_booking_confirmation_email(booking, is_full_payment):
     if not line_items:
         line_items.append({
             'label': 'Booking',
-            'amount': total_info['total']
+            'amount': float(total_info.get('subtotal') or total_info.get('total') or 0)
         })
 
     payment_method_summary = None
@@ -3510,18 +3693,27 @@ def send_booking_confirmation_email(booking, is_full_payment):
         brand = (payment.brand or '').upper()
         funding = (payment.funding or '').capitalize()
         payment_method_summary = f"{brand} {funding}".strip()
+    elif total_cents <= 0:
+        payment_method_summary = 'No card charge'
+
+    payment_intent_id = payment.stripe_payment_intent_id if payment else None
+    if payment_intent_id and str(payment_intent_id).startswith('free_'):
+        payment_intent_id = None
 
     # 获取折扣信息
     discount_amount = booking.discount_amount or 0.0
     discount_code = booking.discount_code.code if booking.discount_code else None
-    
+
+    # 有折扣时：页脚 Subtotal = 本笔应付原价（实收 + 折扣），与卡付路径一致
+    # $0 实收时 base=0，Subtotal 显示为折扣额，避免把整单余额当成已付
     context = {
         'receipt_title': 'Payment Receipt',
-        'receipt_number': booking.id,
+        'receipt_number': booking.order_number or booking.id,
         'issued_at': issued_at,
         'booking_id': booking.id,
+        'order_number': booking.order_number or booking.id,
         'payment_status': payment_status.replace('_', ' ').title(),
-        'payment_intent_id': payment.stripe_payment_intent_id if payment else None,
+        'payment_intent_id': payment_intent_id,
         'payment_method_summary': payment_method_summary,
         'trip_title': booking.trip.title if booking.trip else 'Trip Booking',
         'trip_dates': (
@@ -3536,17 +3728,26 @@ def send_booking_confirmation_email(booking, is_full_payment):
         'total_amount': total_cents / 100.0,
         'discount_amount': discount_amount,
         'discount_code': discount_code,
+        'amount_charged_label': 'Amount charged today',
+        'receipt_download_url': _receipt_public_download_url(booking.id),
     }
 
     html_body = render_template('emails/receipt.html', **context)
     text_body = render_template('emails/receipt.txt', **context)
+
+    attachments = []
+    pdf_att = _receipt_pdf_attachment(booking)
+    if pdf_att:
+        attachments.append(pdf_att)
 
     send_email_via_ses(
         sender=sender_email,
         recipient=recipient_email,
         subject=subject,
         html_body=html_body,
-        text_body=text_body
+        text_body=text_body,
+        reply_to=current_app.config.get('REPLY_TO_EMAIL') or 'info@nhtours.com',
+        attachments=attachments or None,
     )
 
 
@@ -3581,10 +3782,11 @@ def send_installment_confirmation_email(installment):
     }]
 
     context = {
-        'receipt_title': 'Installment Payment Receipt',
-        'receipt_number': installment.booking_id or booking.id,
+        'receipt_title': 'Payment Receipt',
+        'receipt_number': booking.order_number or booking.id,
         'issued_at': issued_at,
         'booking_id': booking.id,
+        'order_number': booking.order_number or booking.id,
         'payment_status': payment_status.replace('_', ' ').title(),
         'payment_intent_id': payment.stripe_payment_intent_id if payment else installment.payment_intent_id,
         'payment_method_summary': payment_method_summary,
@@ -3599,15 +3801,26 @@ def send_installment_confirmation_email(installment):
         'base_amount': base_amount_cents / 100.0,
         'fee_amount': fee_cents / 100.0,
         'total_amount': total_cents / 100.0,
+        'discount_amount': 0,
+        'discount_code': None,
+        'amount_charged_label': f'Installment #{installment.installment_number} charged',
+        'receipt_download_url': _receipt_public_download_url(booking.id),
     }
 
     html_body = render_template('emails/receipt.html', **context)
     text_body = render_template('emails/receipt.txt', **context)
+
+    attachments = []
+    pdf_att = _receipt_pdf_attachment(booking)
+    if pdf_att:
+        attachments.append(pdf_att)
 
     send_email_via_ses(
         sender=sender_email,
         recipient=recipient_email,
         subject=subject,
         html_body=html_body,
-        text_body=text_body
+        text_body=text_body,
+        reply_to=current_app.config.get('REPLY_TO_EMAIL') or 'info@nhtours.com',
+        attachments=attachments or None,
     )

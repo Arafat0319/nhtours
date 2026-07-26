@@ -54,7 +54,7 @@
                     <form method="GET" action="{{ url_for('admin.payments') }}" class="flex flex-col md:flex-row md:items-center md:justify-between space-y-3 md:space-y-0 md:space-x-4">
                         <input type="hidden" name="tab" value="records">
                         <div class="flex-1">
-                            <input type="text" name="search" placeholder="Search by Booking ID, Client, Trip..." value="{{ search or '' }}"
+                            <input type="text" name="search" placeholder="Search by Order number, Client, Trip..." value="{{ search or '' }}"
                                 class="block w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-wetravel-cyan focus:border-wetravel-cyan">
                         </div>
                         <div class="flex items-center space-x-2">
@@ -86,7 +86,7 @@
                                         </svg>
                                     </button>
                                 </th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Booking ID</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Order number</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Buyer</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Trip</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
@@ -109,8 +109,11 @@
                                 <td class="px-4 py-3 text-sm">
                                     {% if payment.booking_id %}
                                     <a href="{{ url_for('admin.manage_trip', id=payment.trip_id) if payment.trip_id else '#' }}" class="text-wetravel-cyan hover:underline">
-                                        #{{ payment.booking_id }}
+                                        {{ payment.booking.order_number if payment.booking and payment.booking.order_number else ('#' ~ payment.booking_id) }}
                                     </a>
+                                    {% if payment.booking and payment.booking.order_number %}
+                                    <span class="block text-xs text-gray-400">id: {{ payment.booking_id }}</span>
+                                    {% endif %}
                                     {% else %}
                                     <span class="text-gray-400">-</span>
                                     {% endif %}
@@ -169,7 +172,7 @@
                     <form method="GET" action="{{ url_for('admin.payments') }}" class="flex flex-col md:flex-row md:items-center md:justify-between space-y-3 md:space-y-0 md:space-x-4">
                         <input type="hidden" name="tab" value="installments">
                         <div class="flex-1">
-                            <input type="text" name="search" placeholder="Search by Booking ID..." value="{{ search or '' }}"
+                            <input type="text" name="search" placeholder="Search by Order number..." value="{{ search or '' }}"
                                 class="block w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-wetravel-cyan">
                         </div>
                         <div class="flex items-center space-x-2">
@@ -193,7 +196,7 @@
                         <thead class="bg-gray-50">
                             <tr>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Payment ID</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Booking ID</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Order number</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Buyer</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Trip</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Installment #</th>
@@ -227,8 +230,11 @@
                                     {% if deposit.booking_id %}
                                     <a href="{{ url_for('admin.manage_trip', id=deposit.booking.trip_id) if deposit.booking and deposit.booking.trip_id else '#' }}" 
                                         class="text-wetravel-cyan hover:underline" onclick="event.stopPropagation();">
-                                        #{{ deposit.booking_id }}
+                                        {{ deposit.booking.order_number if deposit.booking and deposit.booking.order_number else ('#' ~ deposit.booking_id) }}
                                     </a>
+                                    {% if deposit.booking and deposit.booking.order_number %}
+                                    <span class="block text-xs text-gray-400">id: {{ deposit.booking_id }}</span>
+                                    {% endif %}
                                     {% else %}
                                     <span class="text-gray-400">-</span>
                                     {% endif %}

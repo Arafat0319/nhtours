@@ -26,6 +26,22 @@
             </div>
         </div>
 
+        <!-- Trip Abbreviation (order number prefix) -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 items-center">
+            <label for="trip_abbr" class="block text-sm font-semibold text-gray-700 md:col-span-1">Trip abbreviation</label>
+            <div class="md:col-span-3">
+                <div
+                    class="border border-gray-200 rounded-md px-3 bg-white shadow-sm focus-within:ring-1 focus-within:ring-wetravel-cyan focus-within:border-wetravel-cyan max-w-[8rem]">
+                    {{ form.trip_abbr(class="block w-full border-0 focus:ring-0 focus:outline-none sm:text-sm py-2
+                    bg-transparent placeholder-gray-400 uppercase tracking-wider", maxlength="4", autocomplete="off") }}
+                </div>
+                <p class="mt-2 text-xs text-gray-500">Used in order numbers (e.g. <span class="font-mono">2607<span id="abbr-preview">{{ form.trip_abbr.data or 'MT' }}</span>-001</span>). Auto from title; edit affects new bookings only.</p>
+                {% for error in form.trip_abbr.errors %}
+                <p class="mt-1 text-sm text-red-600">{{ error }}</p>
+                {% endfor %}
+            </div>
+        </div>
+
         <!-- Destination -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6 items-center">
             <label for="destination_text"
@@ -483,6 +499,7 @@
             const fd = new FormData();
             fd.append('title', document.getElementById('title')?.value || '');
             fd.append('slug', document.getElementById('slug')?.value || '');
+            fd.append('trip_abbr', document.getElementById('trip_abbr')?.value || '');
             fd.append('destination_text', document.getElementById('destination_text')?.value || '');
             fd.append('start_date', document.getElementById('start_date')?.value || '');
             fd.append('end_date', document.getElementById('end_date')?.value || '');
@@ -497,6 +514,13 @@
                     basicsAutosavePending = false;
                     const el = document.getElementById('basics-autosave-indicator');
                     if (el && d.success) { el.textContent = 'Saved'; el.className = 'text-xs text-green-600 mr-auto'; }
+                    if (d.success && d.trip_abbr && !abbrManuallyEdited) {
+                        const abbrInput = document.getElementById('trip_abbr');
+                        if (abbrInput && abbrInput.value !== d.trip_abbr) {
+                            abbrInput.value = d.trip_abbr;
+                            updateAbbrPreview();
+                        }
+                    }
                 })
                 .catch(() => { basicsAutosavePending = false; });
         }
@@ -506,7 +530,7 @@
             if (el) { el.textContent = 'Saving...'; el.className = 'text-xs text-amber-600 mr-auto'; }
             basicsAutosaveTimer = setTimeout(doBasicsAutosave, 1500);
         }
-        ['title','slug','destination_text','capacity'].forEach(id => {
+        ['title','slug','destination_text','capacity','trip_abbr'].forEach(id => {
             const el = document.getElementById(id);
             if (el) { el.addEventListener('input', scheduleBasicsAutosave); el.addEventListener('change', scheduleBasicsAutosave); }
         });
@@ -514,6 +538,47 @@
             const el = document.getElementById(id);
             if (el) el.addEventListener('change', scheduleBasicsAutosave);
         });
+
+        // Trip abbreviation: auto from title until user edits
+        const STOP_WORDS = new Set(['a','an','the','of','for','to','in','on','at','by','and','or','with','from','into','onto','over','under','vs','via','our','your','its','this','that','these','those']);
+        function suggestAbbrFromTitle(title) {
+            const words = (title || '').match(/[A-Za-z0-9\u4e00-\u9fff]+/g) || [];
+            const initials = [];
+            for (const w of words) {
+                if (/^\d+$/.test(w)) continue;
+                if (STOP_WORDS.has(w.toLowerCase())) continue;
+                const ch = w[0];
+                if (/[A-Za-z]/.test(ch)) initials.push(ch.toUpperCase());
+                else if (/[\u4e00-\u9fff]/.test(ch)) continue; // server fills pinyin on save
+                if (initials.length >= 2) break;
+            }
+            if (initials.length >= 2) return initials.slice(0, 2).join('');
+            if (initials.length === 1) return (initials[0] + 'X').slice(0, 2);
+            return 'XX';
+        }
+        let abbrManuallyEdited = {{ 'true' if trip.trip_abbr else 'false' }};
+        const abbrInput = document.getElementById('trip_abbr');
+        const titleInput = document.getElementById('title');
+        function updateAbbrPreview() {
+            const preview = document.getElementById('abbr-preview');
+            if (preview && abbrInput) preview.textContent = (abbrInput.value || 'MT').toUpperCase();
+        }
+        if (abbrInput) {
+            abbrInput.addEventListener('input', function () {
+                abbrManuallyEdited = true;
+                this.value = this.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 4);
+                updateAbbrPreview();
+            });
+        }
+        if (titleInput && abbrInput) {
+            titleInput.addEventListener('input', function () {
+                if (!abbrManuallyEdited) {
+                    abbrInput.value = suggestAbbrFromTitle(this.value);
+                    updateAbbrPreview();
+                }
+            });
+        }
+        updateAbbrPreview();
 
         // Disable mouse wheel and middle button for capacity input
         const capacityInput = document.getElementById('capacity');

@@ -128,6 +128,11 @@ class Trip(db.Model):
     # Registration Date: customers can only start booking on or after this date (None = no restriction)
     registration_date = db.Column(db.Date, nullable=True)
 
+    # Business order number prefix (e.g. MT); editable in Trip Basics
+    trip_abbr = db.Column(db.String(8), nullable=True, index=True)
+    # Next per-trip sequence for order_number (cancelled numbers are not reused)
+    next_order_seq = db.Column(db.Integer, default=1, nullable=False)
+
     @property
     def duration_days(self):
         if self.start_date and self.end_date:
@@ -439,6 +444,10 @@ class Booking(db.Model):
     # 折扣码相关字段
     discount_code_id = db.Column(db.Integer, db.ForeignKey('discount_codes.id'), nullable=True)
     discount_amount = db.Column(db.Float, default=0.0)  # 实际折扣金额
+
+    # Business order number snapshot: YYMM{ABBR}-{SEQ} e.g. 2607MT-001 (immutable once set)
+    order_number = db.Column(db.String(32), unique=True, nullable=True, index=True)
+    order_seq = db.Column(db.Integer, nullable=True)  # sequence within trip at allocation time
     
     # 关联
     trip = db.relationship('Trip', backref=db.backref('bookings', lazy='dynamic'))
@@ -626,7 +635,7 @@ class Message(db.Model):
     attachments = db.Column(db.JSON, default=list)
     
     # 状态和类型
-    status = db.Column(db.String(20), default='draft')  # draft, sent, scheduled
+    status = db.Column(db.String(20), default='draft')  # draft, sent, scheduled, sending
     message_type = db.Column(db.String(20), default='email')  # email, notification
     
     # 发送时间

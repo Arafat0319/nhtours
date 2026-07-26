@@ -6,11 +6,217 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/booking-modal.css') }}">
 <style>
-    .flatpickr-calendar { font-size: 16px !important; }
-    .flatpickr-day { min-width: 38px; height: 38px; line-height: 38px; font-size: 14px; }
-    .flatpickr-month { height: 40px; }
-    .flatpickr-current-month { font-size: 115%; }
+    .flatpickr-calendar {
+        font-size: 16px !important;
+        z-index: 100000 !important;
+        width: 336px !important;
+        max-width: calc(100vw - 24px);
+        padding: 0 0 8px !important;
+        box-sizing: border-box !important;
+    }
+    /* 日期网格铺满日历宽度，避免右侧大块空白 */
+    .flatpickr-calendar .flatpickr-innerContainer,
+    .flatpickr-calendar .flatpickr-rContainer {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    .flatpickr-calendar .flatpickr-weekdays,
+    .flatpickr-calendar .flatpickr-days {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    .flatpickr-calendar .dayContainer {
+        width: 100% !important;
+        min-width: 100% !important;
+        max-width: 100% !important;
+        display: flex !important;
+        flex-wrap: wrap !important;
+        justify-content: flex-start;
+        box-sizing: border-box !important;
+    }
+    .flatpickr-calendar .flatpickr-weekdaycontainer {
+        display: flex !important;
+        width: 100% !important;
+    }
+    .flatpickr-calendar .flatpickr-weekday {
+        flex: 1 1 0;
+        max-width: none;
+        width: auto !important;
+    }
+    .flatpickr-calendar .flatpickr-day {
+        flex: 0 0 calc(100% / 7);
+        width: calc(100% / 7) !important;
+        max-width: calc(100% / 7) !important;
+        height: 38px;
+        line-height: 38px;
+        margin: 0 !important;
+        font-size: 14px;
+        box-sizing: border-box !important;
+    }
     .flatpickr-weekdays { font-size: 13px; }
+    .flatpickr-calendar .flatpickr-current-month,
+    .flatpickr-calendar .numInputWrapper,
+    .flatpickr-calendar .flatpickr-month {
+        overflow: visible !important;
+    }
+    /* 日历头：上下左右留白，箭头与年月不贴边 */
+    .flatpickr-calendar .flatpickr-months {
+        padding: 10px 8px 6px;
+        height: auto !important;
+        min-height: 56px;
+        align-items: center;
+    }
+    .flatpickr-calendar .flatpickr-month {
+        height: auto !important;
+        min-height: 48px;
+        overflow: visible !important;
+    }
+    .flatpickr-calendar .flatpickr-months .flatpickr-prev-month,
+    .flatpickr-calendar .flatpickr-months .flatpickr-next-month {
+        display: none !important;
+    }
+    /* 自定义年月后：隐藏原生年份数字框，避免窄 width 裁切 */
+    .flatpickr-calendar .flatpickr-current-month .numInputWrapper {
+        display: none !important;
+        width: 0 !important;
+    }
+    .flatpickr-calendar .flatpickr-current-month {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        position: absolute !important;
+        left: 0.5rem !important;
+        right: 0.5rem !important;
+        width: auto !important;
+        max-width: none !important;
+        height: auto !important;
+        padding: 4px 0 0 !important;
+        font-size: 14px !important;
+        box-sizing: border-box;
+    }
+    /* 月份/年份下拉：对齐 Gender（.booking-select-uiverse）风格 */
+    .flatpickr-year-uiverse,
+    .flatpickr-month-uiverse {
+        position: relative;
+        display: inline-block;
+        flex: 1 1 0;
+        min-width: 0;
+        max-width: 9.5rem;
+        vertical-align: middle;
+        overflow: visible !important;
+        box-sizing: border-box;
+        margin: 0;
+    }
+    .flatpickr-year-uiverse {
+        max-width: 6.5rem;
+        flex: 0 1 6.5rem;
+    }
+    .flatpickr-month-uiverse {
+        max-width: 9rem;
+        flex: 1 1 8rem;
+    }
+    .flatpickr-year-uiverse .selected,
+    .flatpickr-month-uiverse .selected {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        min-height: 40px;
+        height: 40px;
+        padding: 0 10px;
+        background-color: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 500;
+        line-height: 26px;
+        color: #111827;
+        cursor: pointer;
+        transition: box-shadow 0.1s ease, border-color 0.1s ease;
+        box-sizing: border-box;
+        overflow: hidden;
+        box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    }
+    .flatpickr-year-uiverse .selected .selected-value,
+    .flatpickr-month-uiverse .selected .selected-value {
+        flex: 1;
+        min-width: 0;
+        text-align: left;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .flatpickr-year-uiverse .selected .arrow,
+    .flatpickr-month-uiverse .selected .arrow {
+        flex-shrink: 0;
+        margin-left: 0.5rem;
+        width: 0.85em;
+        height: 0.85em;
+        color: #64748b;
+        fill: currentColor;
+    }
+    .flatpickr-year-uiverse.is-open .selected,
+    .flatpickr-year-uiverse .selected:focus,
+    .flatpickr-month-uiverse.is-open .selected,
+    .flatpickr-month-uiverse .selected:focus {
+        border-color: #0066ff;
+        box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.2);
+        outline: none;
+    }
+    .flatpickr-year-uiverse.booking-select-has-value .selected,
+    .flatpickr-month-uiverse.booking-select-has-value .selected {
+        background-color: rgba(0, 102, 255, 0.1) !important;
+    }
+    /* 选项列表挂到 body，样式与 Gender .options 一致 */
+    .flatpickr-year-uiverse-options,
+    .flatpickr-month-uiverse-options {
+        display: none;
+        position: fixed;
+        z-index: 100050;
+        max-height: 240px;
+        overflow-y: auto;
+        background: #fff;
+        border: 2px solid #e2e8f0;
+        border-radius: 5px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        box-sizing: border-box;
+        min-width: 5.5rem;
+    }
+    .flatpickr-month-uiverse-options {
+        min-width: 9rem;
+    }
+    .flatpickr-year-uiverse-options.is-open,
+    .flatpickr-month-uiverse-options.is-open {
+        display: block;
+    }
+    .flatpickr-year-uiverse-options .option,
+    .flatpickr-month-uiverse-options .option {
+        padding: 10px 12px;
+        font-size: 16px;
+        font-weight: 500;
+        color: #111827;
+        cursor: pointer;
+        border-bottom: 1px solid #f1f5f9;
+        box-sizing: border-box;
+    }
+    .flatpickr-year-uiverse-options .option:last-child,
+    .flatpickr-month-uiverse-options .option:last-child {
+        border-bottom: none;
+    }
+    .flatpickr-year-uiverse-options .option:hover,
+    .flatpickr-month-uiverse-options .option:hover {
+        background-color: #f8fafc;
+    }
+    .flatpickr-year-uiverse-options .option.is-active,
+    .flatpickr-month-uiverse-options .option.is-active {
+        background-color: rgba(0, 102, 255, 0.1);
+        color: #111827;
+    }
+    /* 隐藏 flatpickr 原生月份 select */
+    .flatpickr-calendar select.flatpickr-monthDropdown-months {
+        display: none !important;
+    }
     /* Hero：用 img 替代 background 有利于浏览器锐化渲染；高糊多因原图分辨率不足被放大 */
     .trip-hero { min-height: 40.32vh; width: 100%; position: relative; z-index: 0; overflow: hidden; }
     .trip-hero .trip-hero-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; }
@@ -756,13 +962,14 @@
                                 <button type="button" id="apply-discount-btn" class="apply-discount-btn-match flex-shrink-0">Apply</button>
                             </div>
                             <div id="discount-message" class="text-sm hidden mt-2"></div>
-                            <div id="discount-applied" class="hidden py-2">
-                                <div class="flex items-center justify-between text-sm">
-                                    <span class="text-green-700">Discount: <span id="discount-code-display"></span></span>
-                                    <span class="text-green-600 font-medium" id="discount-amount-display"></span>
-                                    <button type="button" id="remove-discount-btn" class="text-red-600 hover:underline ml-2">Remove</button>
+                            <div id="discount-applied" class="hidden py-4 border-b border-gray-200">
+                                <div class="discount-applied-row">
+                                    <div class="discount-applied-info">
+                                        <span class="discount-applied-label">Discount: <span id="discount-code-display"></span></span>
+                                        <span class="discount-applied-amount" id="discount-amount-display"></span>
+                                    </div>
+                                    <button type="button" id="remove-discount-btn" class="remove-discount-btn" aria-label="Remove discount">Remove</button>
                                 </div>
-
                             </div>
                             <div id="order-summary" class="space-y-2 text-sm text-gray-700 py-2">
                                 <p class="text-gray-500">Select packages to see total.</p>
@@ -846,8 +1053,297 @@
         if (cur && cur.getTime() === d.getTime()) return;
         fp.setDate(d, true);
     }
+    /** 出生年份下拉：今年往前 100 年到今年 */
+    function bookingYearBounds() {
+        var nowY = new Date().getFullYear();
+        return { minY: nowY - 100, maxY: nowY };
+    }
+
+    /** 选项列表挂在 body，需阻断 mousedown，否则 flatpickr 会当成外部点击而关闭 */
+    function bindKeepFlatpickrOpen(fp, el) {
+        if (!el) return;
+        ['mousedown', 'touchstart', 'pointerdown'].forEach(function(evName) {
+            el.addEventListener(evName, function(e) {
+                e.stopPropagation();
+            });
+        });
+    }
+
+    function keepFlatpickrOpen(fp) {
+        if (!fp) return;
+        fp._bookingKeepOpen = true;
+        if (!fp.isOpen) fp.open();
+        setTimeout(function() {
+            fp._bookingKeepOpen = false;
+        }, 50);
+    }
+
+    function attachBookingYearDropdown(fp) {
+        var yearEl = fp.currentYearElement;
+        if (!yearEl || yearEl.dataset.yearSelectAttached === '1') return;
+        yearEl.dataset.yearSelectAttached = '1';
+
+        var numWrap = yearEl.parentNode;
+        if (numWrap) {
+            numWrap.querySelectorAll('.arrowUp, .arrowDown').forEach(function(a) {
+                a.style.display = 'none';
+            });
+            numWrap.style.display = 'none';
+        }
+        yearEl.style.display = 'none';
+
+        var arrowSvg = '<svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 512 512" class="arrow" aria-hidden="true"><path d="M233.4 406.6c12.5 12.5 32.8 12.5 45.3 0l192-192c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L256 338.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l192 192z"></path></svg>';
+        var wrap = document.createElement('div');
+        wrap.className = 'booking-select-uiverse flatpickr-year-uiverse booking-select-has-value';
+        wrap.innerHTML = '<div class="selected" tabindex="0" role="combobox" aria-expanded="false" aria-haspopup="listbox" aria-label="Year"><span class="selected-value"></span>' + arrowSvg + '</div>';
+
+        var selectedDiv = wrap.querySelector('.selected');
+        var selectedVal = wrap.querySelector('.selected-value');
+        selectedDiv.style.setProperty('background-color', 'rgba(0, 102, 255, 0.1)', 'important');
+
+        var optionsDiv = document.createElement('div');
+        optionsDiv.className = 'flatpickr-year-uiverse-options';
+        optionsDiv.setAttribute('role', 'listbox');
+        document.body.appendChild(optionsDiv);
+        bindKeepFlatpickrOpen(fp, wrap);
+        bindKeepFlatpickrOpen(fp, optionsDiv);
+
+        function positionOptions() {
+            var rect = selectedDiv.getBoundingClientRect();
+            var width = Math.max(92, rect.width);
+            var left = rect.left;
+            var top = rect.bottom + 2;
+            var maxH = 240;
+            if (top + Math.min(maxH, 200) > window.innerHeight - 8) {
+                top = Math.max(8, rect.top - maxH - 2);
+            }
+            if (left + width > window.innerWidth - 8) {
+                left = Math.max(8, window.innerWidth - width - 8);
+            }
+            optionsDiv.style.left = left + 'px';
+            optionsDiv.style.top = top + 'px';
+            optionsDiv.style.width = width + 'px';
+        }
+
+        function closePanel() {
+            wrap.classList.remove('is-open');
+            optionsDiv.classList.remove('is-open');
+            selectedDiv.setAttribute('aria-expanded', 'false');
+        }
+
+        function openPanel() {
+            if (typeof fp._closeBookingMonthSelect === 'function') fp._closeBookingMonthSelect();
+            refresh();
+            positionOptions();
+            wrap.classList.add('is-open');
+            optionsDiv.classList.add('is-open');
+            selectedDiv.setAttribute('aria-expanded', 'true');
+            var active = optionsDiv.querySelector('.option.is-active');
+            if (active && typeof active.scrollIntoView === 'function') {
+                active.scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        var refresh = function() {
+            var bounds = bookingYearBounds();
+            var cur = fp.currentYear;
+            if (cur < bounds.minY) cur = bounds.minY;
+            if (cur > bounds.maxY) cur = bounds.maxY;
+            selectedVal.textContent = String(cur);
+            optionsDiv.innerHTML = '';
+            for (var y = bounds.maxY; y >= bounds.minY; y--) {
+                (function(year) {
+                    var opt = document.createElement('div');
+                    opt.className = 'option' + (year === cur ? ' is-active' : '');
+                    opt.setAttribute('data-value', String(year));
+                    opt.setAttribute('role', 'option');
+                    opt.textContent = String(year);
+                    opt.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        fp.changeYear(year);
+                        selectedVal.textContent = String(year);
+                        closePanel();
+                        keepFlatpickrOpen(fp);
+                    });
+                    optionsDiv.appendChild(opt);
+                })(y);
+            }
+        };
+        refresh();
+
+        selectedDiv.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (wrap.classList.contains('is-open')) closePanel();
+            else openPanel();
+            keepFlatpickrOpen(fp);
+        });
+        selectedDiv.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (wrap.classList.contains('is-open')) closePanel();
+                else openPanel();
+            }
+        });
+
+        document.addEventListener('click', function(e) {
+            if (wrap.contains(e.target) || optionsDiv.contains(e.target)) return;
+            closePanel();
+        });
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closePanel();
+        });
+        window.addEventListener('resize', function() {
+            if (wrap.classList.contains('is-open')) positionOptions();
+        });
+        window.addEventListener('scroll', function() {
+            if (wrap.classList.contains('is-open')) positionOptions();
+        }, true);
+
+        // 挂到 current-month（与月份同级），避免塞进窄的 numInputWrapper 导致年份溢出
+        var monthHost = fp.calendarContainer && fp.calendarContainer.querySelector('.flatpickr-current-month');
+        if (monthHost) {
+            monthHost.appendChild(wrap);
+        } else if (numWrap && numWrap.parentNode) {
+            numWrap.parentNode.insertBefore(wrap, numWrap.nextSibling);
+        }
+        fp._bookingYearSelect = selectedDiv;
+        fp._bookingYearPanel = optionsDiv;
+        fp._refreshBookingYearSelect = refresh;
+        fp._closeBookingYearSelect = closePanel;
+    }
+
+    function attachBookingMonthDropdown(fp) {
+        var monthSelect = fp.calendarContainer && fp.calendarContainer.querySelector('select.flatpickr-monthDropdown-months');
+        if (!monthSelect || monthSelect.dataset.monthSelectAttached === '1') return;
+        monthSelect.dataset.monthSelectAttached = '1';
+        monthSelect.style.display = 'none';
+
+        var monthNames = (fp.l10n && fp.l10n.months && fp.l10n.months.longhand) || [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+        ];
+
+        var arrowSvg = '<svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 512 512" class="arrow" aria-hidden="true"><path d="M233.4 406.6c12.5 12.5 32.8 12.5 45.3 0l192-192c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L256 338.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l192 192z"></path></svg>';
+        var wrap = document.createElement('div');
+        wrap.className = 'booking-select-uiverse flatpickr-month-uiverse booking-select-has-value';
+        wrap.innerHTML = '<div class="selected" tabindex="0" role="combobox" aria-expanded="false" aria-haspopup="listbox" aria-label="Month"><span class="selected-value"></span>' + arrowSvg + '</div>';
+
+        var selectedDiv = wrap.querySelector('.selected');
+        var selectedVal = wrap.querySelector('.selected-value');
+        selectedDiv.style.setProperty('background-color', 'rgba(0, 102, 255, 0.1)', 'important');
+
+        var optionsDiv = document.createElement('div');
+        optionsDiv.className = 'flatpickr-month-uiverse-options';
+        optionsDiv.setAttribute('role', 'listbox');
+        document.body.appendChild(optionsDiv);
+        bindKeepFlatpickrOpen(fp, wrap);
+        bindKeepFlatpickrOpen(fp, optionsDiv);
+
+        function positionOptions() {
+            var rect = selectedDiv.getBoundingClientRect();
+            var width = Math.max(120, rect.width);
+            var left = rect.left;
+            var top = rect.bottom + 2;
+            var maxH = 240;
+            if (top + Math.min(maxH, 200) > window.innerHeight - 8) {
+                top = Math.max(8, rect.top - maxH - 2);
+            }
+            if (left + width > window.innerWidth - 8) {
+                left = Math.max(8, window.innerWidth - width - 8);
+            }
+            optionsDiv.style.left = left + 'px';
+            optionsDiv.style.top = top + 'px';
+            optionsDiv.style.width = width + 'px';
+        }
+
+        function closePanel() {
+            wrap.classList.remove('is-open');
+            optionsDiv.classList.remove('is-open');
+            selectedDiv.setAttribute('aria-expanded', 'false');
+        }
+
+        function openPanel() {
+            if (typeof fp._closeBookingYearSelect === 'function') fp._closeBookingYearSelect();
+            refresh();
+            positionOptions();
+            wrap.classList.add('is-open');
+            optionsDiv.classList.add('is-open');
+            selectedDiv.setAttribute('aria-expanded', 'true');
+            var active = optionsDiv.querySelector('.option.is-active');
+            if (active && typeof active.scrollIntoView === 'function') {
+                active.scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        var refresh = function() {
+            var cur = fp.currentMonth;
+            selectedVal.textContent = monthNames[cur] || String(cur + 1);
+            optionsDiv.innerHTML = '';
+            for (var m = 0; m < 12; m++) {
+                (function(monthIdx) {
+                    var opt = document.createElement('div');
+                    opt.className = 'option' + (monthIdx === cur ? ' is-active' : '');
+                    opt.setAttribute('data-value', String(monthIdx));
+                    opt.setAttribute('role', 'option');
+                    opt.textContent = monthNames[monthIdx];
+                    opt.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        fp.changeMonth(monthIdx, false);
+                        selectedVal.textContent = monthNames[monthIdx];
+                        closePanel();
+                        keepFlatpickrOpen(fp);
+                    });
+                    optionsDiv.appendChild(opt);
+                })(m);
+            }
+        };
+        refresh();
+
+        selectedDiv.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (wrap.classList.contains('is-open')) closePanel();
+            else openPanel();
+            keepFlatpickrOpen(fp);
+        });
+        selectedDiv.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (wrap.classList.contains('is-open')) closePanel();
+                else openPanel();
+            }
+        });
+
+        document.addEventListener('click', function(e) {
+            if (wrap.contains(e.target) || optionsDiv.contains(e.target)) return;
+            closePanel();
+        });
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closePanel();
+        });
+        window.addEventListener('resize', function() {
+            if (wrap.classList.contains('is-open')) positionOptions();
+        });
+        window.addEventListener('scroll', function() {
+            if (wrap.classList.contains('is-open')) positionOptions();
+        }, true);
+
+        monthSelect.parentNode.insertBefore(wrap, monthSelect);
+        fp._bookingMonthSelect = selectedDiv;
+        fp._bookingMonthPanel = optionsDiv;
+        fp._refreshBookingMonthSelect = refresh;
+        fp._closeBookingMonthSelect = closePanel;
+    }
+
     function initFlatpickrOnDates() {
         if (typeof flatpickr === 'undefined') return;
+        var bounds = bookingYearBounds();
+        var minDate = new Date(bounds.minY, 0, 1);
+        var maxDate = new Date(); // 不能选未来生日
+
         document.querySelectorAll('.fp-date:not([data-fp-init])').forEach(function(el) {
             el.dataset.fpInit = '1';
             function updateFpDateFilled() {
@@ -865,8 +1361,50 @@
                 allowInput: true,
                 static: false,
                 disableMobile: true,
+                monthSelectorType: 'dropdown',
+                closeOnSelect: true,
+                minDate: minDate,
+                maxDate: maxDate,
                 parseDate: parseTypedDate,
-                onClose: function() {
+                onReady: function(selectedDates, dateStr, instance) {
+                    attachBookingMonthDropdown(instance);
+                    attachBookingYearDropdown(instance);
+                },
+                onOpen: function(selectedDates, dateStr, instance) {
+                    if (typeof instance._refreshBookingMonthSelect === 'function') {
+                        instance._refreshBookingMonthSelect();
+                    }
+                    if (typeof instance._refreshBookingYearSelect === 'function') {
+                        instance._refreshBookingYearSelect();
+                    }
+                },
+                onMonthChange: function(selectedDates, dateStr, instance) {
+                    if (typeof instance._refreshBookingMonthSelect === 'function') {
+                        instance._refreshBookingMonthSelect();
+                    }
+                },
+                onYearChange: function(selectedDates, dateStr, instance) {
+                    if (typeof instance._refreshBookingYearSelect === 'function') {
+                        instance._refreshBookingYearSelect();
+                    }
+                    if (typeof instance._refreshBookingMonthSelect === 'function') {
+                        instance._refreshBookingMonthSelect();
+                    }
+                },
+                onClose: function(selectedDates, dateStr, instance) {
+                    // 选月/年时若被误关，立刻重新打开
+                    if (instance._bookingKeepOpen) {
+                        setTimeout(function() {
+                            if (!instance.isOpen) instance.open();
+                        }, 0);
+                        return;
+                    }
+                    if (typeof instance._closeBookingMonthSelect === 'function') {
+                        instance._closeBookingMonthSelect();
+                    }
+                    if (typeof instance._closeBookingYearSelect === 'function') {
+                        instance._closeBookingYearSelect();
+                    }
                     syncInputToPicker(el, fp);
                     setTimeout(updateFpDateFilled, 0);
                 },

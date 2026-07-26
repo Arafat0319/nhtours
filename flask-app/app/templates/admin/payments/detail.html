@@ -72,12 +72,13 @@
                 <div class="space-y-4">
                     {% if payment.booking %}
                     <div>
-                        <label class="block text-sm font-medium text-gray-500 mb-1">Booking ID</label>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Order number</label>
                         <p class="text-sm text-gray-900">
                             <a href="{{ url_for('admin.manage_trip', id=payment.booking.trip_id) if payment.booking.trip_id else '#' }}" 
                                class="text-wetravel-cyan hover:underline">
-                                #{{ payment.booking_id }}
+                                {{ payment.booking.order_number or ('#' ~ payment.booking_id) }}
                             </a>
+                            <span class="text-xs text-gray-400 ml-1">id: {{ payment.booking_id }}</span>
                         </p>
                     </div>
                     <div>

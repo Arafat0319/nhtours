@@ -57,23 +57,27 @@ def build_booking_receipt_pdf(booking, trip, expected_amount, participants_info=
     order_date = booking.created_at.strftime("%B %d, %Y") if booking.created_at else ""
     pdf.set_xy(pdf.w - pdf.r_margin - 70, pdf.get_y() - 7)
     pdf.set_font("Helvetica", size=10)
-    pdf.multi_cell(70, 5, f"Order number: {booking.id}\n{order_date}", align="R")
+    pdf.multi_cell(70, 5, f"Order number: {getattr(booking, 'order_number', None) or booking.id}\n{order_date}", align="R")
     pdf.ln(4)
     pdf.set_draw_color(229, 231, 235)
     pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
     pdf.ln(8)
 
-    # Trip
+    # Trip（multi_cell 结束后 X 停在右侧，必须先回到左边距再画下一行）
     pdf.set_font("Helvetica", "B", 14)
     pdf.set_text_color(17, 24, 39)
     pdf.multi_cell(0, 7, _safe(trip.title if trip else "Trip"))
+    pdf.set_x(pdf.l_margin)
     pdf.set_font("Helvetica", size=10)
     pdf.set_text_color(75, 85, 99)
     if trip and trip.start_date:
         end = trip.end_date.strftime("%B %d, %Y") if trip.end_date else "TBD"
-        pdf.cell(0, 6, f"Dates: {trip.start_date.strftime('%B %d, %Y')} - {end}", new_x="LMARGIN", new_y="NEXT")
+        # 用 multi_cell，避免长日期在 cell(0) 下被裁切
+        pdf.multi_cell(0, 6, f"Dates: {trip.start_date.strftime('%B %d, %Y')} - {end}")
+        pdf.set_x(pdf.l_margin)
     if trip and getattr(trip, "destination_text", None):
-        pdf.cell(0, 6, f"Destination: {_safe(trip.destination_text)}", new_x="LMARGIN", new_y="NEXT")
+        pdf.multi_cell(0, 6, f"Destination: {_safe(trip.destination_text)}")
+        pdf.set_x(pdf.l_margin)
     pdf.ln(4)
 
     # Client
@@ -168,6 +172,16 @@ def build_booking_receipt_pdf(booking, trip, expected_amount, participants_info=
     if addons_total > 0:
         pdf.cell(130, 6, "Add-ons:")
         pdf.cell(0, 6, _money(addons_total), align="R", new_x="LMARGIN", new_y="NEXT")
+
+    discount = float(getattr(booking, "discount_amount", 0) or 0)
+    if discount > 0:
+        pdf.set_text_color(16, 185, 129)
+        code = ""
+        if getattr(booking, "discount_code", None) and getattr(booking.discount_code, "code", None):
+            code = f" ({booking.discount_code.code})"
+        pdf.cell(130, 6, _safe(f"Discount{code}:"))
+        pdf.cell(0, 6, f"-{_money(discount)}", align="R", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(55, 65, 81)
 
     paid = float(booking.amount_paid or 0)
     pending = float(expected_amount or 0) - paid

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Receipt - Booking #{{ booking.id }}</title>
+    <title>Receipt - {{ booking.order_number or ('#' ~ booking.id) }}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @media print {
@@ -27,7 +27,7 @@
                     <p class="text-gray-600 mt-1">Booking Receipt</p>
                 </div>
                 <div class="text-right">
-                    <p class="text-sm text-gray-500">Order number: {{ booking.id }}</p>
+                    <p class="text-sm text-gray-500">Order number: {{ booking.order_number or booking.id }}</p>
                     <p class="text-sm text-gray-500">{{ booking.created_at.strftime('%B %d, %Y') }}</p>
                 </div>
             </div>

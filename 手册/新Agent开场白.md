@@ -21,6 +21,7 @@
 |------|------|
 | UI | 读 context/05_UI设计系统.md |
 | 支付/报名 | 读 context/03_功能模块/报名付款系统.md、04_API参考.md |
+| 订单号 / Order number | 读 context/AI_快速参考.md「业务单号」+ context/02；逻辑在 app/order_numbers.py |
 | 数据库 | 对照 context/02_数据库设计.md + migrations |
 | 部署 | 读 context/06 或 .agent/workflows/；等我确认再 push |
 | 只改本地 | 不要 commit/push |

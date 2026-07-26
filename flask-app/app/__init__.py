@@ -128,7 +128,11 @@ def create_app(config_name=None):
     if config_name != 'testing':
         try:
             from apscheduler.schedulers.background import BackgroundScheduler
-            from app.tasks import send_installment_reminders, cleanup_expired_pending_bookings
+            from app.tasks import (
+                send_installment_reminders,
+                cleanup_expired_pending_bookings,
+                send_scheduled_messages,
+            )
 
             scheduler = BackgroundScheduler()
 
@@ -139,6 +143,10 @@ def create_app(config_name=None):
             def _run_pending_booking_cleanup():
                 with app.app_context():
                     cleanup_expired_pending_bookings()
+
+            def _run_scheduled_messages():
+                with app.app_context():
+                    send_scheduled_messages()
 
             # 每天上午 9 点：分期提醒
             scheduler.add_job(
@@ -158,6 +166,14 @@ def create_app(config_name=None):
                 id='cleanup_expired_pending_bookings',
                 replace_existing=True,
             )
+            # 每分钟：到期 Trip Message 群发
+            scheduler.add_job(
+                _run_scheduled_messages,
+                'interval',
+                minutes=1,
+                id='send_scheduled_messages',
+                replace_existing=True,
+            )
 
             try:
                 scheduler.start()
@@ -169,7 +185,7 @@ def create_app(config_name=None):
             app.scheduler = scheduler
         except ImportError:
             app.logger.warning("APScheduler not installed. Install it with: pip install APScheduler")
-            app.logger.warning("Installment reminder / PendingBooking cleanup will not be available.")
+            app.logger.warning("Installment reminder / PendingBooking cleanup / scheduled messages will not be available.")
         except Exception as e:
             app.logger.error(f"Error initializing scheduler: {str(e)}")
 

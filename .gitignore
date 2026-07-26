@@ -75,3 +75,6 @@ nexus_horizons.db
 
 # 其他不需要的文件
 clone_report.json
+
+# local prod sync artifacts
+flask-app/_prod_sync/

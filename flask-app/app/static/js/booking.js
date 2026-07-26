@@ -562,7 +562,7 @@
         var resultTryAgainBtn = document.getElementById('booking-result-try-again-btn');
         if (resultCloseBtn) {
             resultCloseBtn.addEventListener('click', function() {
-                showBookingModalResult(null);
+                prepareNewBooking({ keepFormData: false });
                 var m = document.getElementById('booking-modal');
                 if (m) {
                     m.classList.add('hidden');
@@ -573,7 +573,8 @@
         }
         if (resultTryAgainBtn) {
             resultTryAgainBtn.addEventListener('click', function() {
-                showBookingModalResult(null);
+                // 失败重试：保留已填表单，只清支付会话并回到付款步
+                prepareNewBooking({ keepFormData: true, goToPayment: true });
             });
         }
 
@@ -1445,17 +1446,47 @@
                     `;
                 } else if (question.type === 'file') {
                     const acceptAttr = 'image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf';
+                    const fileInputId = `participant-file-${question.id}-${participantIndex}`;
                     fieldsHtml += `
                         <div class="mt-4 participant-file-field" data-question-id="${question.id}">
-                            <label class="text-sm font-medium mb-1">${question.label}${requiredMark}</label>
-                            <input type="file" class="participant-file-input w-full min-w-0 text-sm"
-                                accept="${acceptAttr}"
-                                data-question-id="${question.id}">
+                            <label class="text-sm font-medium mb-1 block" for="${fileInputId}">${question.label}${requiredMark}</label>
+                            <div class="participant-file-dropzone">
+                                <input type="file" id="${fileInputId}" class="participant-file-input"
+                                    accept="${acceptAttr}"
+                                    data-question-id="${question.id}">
+                                <div class="participant-file-idle">
+                                    <div class="participant-file-idle-icon" aria-hidden="true">
+                                        <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                                        </svg>
+                                    </div>
+                                    <p class="participant-file-idle-title">Upload a file</p>
+                                    <p class="participant-file-idle-hint">JPG, PNG, WEBP or PDF · max 10MB</p>
+                                    <button type="button" class="participant-file-browse-btn">Choose file</button>
+                                </div>
+                                <div class="participant-file-selected hidden">
+                                    <div class="participant-file-selected-main">
+                                        <span class="participant-file-selected-icon" aria-hidden="true">
+                                            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                            </svg>
+                                        </span>
+                                        <div class="participant-file-selected-text">
+                                            <a class="participant-file-name" href="#" target="_blank" rel="noopener"></a>
+                                            <p class="participant-file-selected-meta">Ready to submit</p>
+                                        </div>
+                                    </div>
+                                    <div class="participant-file-selected-actions">
+                                        <button type="button" class="participant-file-change-btn">Change</button>
+                                        <button type="button" class="participant-file-clear-btn">Remove</button>
+                                    </div>
+                                </div>
+                            </div>
                             <input type="hidden" name="${fieldName}" value=""
                                 class="participant-file-path"
                                 data-original-filename=""
                                 ${requiredAttr}>
-                            <p class="participant-file-status text-xs text-gray-500 mt-1">JPG, PNG, WEBP or PDF · max 10MB</p>
+                            <p class="participant-file-status text-xs text-gray-500 mt-2">No file selected yet.</p>
                         </div>
                     `;
                 } else if (question.type === 'yesno_text') {
@@ -1518,8 +1549,8 @@
         // 报名文件上传（护照等）
         const formEl = participantsContainer.querySelector(`.participant-form[data-index="${participantIndex}"]`);
         if (formEl) {
-            formEl.querySelectorAll('.participant-file-input').forEach(function(fileInput) {
-                fileInput.addEventListener('change', handleParticipantFileUpload);
+            formEl.querySelectorAll('.participant-file-field').forEach(function(wrap) {
+                bindParticipantFileField(wrap);
             });
         }
         
@@ -1538,6 +1569,122 @@
     }
 
     /**
+     * 绑定护照等文件上传控件（自定义按钮，隐藏原生 file input）
+     */
+    function bindParticipantFileField(wrap) {
+        if (!wrap || wrap.getAttribute('data-file-bound') === '1') return;
+        wrap.setAttribute('data-file-bound', '1');
+        const fileInput = wrap.querySelector('.participant-file-input');
+        const browseBtn = wrap.querySelector('.participant-file-browse-btn');
+        const changeBtn = wrap.querySelector('.participant-file-change-btn');
+        const clearBtn = wrap.querySelector('.participant-file-clear-btn');
+        const dropzone = wrap.querySelector('.participant-file-dropzone');
+
+        function openPicker(e) {
+            if (e) e.preventDefault();
+            if (fileInput && !fileInput.disabled) fileInput.click();
+        }
+        if (browseBtn) browseBtn.addEventListener('click', openPicker);
+        if (changeBtn) changeBtn.addEventListener('click', openPicker);
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                if (fileInput) fileInput.value = '';
+                const pathInput = wrap.querySelector('.participant-file-path');
+                if (pathInput) {
+                    pathInput.value = '';
+                    pathInput.dataset.originalFilename = '';
+                }
+                syncParticipantFileUi(wrap, { status: 'No file selected yet.' });
+            });
+        }
+        if (fileInput) fileInput.addEventListener('change', handleParticipantFileUpload);
+
+        if (dropzone) {
+            ['dragenter', 'dragover'].forEach(function(ev) {
+                dropzone.addEventListener(ev, function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropzone.classList.add('is-dragover');
+                });
+            });
+            ['dragleave', 'drop'].forEach(function(ev) {
+                dropzone.addEventListener(ev, function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropzone.classList.remove('is-dragover');
+                });
+            });
+            dropzone.addEventListener('drop', function(e) {
+                const files = e.dataTransfer && e.dataTransfer.files;
+                if (!files || !files.length || !fileInput || fileInput.disabled) return;
+                try {
+                    var dt = new DataTransfer();
+                    dt.items.add(files[0]);
+                    fileInput.files = dt.files;
+                    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                } catch (err) {
+                    // 无法程序化赋值时，提示用户点 Choose file
+                    syncParticipantFileUi(wrap, { error: 'Please use Choose file to select your document.' });
+                }
+            });
+        }
+        syncParticipantFileUi(wrap);
+    }
+
+    function syncParticipantFileUi(wrap, opts) {
+        if (!wrap) return;
+        opts = opts || {};
+        const idle = wrap.querySelector('.participant-file-idle');
+        const selected = wrap.querySelector('.participant-file-selected');
+        const nameEl = wrap.querySelector('.participant-file-name');
+        const metaEl = wrap.querySelector('.participant-file-selected-meta');
+        const statusEl = wrap.querySelector('.participant-file-status');
+        const dropzone = wrap.querySelector('.participant-file-dropzone');
+        const pathInput = wrap.querySelector('.participant-file-path');
+        const path = (pathInput && pathInput.value) || '';
+        const fname = (pathInput && pathInput.dataset.originalFilename) || (path ? path.split('/').pop() : '');
+
+        if (dropzone) dropzone.classList.toggle('has-file', !!path);
+
+        if (path) {
+            if (idle) idle.classList.add('hidden');
+            if (selected) selected.classList.remove('hidden');
+            if (nameEl) {
+                nameEl.textContent = fname || 'Uploaded file';
+                nameEl.href = path.indexOf('http') === 0 ? path : ('/static/' + path);
+            }
+            if (metaEl) metaEl.textContent = opts.meta || 'Uploaded';
+            if (statusEl && opts.status != null) {
+                statusEl.textContent = opts.status;
+            } else if (statusEl && !opts.keepStatus) {
+                statusEl.textContent = 'File uploaded successfully.';
+            }
+            if (statusEl && !opts.error) {
+                statusEl.classList.remove('text-red-600', 'text-gray-500', 'text-gray-600', 'is-error');
+                statusEl.classList.add('is-success');
+            }
+        } else {
+            if (idle) idle.classList.remove('hidden');
+            if (selected) selected.classList.add('hidden');
+            if (statusEl && opts.status != null) {
+                statusEl.textContent = opts.status;
+            } else if (statusEl && !opts.keepStatus) {
+                statusEl.textContent = 'No file selected yet.';
+            }
+            if (statusEl && !opts.error) {
+                statusEl.classList.remove('text-red-600', 'text-gray-600', 'is-success', 'is-error');
+                statusEl.classList.add('text-gray-500');
+            }
+        }
+        if (opts.error && statusEl) {
+            statusEl.textContent = opts.error;
+            statusEl.classList.add('text-red-600', 'is-error');
+            statusEl.classList.remove('text-gray-500', 'text-gray-600', 'is-success');
+        }
+    }
+
+    /**
      * 参与者自定义问题：上传文件到 /api/booking/upload，路径写入 hidden
      */
     async function handleParticipantFileUpload(event) {
@@ -1546,6 +1693,8 @@
         if (!wrap) return;
         const pathInput = wrap.querySelector('.participant-file-path');
         const statusEl = wrap.querySelector('.participant-file-status');
+        const browseBtn = wrap.querySelector('.participant-file-browse-btn');
+        const changeBtn = wrap.querySelector('.participant-file-change-btn');
         const file = fileInput.files && fileInput.files[0];
 
         if (!file) {
@@ -1553,11 +1702,7 @@
                 pathInput.value = '';
                 pathInput.dataset.originalFilename = '';
             }
-            if (statusEl) {
-                statusEl.textContent = 'JPG, PNG, WEBP or PDF · max 10MB';
-                statusEl.classList.remove('text-red-600');
-                statusEl.classList.add('text-gray-500');
-            }
+            syncParticipantFileUi(wrap, { status: 'No file selected yet.' });
             return;
         }
 
@@ -1568,11 +1713,7 @@
                 pathInput.dataset.originalFilename = '';
             }
             fileInput.value = '';
-            if (statusEl) {
-                statusEl.textContent = 'File too large (max 10MB).';
-                statusEl.classList.add('text-red-600');
-                statusEl.classList.remove('text-gray-500', 'text-gray-600');
-            }
+            syncParticipantFileUi(wrap, { error: 'File too large (max 10MB).' });
             return;
         }
 
@@ -1582,6 +1723,8 @@
             statusEl.classList.add('text-gray-500');
         }
         fileInput.disabled = true;
+        if (browseBtn) browseBtn.disabled = true;
+        if (changeBtn) changeBtn.disabled = true;
 
         const formData = new FormData();
         formData.append('file', file);
@@ -1602,26 +1745,23 @@
                 pathInput.style.borderColor = '';
                 pathInput.style.borderWidth = '';
             }
-            if (statusEl) {
-                const name = data.original_filename || file.name;
-                const href = data.url || (data.path ? '/static/' + data.path : '#');
-                statusEl.innerHTML = 'Uploaded: <a href="' + href + '" target="_blank" rel="noopener" class="text-wetravel-cyan underline">' + name + '</a>';
-                statusEl.classList.remove('text-red-600', 'text-gray-500');
-                statusEl.classList.add('text-gray-600');
-            }
+            syncParticipantFileUi(wrap, {
+                status: 'File uploaded successfully.',
+                meta: 'Uploaded'
+            });
         } catch (err) {
             if (pathInput) {
                 pathInput.value = '';
                 pathInput.dataset.originalFilename = '';
             }
             fileInput.value = '';
-            if (statusEl) {
-                statusEl.textContent = (err && err.message) ? err.message : 'Upload failed. Please try again.';
-                statusEl.classList.add('text-red-600');
-                statusEl.classList.remove('text-gray-500', 'text-gray-600');
-            }
+            syncParticipantFileUi(wrap, {
+                error: (err && err.message) ? err.message : 'Upload failed. Please try again.'
+            });
         } finally {
             fileInput.disabled = false;
+            if (browseBtn) browseBtn.disabled = false;
+            if (changeBtn) changeBtn.disabled = false;
         }
     }
 
@@ -1713,16 +1853,14 @@
                                 if (detailsInput) detailsInput.value = answer.details || '';
                                 if (detailsDiv) detailsDiv.classList.toggle('hidden', (answer.value || 'no') !== 'yes');
                             } else if (question.type === 'file') {
+                                const wrap = form.querySelector(`.participant-file-field[data-question-id="${question.id}"]`);
                                 const pathInput = form.querySelector(`[name="participant_question_${question.id}_${dataIndex}"]`);
-                                const statusEl = form.querySelector(`.participant-file-field[data-question-id="${question.id}"] .participant-file-status`);
                                 if (pathInput && answer.value) {
                                     pathInput.value = answer.value;
                                     pathInput.dataset.originalFilename = answer.original_filename || '';
-                                    if (statusEl) {
-                                        const name = answer.original_filename || answer.value.split('/').pop();
-                                        statusEl.innerHTML = `Uploaded: <a href="/static/${answer.value}" target="_blank" class="text-wetravel-cyan underline">${name}</a>`;
-                                        statusEl.classList.remove('text-red-600');
-                                        statusEl.classList.add('text-gray-600');
+                                    if (wrap) {
+                                        bindParticipantFileField(wrap);
+                                        syncParticipantFileUi(wrap, { status: 'File uploaded successfully.', meta: 'Uploaded' });
                                     }
                                 }
                             } else {
@@ -2199,13 +2337,24 @@
     function showFreePaymentUI() {
         const paymentContainer = document.getElementById('payment-element');
         if (paymentContainer) {
+            paymentContainer.classList.add('is-free-checkout');
             paymentContainer.innerHTML = `
-                <div class="py-6 px-4 text-center rounded-lg border border-gray-200 bg-gray-50">
-                    <p class="text-gray-900 text-sm font-medium mb-1">No payment due right now</p>
-                    <p class="text-gray-600 text-sm">Your discount covers the amount due at booking. Click <strong>Confirm Booking</strong> to reserve your spot. Any remaining balance will be collected later as scheduled.</p>
+                <div class="free-checkout-card" role="status">
+                    <div class="free-checkout-icon" aria-hidden="true">
+                        <svg width="28" height="28" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <div class="free-checkout-body">
+                        <p class="free-checkout-title">No payment due right now</p>
+                        <p class="free-checkout-text">Your discount covers the amount due at booking. Click <strong>Confirm Booking</strong> to reserve your spot.</p>
+                        <p class="free-checkout-note">Any remaining balance will be collected later as scheduled.</p>
+                    </div>
                 </div>
             `;
         }
+        var feeHint = document.querySelector('.payment-card-fee-hint');
+        if (feeHint) feeHint.classList.add('is-free-hidden');
         setPaymentElementLoading(false);
         clearPaymentMessage();
         lastQuote = { base_amount: 0, fee: 0, tax_amount: 0, final_amount: 0 };
@@ -2567,7 +2716,11 @@
         const paymentContainer = document.getElementById('payment-element');
         if (paymentContainer) {
             paymentContainer.innerHTML = '';
+            paymentContainer.classList.remove('is-free-checkout');
         }
+        document.querySelectorAll('.payment-card-fee-hint.is-free-hidden').forEach(function(el) {
+            el.classList.remove('is-free-hidden');
+        });
         embeddedPaymentSession = null;
         embeddedPaymentSignature = null;
         stripeInstance = null;
@@ -2576,6 +2729,47 @@
         lastPaymentMethodId = null;
         lastQuote = null;
         setPaymentElementLoading(false);
+    }
+
+    /**
+     * 关闭成功页 / 再开 Book Now 时调用：退出结果态并清掉已完成的支付会话，
+     * 避免再次打开仍停在「Booking Confirmed」或复用已完成的 free_/pi_。
+     * @param {{ keepFormData?: boolean, goToPayment?: boolean }} opts
+     */
+    function prepareNewBooking(opts) {
+        opts = opts || {};
+        var keepFormData = !!opts.keepFormData;
+        var goToPayment = !!opts.goToPayment;
+
+        showBookingModalResult(null);
+        resetEmbeddedPaymentSession();
+
+        if (!keepFormData) {
+            bookingData.discount_code = null;
+            bookingData.discount_code_id = null;
+            bookingData.discount_amount = 0;
+            var codeInput = document.getElementById('discount-code-input');
+            if (codeInput) codeInput.value = '';
+            var discountInputSection = document.getElementById('discount-input-section');
+            var discountApplied = document.getElementById('discount-applied');
+            var discountMessage = document.getElementById('discount-message');
+            if (discountInputSection) discountInputSection.classList.remove('hidden');
+            if (discountApplied) discountApplied.classList.add('hidden');
+            if (discountMessage) discountMessage.classList.add('hidden');
+        }
+
+        if (goToPayment && stepContainers && stepContainers.length) {
+            showStep(stepContainers.length);
+        } else {
+            showStep(1);
+        }
+
+        if (typeof updateOrderSummary === 'function') {
+            try { updateOrderSummary(); } catch (e) {}
+        }
+        requestAnimationFrame(function() {
+            syncBookingModalBodyMinHeight();
+        });
     }
 
     /**
@@ -2629,6 +2823,17 @@
             if (failureEl) failureEl.classList.add('hidden');
             var amountPaidRow = document.getElementById('amount-paid-row');
             if (amountPaidRow) amountPaidRow.classList.add('hidden');
+            // 恢复折扣码输入（已应用则继续隐藏输入框，仅显示已应用行）
+            var discountInputSection = document.getElementById('discount-input-section');
+            var removeDiscountBtn = document.getElementById('remove-discount-btn');
+            if (discountInputSection) {
+                if (bookingData && bookingData.discount_code) {
+                    discountInputSection.classList.add('hidden');
+                } else {
+                    discountInputSection.classList.remove('hidden');
+                }
+            }
+            if (removeDiscountBtn) removeDiscountBtn.classList.remove('hidden');
             requestAnimationFrame(function() { syncBookingModalBodyMinHeight(); });
             return;
         }
@@ -2640,6 +2845,14 @@
         if (loadingEl) loadingEl.classList.add('hidden');
         if (successEl) successEl.classList.add('hidden');
         if (failureEl) failureEl.classList.add('hidden');
+
+        // 付款结果页不显示折扣码输入 / Remove
+        var discountInputSection = document.getElementById('discount-input-section');
+        var discountMessage = document.getElementById('discount-message');
+        var removeDiscountBtn = document.getElementById('remove-discount-btn');
+        if (discountInputSection) discountInputSection.classList.add('hidden');
+        if (discountMessage) discountMessage.classList.add('hidden');
+        if (removeDiscountBtn) removeDiscountBtn.classList.add('hidden');
 
         if (state === 'loading') {
             if (loadingEl) loadingEl.classList.remove('hidden');
@@ -2687,9 +2900,14 @@
                         if (totalAmountEl) totalAmountEl.textContent = '$' + formatCurrency(summary.due_at_booking);
                         var amountPaidEl = document.getElementById('amount-paid');
                         var amountPaidRow = document.getElementById('amount-paid-row');
-                        if (amountPaidEl) amountPaidEl.textContent = '$' + formatCurrency(summary.due_at_booking);
+                        var paidDisplay = (summary.amount_paid != null) ? summary.amount_paid : summary.due_at_booking;
+                        if (amountPaidEl) amountPaidEl.textContent = '$' + formatCurrency(paidDisplay);
                         if (amountPaidRow) amountPaidRow.classList.remove('hidden');
-                    })
+                        if (receiptLink && bid) {
+                            var onum = summary.order_number || bid;
+                            receiptLink.href = '/booking/' + bid + '/receipt';
+                            receiptLink.setAttribute('download', 'NHTours-Order-' + onum + '.pdf');
+                        }                    })
                     .catch(function() { if (typeof updateOrderSummary === 'function') updateOrderSummary(); });
             } else {
                 if (typeof updateOrderSummary === 'function') updateOrderSummary();
@@ -2815,7 +3033,10 @@
         getBookingData: () => bookingData,
         goToStep: (step) => showStep(step),
         getCurrentStep: () => currentStep,
-        syncModalBodyMinHeight: syncBookingModalBodyMinHeight
+        syncModalBodyMinHeight: syncBookingModalBodyMinHeight,
+        prepareNewBooking: prepareNewBooking,
+        resetEmbeddedPaymentSession: resetEmbeddedPaymentSession,
+        showBookingModalResult: showBookingModalResult
     };
 
 })();

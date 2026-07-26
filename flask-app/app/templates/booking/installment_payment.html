@@ -56,7 +56,7 @@
                 
                 {# 预订信息 #}
                 <div class="space-y-2 pb-4 border-b border-zinc-200">
-                    <div class="text-base text-zinc-600">Booking #{{ booking.id }}</div>
+                    <div class="text-base text-zinc-600">Order {{ booking.order_number or ('#' ~ booking.id) }}</div>
                     {% if booking.trip %}
                     <div class="text-base text-zinc-600">{{ booking.trip.title }}</div>
                     {% endif %}

@@ -74,7 +74,7 @@
                 <div class="text-sm text-zinc-600">Status: <span class="font-medium">{{ installment.status|capitalize }}</span></div>
             </div>
             {% else %}
-            <div class="text-sm text-zinc-600 pb-4 border-b border-zinc-200">Booking #{{ booking.id }}</div>
+            <div class="text-sm text-zinc-600 pb-4 border-b border-zinc-200">Order {{ booking.order_number or ('#' ~ booking.id) }}</div>
             {% endif %}
 
             <div class="space-y-2">

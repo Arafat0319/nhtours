@@ -15,11 +15,46 @@
         -moz-appearance: textfield;
     }
     /* Flatpickr: 与 trip basics 一致的日历样式 */
-    .flatpickr-calendar { font-size: 16px !important; }
+    .flatpickr-calendar { font-size: 16px !important; z-index: 100000 !important; }
     .flatpickr-day { min-width: 38px; height: 38px; line-height: 38px; font-size: 14px; }
     .flatpickr-month { height: 40px; }
     .flatpickr-current-month { font-size: 115%; }
     .flatpickr-weekdays { font-size: 13px; }
+    /* Schedule year dropdown inside flatpickr */
+    .flatpickr-year-select {
+        border: 0;
+        background: transparent;
+        font-weight: 600;
+        font-size: inherit;
+        color: inherit;
+        cursor: pointer;
+        padding: 0 0.25rem;
+        margin-left: 0.25rem;
+        outline: none;
+        appearance: auto;
+        -webkit-appearance: menulist;
+    }
+    .flatpickr-year-select:focus {
+        outline: 1px solid #00D1C1;
+        border-radius: 2px;
+    }
+    /* Schedule picker: match admin inputs */
+    .fp-datetime-alt {
+        display: block;
+        width: 100%;
+        border-radius: 0.375rem;
+        border: 0;
+        height: 2.25rem;
+        padding: 0 0.75rem;
+        color: #111827;
+        box-shadow: inset 0 0 0 1px #d1d5db;
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+    }
+    .fp-datetime-alt:focus {
+        outline: none;
+        box-shadow: inset 0 0 0 2px #00D1C1;
+    }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 {% endblock %}
@@ -100,7 +135,7 @@
                     <span id="financialPaid" class="font-medium text-gray-700 font-mono">${{ (total_paid)|format_price }}</span>
                 </div>
                 <div class="flex justify-between w-64">
-                    <span class="text-gray-500">Amount pending</span>
+                    <span class="text-gray-500">Balance due</span>
                     <span id="financialPending" class="font-medium {% if total_pending > 0 %}text-amber-600{% else %}text-green-600{% endif %} font-mono">${{ (total_pending)|format_price }}</span>
                 </div>
             </div>
@@ -140,10 +175,6 @@
                                 d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
                         </svg>
                     </a>
-                    <button type="button" id="dataSourceUrlBtn" title="在浏览器中打开数据源链接，验证后台是否返回最新 Participants 数据"
-                        class="text-gray-500 border border-gray-300 px-3 py-2 rounded text-xs hover:bg-gray-50 flex items-center">
-                        验证数据源
-                    </button>
                 </div>
             </div>
         </div>
@@ -161,7 +192,7 @@
             <div class="flex justify-between items-center mb-6">
                 <div class="relative flex space-x-4">
                     <div class="relative">
-                        <input type="text" id="searchInput" placeholder="Search by name or email"
+                        <input type="text" id="searchInput" placeholder="Search by name, email, or order number"
                             class="pl-8 pr-4 py-2 border border-gray-300 rounded text-sm w-64 focus:outline-none focus:border-wetravel-cyan text-gray-700 placeholder-gray-400">
                         <svg class="w-4 h-4 text-gray-400 absolute left-2.5 top-3" fill="none" stroke="currentColor"
                             viewBox="0 0 24 24">
@@ -196,13 +227,15 @@
                     <thead>
                         <tr
                             class="border-b border-gray-100 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">
-                            <th class="px-6 py-3 whitespace-nowrap">Booking ID</th>
+                            <th class="px-6 py-3 whitespace-nowrap">Order number</th>
                             <th class="px-6 py-3 whitespace-nowrap">Buyer</th>
                             <th class="px-6 py-3 whitespace-nowrap">Phone</th>
                             <th class="px-6 py-3 whitespace-nowrap">Participants</th>
                             <th class="px-6 py-3 whitespace-nowrap">Add-ons</th>
                             <th class="px-6 py-3 whitespace-nowrap">Payment Type</th>
                             <th class="px-6 py-3 whitespace-nowrap">Payment Status</th>
+                            <th class="px-6 py-3 whitespace-nowrap">Amount paid</th>
+                            <th class="px-6 py-3 whitespace-nowrap">Balance due</th>
                             <th class="px-6 py-3 whitespace-nowrap">Booking Date</th>
                             <th class="px-6 py-3"></th>
                         </tr>
@@ -211,9 +244,11 @@
                         {% if bookings %}
                         {% for booking in bookings %}
                         <tr class="booking-row" data-name="{{ booking.client.name|lower }}"
-                            data-email="{{ booking.client.email|lower }}" data-status="{{ booking.status }}" data-booking-id="{{ booking.id }}">
+                            data-email="{{ booking.client.email|lower }}" data-status="{{ booking.status }}" data-booking-id="{{ booking.id }}"
+                            data-order-number="{{ (booking.order_number or '')|lower }}">
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                #{{ booking.id }}
+                                <div class="font-medium">{{ booking.order_number or ('#' ~ booking.id) }}</div>
+                                <div class="text-xs text-gray-400">id: {{ booking.id }}</div>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <div class="text-sm font-medium text-gray-900">{{ booking.client.name }}</div>
@@ -249,13 +284,30 @@
                                 {% endif %}
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                <span id="status-badge-{{ booking.id }}" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
                                     {% if booking.status == 'fully_paid' %}bg-green-100 text-green-800
                                     {% elif booking.status == 'deposit_paid' %}bg-blue-100 text-blue-800
                                     {% elif booking.status == 'cancelled' %}bg-red-100 text-red-800
                                     {% else %}bg-yellow-100 text-yellow-800{% endif %}">
                                     {{ booking.status|replace('_', ' ')|title }}
                                 </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-mono" id="paid-cell-{{ booking.id }}">
+                                {% if booking.status == 'cancelled' %}
+                                <span class="text-gray-400">-</span>
+                                {% else %}
+                                <span class="text-gray-900">${{ (booking.amount_paid or 0)|format_price }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-mono" id="balance-cell-{{ booking.id }}">
+                                {% set balance = booking_balances.get(booking.id) %}
+                                {% if booking.status == 'cancelled' or balance is none %}
+                                <span class="text-gray-400">-</span>
+                                {% elif balance > 0 %}
+                                <span class="text-amber-600 font-medium">${{ balance|format_price }}</span>
+                                {% else %}
+                                <span class="text-green-600">$0</span>
+                                {% endif %}
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                 {{ booking.created_at.strftime('%Y-%m-%d') }}
@@ -267,7 +319,7 @@
                         {% endfor %}
                         {% else %}
                         <tr>
-                            <td colspan="9" class="px-6 py-10 text-center text-sm text-wetravel-cyan font-light">
+                            <td colspan="11" class="px-6 py-10 text-center text-sm text-wetravel-cyan font-light">
                                 No bookings yet
                             </td>
                         </tr>
@@ -327,7 +379,6 @@
                             <th class="px-6 py-3 whitespace-nowrap">Add-Ons</th>
                             <th class="px-6 py-3 whitespace-nowrap">Payment Status</th>
                             <th class="px-6 py-3 whitespace-nowrap">Booking Date</th>
-                            <th class="px-6 py-3"></th>
                         </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-100" id="participantsTableBody">
@@ -403,9 +454,6 @@
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                 {{ participant.booking_date.strftime('%Y-%m-%d') }}
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                <button type="button" onclick="openManageBookingModal({{ participant.booking_id }})" class="text-wetravel-cyan hover:text-cyan-900">View Booking</button>
-                            </td>
                         </tr>
                         {% endfor %}
                         {% else %}
@@ -428,15 +476,15 @@
                 <nav class="-mb-px flex space-x-8">
                     <button onclick="switchMessageTab('sent')" id="msg-tab-sent"
                         class="msg-subtab border-wetravel-cyan text-wetravel-cyan whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
-                        Sent
+                        Sent ({{ sent_messages|length }})
                     </button>
                     <button onclick="switchMessageTab('scheduled')" id="msg-tab-scheduled"
                         class="msg-subtab border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
-                        Scheduled
+                        Scheduled ({{ scheduled_messages|length }})
                     </button>
                     <button onclick="switchMessageTab('drafts')" id="msg-tab-drafts"
                         class="msg-subtab border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
-                        Drafts
+                        Drafts ({{ draft_messages|length }})
                     </button>
                 </nav>
             </div>
@@ -448,38 +496,39 @@
                         <thead class="bg-gray-50">
                             <tr>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Recipients</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Sent</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Status</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Subject</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Created by</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Date Sent</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
                             {% if sent_messages %}
                             {% for message in sent_messages %}
-                            <tr class="hover:bg-gray-50">
+                            <tr class="hover:bg-gray-50 cursor-pointer" onclick="viewMessage({{ message.id }})">
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                     {{ message.total_recipients }} recipient{{ 's' if message.total_recipients != 1 else '' }}
+                                    {% if message.sent_count or message.failed_count %}
+                                    <span class="text-xs text-gray-500 block">{{ message.sent_count or 0 }} ok{% if message.failed_count %}, {{ message.failed_count }} failed{% endif %}</span>
+                                    {% endif %}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                                        Sent
-                                    </span>
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Sent</span>
                                 </td>
-                                <td class="px-6 py-4 text-sm text-gray-900">
-                                    {{ message.subject }}
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {{ message.sender_name }}
-                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-900">{{ message.subject }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ message.sender_name }}</td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                     {{ message.sent_at.strftime('%Y-%m-%d %H:%M') if message.sent_at else '-' }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm" onclick="event.stopPropagation()">
+                                    <button type="button" onclick="viewMessage({{ message.id }})" class="text-wetravel-cyan hover:underline">View details</button>
                                 </td>
                             </tr>
                             {% endfor %}
                             {% else %}
                             <tr>
-                                <td colspan="5" class="px-6 py-10 text-center text-sm text-wetravel-cyan font-light">
+                                <td colspan="6" class="px-6 py-10 text-center text-sm text-wetravel-cyan font-light">
                                     You currently do not have any sent messages.
                                 </td>
                             </tr>
@@ -500,6 +549,7 @@
                                 <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Subject</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Created by</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Scheduled For</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
@@ -510,24 +560,23 @@
                                     {{ message.total_recipients }} recipient{{ 's' if message.total_recipients != 1 else '' }}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                                        Scheduled
-                                    </span>
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Scheduled</span>
                                 </td>
-                                <td class="px-6 py-4 text-sm text-gray-900">
-                                    {{ message.subject }}
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {{ message.sender_name }}
-                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-900">{{ message.subject }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ message.sender_name }}</td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                     {{ message.scheduled_at.strftime('%Y-%m-%d %H:%M') if message.scheduled_at else '-' }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm space-x-3">
+                                    <button type="button" onclick="editDraftMessage({{ message.id }})" class="text-wetravel-cyan hover:underline">Edit</button>
+                                    <button type="button" onclick="cancelScheduledMessage({{ message.id }})" class="text-amber-600 hover:underline">Cancel</button>
+                                    <button type="button" onclick="deleteMessage({{ message.id }})" class="text-red-600 hover:underline">Delete</button>
                                 </td>
                             </tr>
                             {% endfor %}
                             {% else %}
                             <tr>
-                                <td colspan="5" class="px-6 py-10 text-center text-sm text-wetravel-cyan font-light">
+                                <td colspan="6" class="px-6 py-10 text-center text-sm text-wetravel-cyan font-light">
                                     You currently do not have any scheduled messages.
                                 </td>
                             </tr>
@@ -548,34 +597,33 @@
                                 <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Subject</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Created by</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Last Updated</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-wetravel-cyan uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
                             {% if draft_messages %}
                             {% for message in draft_messages %}
-                            <tr class="hover:bg-gray-50 cursor-pointer" onclick="editDraftMessage({{ message.id }})">
+                            <tr class="hover:bg-gray-50">
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                     {{ message.total_recipients }} recipient{{ 's' if message.total_recipients != 1 else '' }}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
-                                        Draft
-                                    </span>
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">Draft</span>
                                 </td>
-                                <td class="px-6 py-4 text-sm text-gray-900">
-                                    {{ message.subject or '(No subject)' }}
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {{ message.sender_name }}
-                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-900">{{ message.subject or '(No subject)' }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ message.sender_name }}</td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                     {{ message.updated_at.strftime('%Y-%m-%d %H:%M') if message.updated_at else message.created_at.strftime('%Y-%m-%d %H:%M') }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm space-x-3">
+                                    <button type="button" onclick="editDraftMessage({{ message.id }})" class="text-wetravel-cyan hover:underline">Edit</button>
+                                    <button type="button" onclick="deleteMessage({{ message.id }})" class="text-red-600 hover:underline">Delete</button>
                                 </td>
                             </tr>
                             {% endfor %}
                             {% else %}
                             <tr>
-                                <td colspan="5" class="px-6 py-10 text-center text-sm text-wetravel-cyan font-light">
+                                <td colspan="6" class="px-6 py-10 text-center text-sm text-wetravel-cyan font-light">
                                     You currently do not have any draft messages.
                                 </td>
                             </tr>
@@ -758,7 +806,7 @@
         <div class="p-5 border-b flex justify-between items-center bg-gray-50 rounded-t-md">
             <div>
                 <h3 class="text-lg font-medium text-gray-900">Manage Booking</h3>
-                <p class="text-sm text-gray-500" id="bookingIdDisplay">Booking #<span id="bookingId"></span></p>
+                <p class="text-sm text-gray-500" id="bookingIdDisplay"><span id="bookingOrderNumber"></span> <span class="text-xs text-gray-400">id: <span id="bookingId"></span></span></p>
             </div>
             <button type="button" id="closeManageBookingModalBtn" class="text-gray-400 hover:text-gray-500 focus:outline-none">
                 <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -855,7 +903,7 @@
 
 <!-- Refund Modal -->
 <div id="refundModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
-    <div class="relative top-20 mx-auto w-full max-w-md shadow-lg rounded-md bg-white">
+    <div class="relative top-10 mx-auto w-full max-w-lg shadow-lg rounded-md bg-white mb-10">
         <div class="p-6">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-medium text-gray-900">Process Refund</h3>
@@ -868,36 +916,65 @@
             
             <div class="space-y-4">
                 <div>
-                    <p class="text-sm text-gray-600 mb-2">Booking #<span id="refundBookingId"></span></p>
-                    <p class="text-sm text-gray-600">Amount Paid: <span class="font-semibold" id="refundAmountPaid">$0.00</span></p>
+                    <p class="text-sm text-gray-600 mb-1">Booking <span class="font-medium" id="refundBookingLabel"></span></p>
+                    <p class="text-sm text-gray-600">Amount paid (net): <span class="font-semibold" id="refundAmountPaid">$0.00</span></p>
+                    <p id="refundFeeNote" class="mt-2 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded px-2 py-1.5">
+                        Card processing fees are never refunded. Refund amounts use the net (base) amount only.
+                    </p>
+                    <p id="refundDepositHint" class="hidden mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5"></p>
+                </div>
+
+                <div class="border-t pt-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Payment to refund <span class="text-red-500">*</span></label>
+                    <select id="refundPaymentSelect" class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm">
+                    </select>
+                    <p id="refundPaymentMeta" class="mt-1 text-xs text-gray-500"></p>
+                </div>
+
+                <div>
+                    <label class="flex items-start gap-2 cursor-pointer">
+                        <input type="checkbox" id="refundIncludeDeposit" class="mt-1 text-wetravel-cyan focus:ring-wetravel-cyan">
+                        <span class="text-sm text-gray-700">Also refund deposit <span class="text-gray-500 font-normal">(unchecked by default — deposit is withheld)</span></span>
+                    </label>
                 </div>
                 
-                <div class="border-t pt-4">
+                <div>
                     <label class="block text-sm font-medium text-gray-700 mb-3">Refund Type</label>
                     <div class="space-y-2">
                         <label class="flex items-center">
                             <input type="radio" name="refundType" value="full" checked class="text-wetravel-cyan focus:ring-wetravel-cyan">
-                            <span class="ml-2 text-sm text-gray-700">Full Refund (<span id="refundFullAmount">$0.00</span>)</span>
+                            <span class="ml-2 text-sm text-gray-700">Full remaining (<span id="refundFullAmount">$0.00</span>)</span>
                         </label>
                         <label class="flex items-center">
                             <input type="radio" name="refundType" value="partial" class="text-wetravel-cyan focus:ring-wetravel-cyan">
-                            <span class="ml-2 text-sm text-gray-700">Partial Refund (Custom Amount)</span>
+                            <span class="ml-2 text-sm text-gray-700">Partial (custom amount)</span>
                         </label>
                     </div>
                 </div>
                 
                 <div id="partialRefundInput" class="hidden">
                     <label class="block text-sm font-medium text-gray-700 mb-2">Refund Amount ($)</label>
-                    <input type="text" id="refundAmount" inputmode="numeric" pattern="[0-9]*\.?[0-9]*" 
+                    <input type="text" id="refundAmount" inputmode="decimal" pattern="[0-9]*\.?[0-9]*" 
                         class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm"
                         placeholder="0.00">
                 </div>
                 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Reason (Optional)</label>
-                    <textarea id="refundReason" rows="3" 
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Reason <span class="text-red-500">*</span></label>
+                    <textarea id="refundReason" rows="3" required
                         class="block w-full rounded-md border-0 px-3 py-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm"
-                        placeholder="Enter refund reason..."></textarea>
+                        placeholder="Required — why is this refund being issued?"></textarea>
+                </div>
+
+                <div class="space-y-2 border-t pt-4">
+                    <label class="flex items-start gap-2 cursor-pointer">
+                        <input type="checkbox" id="refundCancelBooking" class="mt-1 text-wetravel-cyan focus:ring-wetravel-cyan">
+                        <span class="text-sm text-gray-700">Cancel booking after refund <span class="text-gray-500 font-normal">(also works for $0 orders with no refund)</span></span>
+                    </label>
+                    <label class="flex items-start gap-2 cursor-pointer">
+                        <input type="checkbox" id="refundManualOnly" class="mt-1 text-wetravel-cyan focus:ring-wetravel-cyan">
+                        <span class="text-sm text-gray-700">Manual only (record locally, do not call Stripe)</span>
+                    </label>
                 </div>
             </div>
             
@@ -1112,6 +1189,41 @@
         }
     };
 
+    /** 当前主 Tab / Messages 子 Tab → URL hash，刷新后仍停留原处 */
+    window.getManagePageHash = function() {
+        for (const id of ['bookings', 'participants', 'messages']) {
+            const el = document.getElementById('tab-content-' + id);
+            if (!el || el.classList.contains('hidden')) continue;
+            if (id !== 'messages') return id;
+            for (const sub of ['sent', 'scheduled', 'drafts']) {
+                const c = document.getElementById('msg-content-' + sub);
+                if (c && !c.classList.contains('hidden')) return 'messages/' + sub;
+            }
+            return 'messages';
+        }
+        return 'bookings';
+    };
+
+    window.reloadManagePage = function(preferredHash) {
+        const hash = (preferredHash || window.getManagePageHash() || 'bookings').replace(/^#/, '');
+        if (location.hash.replace(/^#/, '') !== hash) {
+            location.hash = hash;
+        }
+        location.reload();
+    };
+
+    window.restoreManageTabFromHash = function() {
+        const raw = (location.hash || '').replace(/^#/, '').trim();
+        if (!raw) return;
+        const parts = raw.split('/');
+        const main = parts[0];
+        if (!['bookings', 'participants', 'messages'].includes(main)) return;
+        if (typeof window.switchTab === 'function') window.switchTab(main, true);
+        if (main === 'messages' && parts[1] && ['sent', 'scheduled', 'drafts'].includes(parts[1])) {
+            if (typeof window.switchMessageTab === 'function') window.switchMessageTab(parts[1], true);
+        }
+    };
+
     document.addEventListener('DOMContentLoaded', function () {
         console.log('DOMContentLoaded: Initializing tab switching...');
         
@@ -1132,28 +1244,6 @@
         });
         
         console.log('Tab switching initialized successfully');
-        
-        // --- 验证数据源：在浏览器中打开可验证后台是否返回最新数据 ---
-        const dataSourceUrlBtn = document.getElementById('dataSourceUrlBtn');
-        if (dataSourceUrlBtn) {
-            dataSourceUrlBtn.addEventListener('click', async function() {
-                try {
-                    const res = await fetch("{{ url_for('admin.get_export_data_source_url', id=trip.id) }}");
-                    const data = await res.json();
-                    if (data.success && data.url) {
-                        window.open(data.url, '_blank');
-                        try {
-                            await navigator.clipboard.writeText(data.url);
-                            if (typeof showToast === 'function') showToast('已复制到剪贴板并打开', 'success');
-                        } catch (e) {
-                            if (typeof showToast === 'function') showToast('已在新窗口打开', 'success');
-                        }
-                    }
-                } catch (e) {
-                    if (typeof showToast === 'function') showToast('获取失败', 'error');
-                }
-            });
-        }
         
         // --- Participants Search and Filter Logic ---
         const participantSearchInput = document.getElementById('participantSearchInput');
@@ -1211,9 +1301,12 @@
             rows.forEach(row => {
                 const name = (row.getAttribute('data-name') || '').toLowerCase();
                 const email = (row.getAttribute('data-email') || '').toLowerCase();
+                const orderNumber = (row.getAttribute('data-order-number') || '').toLowerCase();
                 const status = row.getAttribute('data-status') || '';
+                const bookingId = (row.getAttribute('data-booking-id') || '').toLowerCase();
                 
-                const matchesSearch = !searchTerm || name.includes(searchTerm) || email.includes(searchTerm);
+                const matchesSearch = !searchTerm || name.includes(searchTerm) || email.includes(searchTerm)
+                    || orderNumber.includes(searchTerm) || bookingId.includes(searchTerm);
                 const matchesStatus = statusFilterValue === 'all' || status === statusFilterValue;
                 
                 if (matchesSearch && matchesStatus) {
@@ -2014,7 +2107,7 @@
                 const data = await res.json();
                 if (data.success) {
                     showToast('Booking Added!', 'success');
-                    location.reload();
+                    reloadManagePage('bookings');
                 } else {
                     showToast('Error: ' + data.message, 'error');
                     if (actionBtn) {
@@ -2609,6 +2702,8 @@
             // Update booking ID display
             const bookingIdEl = document.getElementById('bookingId');
             if (bookingIdEl) bookingIdEl.textContent = booking.id;
+            const orderNumEl = document.getElementById('bookingOrderNumber');
+            if (orderNumEl) orderNumEl.textContent = booking.order_number || ('#' + booking.id);
             
             // Attach event listener to Amount Paid input for real-time update
             // Use setTimeout to ensure DOM is updated after innerHTML
@@ -2784,15 +2879,41 @@
                     if (!row) return;
                     
                     // Update status badge
-                    const statusCell = row.querySelector('td:nth-child(4)');
-                    if (statusCell) {
+                    const statusBadge = document.getElementById(`status-badge-${bookingId}`);
+                    if (statusBadge) {
                         const statusText = booking.status.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
                         let statusClass = 'bg-yellow-100 text-yellow-800';
                         if (booking.status === 'fully_paid') statusClass = 'bg-green-100 text-green-800';
                         else if (booking.status === 'deposit_paid') statusClass = 'bg-blue-100 text-blue-800';
                         else if (booking.status === 'cancelled') statusClass = 'bg-red-100 text-red-800';
-                        
-                        statusCell.innerHTML = `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass}">${statusText}</span>`;
+                        statusBadge.className = `px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass}`;
+                        statusBadge.textContent = statusText;
+                    }
+
+                    // Update amount paid + balance due cells
+                    const paidCell = document.getElementById(`paid-cell-${bookingId}`);
+                    const paidVal = Number(booking.amount_paid_display != null ? booking.amount_paid_display : booking.amount_paid) || 0;
+                    if (paidCell) {
+                        if (booking.status === 'cancelled') {
+                            paidCell.innerHTML = '<span class="text-gray-400">-</span>';
+                        } else {
+                            paidCell.innerHTML = `<span class="text-gray-900">$${paidVal.toFixed(2)}</span>`;
+                        }
+                    }
+                    const balanceCell = document.getElementById(`balance-cell-${bookingId}`);
+                    if (balanceCell) {
+                        if (booking.status === 'cancelled') {
+                            balanceCell.innerHTML = '<span class="text-gray-400">-</span>';
+                        } else {
+                            const pending = booking.pending_amount != null
+                                ? Number(booking.pending_amount)
+                                : Math.max(0, (Number(booking.expected_amount) || 0) - paidVal);
+                            if (pending > 0) {
+                                balanceCell.innerHTML = `<span class="text-amber-600 font-medium">$${pending.toFixed(2)}</span>`;
+                            } else {
+                                balanceCell.innerHTML = '<span class="text-green-600">$0</span>';
+                            }
+                        }
                     }
                     
                     // Update add-ons cell
@@ -2895,7 +3016,7 @@
             } catch (err) {
                 console.error('Error updating financials:', err);
                 // Fallback to page reload if AJAX fails
-                location.reload();
+                reloadManagePage('bookings');
             }
         }
 
@@ -2967,6 +3088,91 @@
         const refundTypeRadios = document.querySelectorAll('input[name="refundType"]');
         const partialRefundInput = document.getElementById('partialRefundInput');
         const refundAmountInput = document.getElementById('refundAmount');
+        const refundPaymentSelect = document.getElementById('refundPaymentSelect');
+
+        function getRefundablePayments() {
+            const list = (currentBookingData && currentBookingData.payments) || [];
+            return list.filter(function(p) {
+                return p.can_refund || (['succeeded', 'partially_refunded'].indexOf(p.status) >= 0 && Number(p.refundable_remaining || 0) > 0.001);
+            });
+        }
+
+        function getSelectedRefundPayment() {
+            if (!refundPaymentSelect) return null;
+            const id = parseInt(refundPaymentSelect.value, 10);
+            return getRefundablePayments().find(function(p) { return p.id === id; }) || null;
+        }
+
+        function isIncludeDepositChecked() {
+            const el = document.getElementById('refundIncludeDeposit');
+            return !!(el && el.checked);
+        }
+
+        function getMaxRefundForPayment(p) {
+            if (!p) return 0;
+            if (isIncludeDepositChecked()) {
+                return Number(p.refundable_remaining || 0);
+            }
+            if (p.max_refund_without_deposit != null) {
+                return Number(p.max_refund_without_deposit || 0);
+            }
+            return Number(p.refundable_remaining || 0);
+        }
+
+        function updateRefundPaymentUI() {
+            const p = getSelectedRefundPayment();
+            const remainingBase = p ? Number(p.refundable_remaining || 0) : 0;
+            const maxRefund = getMaxRefundForPayment(p);
+            document.getElementById('refundFullAmount').textContent = '$' + maxRefund.toFixed(2);
+            const meta = document.getElementById('refundPaymentMeta');
+            if (meta) {
+                if (!p) {
+                    const paid = Number((currentBookingData && (currentBookingData.amount_paid_display != null ? currentBookingData.amount_paid_display : currentBookingData.amount_paid)) || 0);
+                    if (paid <= 0.001) {
+                        meta.textContent = 'No payments to refund. You can cancel this $0 booking with “Cancel booking” + reason.';
+                    } else {
+                        meta.textContent = 'No refundable payments on this booking.';
+                    }
+                } else {
+                    const refunded = Number(p.refunded_amount || 0).toFixed(2);
+                    const charged = Number(p.amount || 0).toFixed(2);
+                    const base = Number(p.base_amount != null ? p.base_amount : (p.amount - (p.fee_amount || 0))).toFixed(2);
+                    const fee = Number(p.fee_amount || 0).toFixed(2);
+                    meta.textContent = 'Charged $' + charged + ' (base $' + base + ' + fee $' + fee + ', fee not refundable) · Already refunded $' + refunded
+                        + ' · Cap now $' + maxRefund.toFixed(2)
+                        + (isIncludeDepositChecked() ? '' : ' (deposit withheld)')
+                        + (p.stripe_payment_intent_id ? ' · ' + p.stripe_payment_intent_id : ' · (no Stripe PI)');
+                }
+            }
+            if (confirmRefundBtn) {
+                const cancelOnly = !p && !!(document.getElementById('refundCancelBooking') || {}).checked;
+                confirmRefundBtn.disabled = !(p && maxRefund > 0) && !cancelOnly;
+            }
+        }
+
+        function populateRefundPaymentSelect() {
+            if (!refundPaymentSelect) return;
+            const payments = getRefundablePayments();
+            refundPaymentSelect.innerHTML = '';
+            if (!payments.length) {
+                const opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = 'No refundable payments';
+                refundPaymentSelect.appendChild(opt);
+            } else {
+                payments.forEach(function(p, idx) {
+                    const opt = document.createElement('option');
+                    opt.value = String(p.id);
+                    const when = p.paid_at || p.created_at || '';
+                    const rem = Number(p.refundable_remaining || 0).toFixed(2);
+                    const base = Number(p.base_amount != null ? p.base_amount : p.amount || 0).toFixed(2);
+                    opt.textContent = '#' + p.id + ' · base $' + base + ' · $' + rem + ' left' + (when ? ' · ' + when : '');
+                    if (idx === 0) opt.selected = true;
+                    refundPaymentSelect.appendChild(opt);
+                });
+            }
+            updateRefundPaymentUI();
+        }
         
         // Attach event listeners to refundAmountInput if it exists
         if (refundAmountInput) {
@@ -2995,6 +3201,18 @@
             });
         }
 
+        if (refundPaymentSelect) {
+            refundPaymentSelect.addEventListener('change', updateRefundPaymentUI);
+        }
+        const refundIncludeDepositEl = document.getElementById('refundIncludeDeposit');
+        if (refundIncludeDepositEl) {
+            refundIncludeDepositEl.addEventListener('change', updateRefundPaymentUI);
+        }
+        const refundCancelBookingEl = document.getElementById('refundCancelBooking');
+        if (refundCancelBookingEl) {
+            refundCancelBookingEl.addEventListener('change', updateRefundPaymentUI);
+        }
+
         // Toggle partial refund input
         refundTypeRadios.forEach(radio => {
             radio.addEventListener('change', function() {
@@ -3014,9 +3232,27 @@
                 if (!currentBookingId || !currentBookingData) return;
                 
                 const paidForRefund = (currentBookingData.amount_paid_display != null ? currentBookingData.amount_paid_display : currentBookingData.amount_paid) || 0;
-                document.getElementById('refundBookingId').textContent = currentBookingId;
-                document.getElementById('refundAmountPaid').textContent = '$' + parseFloat(currentBookingData.expected_amount || 0).toFixed(2);
-                document.getElementById('refundFullAmount').textContent = '$' + parseFloat(paidForRefund).toFixed(2);
+                const label = currentBookingData.order_number
+                    ? (currentBookingData.order_number + ' (id ' + currentBookingId + ')')
+                    : ('#' + currentBookingId);
+                document.getElementById('refundBookingLabel').textContent = label;
+                document.getElementById('refundAmountPaid').textContent = '$' + parseFloat(paidForRefund).toFixed(2);
+
+                const hintEl = document.getElementById('refundDepositHint');
+                if (hintEl) {
+                    const dep = currentBookingData.deposit_hint != null
+                        ? currentBookingData.deposit_hint
+                        : currentBookingData.deposit_reserved;
+                    if (dep != null && Number(dep) > 0) {
+                        hintEl.textContent = 'Deposit about $' + Number(dep).toFixed(2) + ' is withheld by default. Check “Also refund deposit” only if you intend to return it.';
+                        hintEl.classList.remove('hidden');
+                    } else {
+                        hintEl.textContent = 'No package deposit configured. Card fees are still never refunded.';
+                        hintEl.classList.remove('hidden');
+                    }
+                }
+
+                populateRefundPaymentSelect();
                 
                 // Reset form
                 document.querySelector('input[name="refundType"][value="full"]').checked = true;
@@ -3024,6 +3260,13 @@
                 refundAmountInput.value = '';
                 refundAmountInput.required = false;
                 document.getElementById('refundReason').value = '';
+                const cancelCb = document.getElementById('refundCancelBooking');
+                const manualCb = document.getElementById('refundManualOnly');
+                const depositCb = document.getElementById('refundIncludeDeposit');
+                if (cancelCb) cancelCb.checked = false;
+                if (manualCb) manualCb.checked = false;
+                if (depositCb) depositCb.checked = false;
+                updateRefundPaymentUI();
                 
                 refundModal.classList.remove('hidden');
             });
@@ -3045,26 +3288,83 @@
         if (confirmRefundBtn) {
             confirmRefundBtn.addEventListener('click', async function() {
                 if (!currentBookingId) return;
+
+                const payment = getSelectedRefundPayment();
+                const cancelBooking = !!(document.getElementById('refundCancelBooking') || {}).checked;
+                const manualOnly = !!(document.getElementById('refundManualOnly') || {}).checked;
+                const includeDeposit = isIncludeDepositChecked();
+                const reason = (document.getElementById('refundReason').value || '').trim();
+                if (!reason) {
+                    showToast('Refund reason is required', 'warning');
+                    return;
+                }
+
+                // $0 / no payment: cancel-only path
+                if (!payment) {
+                    if (!cancelBooking) {
+                        showToast('Select a payment to refund, or check Cancel booking for $0 orders', 'warning');
+                        return;
+                    }
+                    confirmRefundBtn.disabled = true;
+                    confirmRefundBtn.innerText = 'Processing...';
+                    try {
+                        const response = await fetch(`/admin/trips/{{ trip.id }}/bookings/${currentBookingId}/refund`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                amount: 0,
+                                reason: reason,
+                                cancel_booking: true,
+                                manual_only: true,
+                                include_deposit: false
+                            })
+                        });
+                        const data = await response.json();
+                        if (data.success) {
+                            showToast(data.message || 'Booking cancelled', 'success');
+                            closeRefundModal();
+                            closeManageBookingModal();
+                            reloadManagePage('bookings');
+                        } else {
+                            showToast('Error: ' + (data.message || 'Failed'), 'error');
+                            confirmRefundBtn.disabled = false;
+                            confirmRefundBtn.innerText = 'Process Refund';
+                            updateRefundPaymentUI();
+                        }
+                    } catch (err) {
+                        showToast('Error: ' + err.message, 'error');
+                        confirmRefundBtn.disabled = false;
+                        confirmRefundBtn.innerText = 'Process Refund';
+                        updateRefundPaymentUI();
+                    }
+                    return;
+                }
                 
                 const refundType = document.querySelector('input[name="refundType"]:checked').value;
                 let refundAmount = 0;
+                const maxRefund = getMaxRefundForPayment(payment);
                 
-                const maxRefund = (currentBookingData.amount_paid_display != null ? currentBookingData.amount_paid_display : currentBookingData.amount_paid) || 0;
                 if (refundType === 'full') {
-                    refundAmount = parseFloat(maxRefund);
+                    refundAmount = maxRefund;
                 } else {
                     refundAmount = parseFloat(refundAmountInput.value);
                     if (!refundAmount || refundAmount <= 0) {
                         showToast('Please enter a valid refund amount', 'warning');
                         return;
                     }
-                    if (refundAmount > parseFloat(maxRefund)) {
-                        showToast('Refund amount cannot exceed amount paid', 'error');
+                    if (refundAmount > maxRefund + 0.001) {
+                        showToast('Refund amount cannot exceed remaining $' + maxRefund.toFixed(2), 'error');
                         return;
                     }
                 }
-                
-                const reason = document.getElementById('refundReason').value;
+
+                if (refundAmount <= 0.001) {
+                    if (!cancelBooking) {
+                        showToast('Nothing to refund under current deposit settings. Check “Also refund deposit” or Cancel booking.', 'warning');
+                        return;
+                    }
+                    // cancel with 0 amount
+                }
                 
                 confirmRefundBtn.disabled = true;
                 confirmRefundBtn.innerText = 'Processing...';
@@ -3076,28 +3376,34 @@
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify({
+                            payment_id: payment.id,
                             amount: refundAmount,
                             reason: reason,
-                            type: refundType
+                            type: refundType,
+                            cancel_booking: cancelBooking,
+                            manual_only: manualOnly,
+                            include_deposit: includeDeposit
                         })
                     });
                     
                     const data = await response.json();
                     if (data.success) {
-                        showToast('Refund processed successfully!', 'success');
+                        showToast(data.message || 'Refund processed successfully!', 'success');
                         closeRefundModal();
                         closeManageBookingModal();
-                        location.reload(); // Reload to update financials
+                        reloadManagePage('bookings'); // Reload to update financials
                     } else {
                         showToast('Error: ' + (data.message || 'Failed to process refund'), 'error');
                         confirmRefundBtn.disabled = false;
                         confirmRefundBtn.innerText = 'Process Refund';
+                        updateRefundPaymentUI();
                     }
                 } catch (err) {
                     console.error('Error processing refund:', err);
                     showToast('Error processing refund: ' + err.message, 'error');
                     confirmRefundBtn.disabled = false;
                     confirmRefundBtn.innerText = 'Process Refund';
+                    updateRefundPaymentUI();
                 }
             });
         }
@@ -3147,7 +3453,7 @@
                         showToast('Booking deleted successfully!', 'success');
                         closeDeleteModal();
                         closeManageBookingModal();
-                        location.reload(); // Reload to update list
+                        reloadManagePage('bookings'); // Reload to update list
                     } else {
                         showToast('Error: ' + (data.message || 'Failed to delete booking'), 'error');
                         confirmDeleteBtn.disabled = false;
@@ -3164,7 +3470,7 @@
     });
 
     // Messages Tab Functions
-    window.switchMessageTab = function(tab) {
+    window.switchMessageTab = function(tab, skipHash) {
         // Hide all message content
         document.querySelectorAll('.msg-content').forEach(el => el.classList.add('hidden'));
         // Remove active class from all subtabs
@@ -3178,43 +3484,29 @@
         const activeTab = document.getElementById('msg-tab-' + tab);
         activeTab.classList.remove('border-transparent', 'text-gray-500');
         activeTab.classList.add('border-wetravel-cyan', 'text-wetravel-cyan');
+        if (!skipHash) {
+            const next = 'messages/' + tab;
+            if (location.hash.replace(/^#/, '') !== next) location.hash = next;
+        }
     };
 
     window.openNewMessageModal = function() {
+        resetMessageForm();
         document.getElementById('newMessageModal').classList.remove('hidden');
-        // Initialize Quill editor if not already initialized
-        if (!window.messageQuill) {
-            window.messageQuill = new Quill('#messageEditor', {
-                theme: 'snow',
-                modules: {
-                    toolbar: [
-                        [{ 'header': [1, 2, 3, false] }],
-                        ['bold', 'italic', 'underline', 'strike'],
-                        [{ 'color': [] }, { 'background': [] }],
-                        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                        [{ 'align': [] }],
-                        ['link'],
-                        ['clean']
-                    ]
-                }
-            });
-        }
+        ensureMessageQuill();
+        updateRecipientPreview();
+        updateMessageSendButton();
     };
 
     window.closeNewMessageModal = function() {
         document.getElementById('newMessageModal').classList.add('hidden');
-        // Reset form
-        document.getElementById('newMessageForm').reset();
-        if (window.messageQuill) {
-            window.messageQuill.setContents([]);
-        }
+        resetMessageForm();
     };
 
-    // Update switchTab to show/hide action buttons
+    // Update switchTab to show/hide action buttons + persist hash
     const originalSwitchTab = window.switchTab;
-    window.switchTab = function(targetTab) {
+    window.switchTab = function(targetTab, skipHash) {
         originalSwitchTab(targetTab);
-        // Show/hide action buttons based on tab
         if (targetTab === 'messages') {
             document.getElementById('messagesActions').style.display = 'flex';
             document.getElementById('bookingsActions').style.display = 'none';
@@ -3222,20 +3514,39 @@
             document.getElementById('messagesActions').style.display = 'none';
             document.getElementById('bookingsActions').style.display = 'flex';
         }
+        if (!skipHash) {
+            let next = targetTab;
+            if (targetTab === 'messages') {
+                for (const sub of ['sent', 'scheduled', 'drafts']) {
+                    const c = document.getElementById('msg-content-' + sub);
+                    if (c && !c.classList.contains('hidden')) {
+                        next = 'messages/' + sub;
+                        break;
+                    }
+                }
+                if (next === 'messages') next = 'messages/sent';
+            }
+            if (location.hash.replace(/^#/, '') !== next) location.hash = next;
+        }
     };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        if (typeof window.restoreManageTabFromHash === 'function') {
+            window.restoreManageTabFromHash();
+        }
+    });
 </script>
 
 <!-- New Message Modal -->
 <div id="newMessageModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
-    <div class="relative top-10 mx-auto w-full max-w-4xl shadow-lg rounded-lg bg-white">
-        <!-- Modal Header -->
-        <div class="p-6 border-b">
+    <div class="relative top-6 mx-auto mb-10 w-full max-w-4xl shadow-lg rounded-lg bg-white flex flex-col" style="max-height: calc(100vh - 3rem);">
+        <div class="p-6 border-b flex-shrink-0">
             <div class="flex justify-between items-start">
                 <div>
-                    <h3 class="text-lg font-medium text-gray-900">New Message</h3>
+                    <h3 id="newMessageModalTitle" class="text-lg font-medium text-gray-900">New Message</h3>
                     <p class="text-sm text-gray-500 mt-1">Send emails with critical reminders and trip updates.</p>
                 </div>
-                <button onclick="closeNewMessageModal()" class="text-gray-400 hover:text-gray-500">
+                <button type="button" onclick="closeNewMessageModal()" class="text-gray-400 hover:text-gray-500">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                     </svg>
@@ -3243,235 +3554,393 @@
             </div>
         </div>
 
-        <!-- Modal Body -->
-        <form id="newMessageForm" onsubmit="handleMessageSubmit(event)">
-            <div class="p-6 space-y-6">
-                <!-- Sender Name -->
+        <form id="newMessageForm" onsubmit="handleMessageSubmit(event)" class="flex flex-col flex-1 min-h-0">
+            <input type="hidden" name="message_id" id="messageIdInput" value="">
+            <div class="p-6 space-y-5 overflow-y-auto flex-1">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Sender name</label>
-                    <input type="text" name="sender_name" value="{{ sender_name }}" 
+                    <input type="text" name="sender_name" id="messageSenderName" value="{{ sender_name }}"
+                        placeholder="Nexus Horizons Tours"
                         class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6" required>
+                    <p class="mt-1 text-xs text-gray-500">Shown as the From name. Mail is sent from <span class="font-mono">{{ sender_email }}</span> (e.g. <span class="font-mono">{{ sender_name }} &lt;{{ sender_email }}&gt;</span>).</p>
                 </div>
 
-                <!-- Send To -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Send to</label>
-                    <select name="recipient_type" id="recipientType" 
+                    <select name="recipient_type" id="recipientType"
                         class="admin-select block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6" required>
                         <option value="">Please select the recipients</option>
-                        <option value="all">Everyone on this trip ({{ total_participants_count }})</option>
+                        <option value="all">Everyone on this trip ({{ message_recipient_counts.all }} booking contacts)</option>
                         <option value="package">Everyone with a specific package or add-on</option>
-                        <option value="payment_due">Everyone with payments past due</option>
-                        <option value="incomplete_questions">Everyone with incomplete required questions</option>
-                        <option value="missing_signatures">Everyone with missing signatures</option>
-                        <option value="specific">Specific recipients</option>
+                        <option value="payment_due">Everyone with payments past due / balance due ({{ message_recipient_counts.payment_due }})</option>
+                        <option value="incomplete_questions">Everyone with incomplete required questions ({{ message_recipient_counts.incomplete_questions }})</option>
+                        <option value="missing_signatures">Everyone with missing signatures ({{ message_recipient_counts.missing_signatures }})</option>
+                        <option value="specific">Specific booking contacts</option>
+                        <option value="custom">Enter email addresses…</option>
                     </select>
-                    <!-- Specific Recipients (hidden by default) -->
-                    <div id="specificRecipients" class="mt-2 hidden">
-                        <select name="specific_recipients" multiple 
-                            class="admin-select block w-full rounded-md border-0 h-32 px-3 py-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm">
-                            {% for participant in all_participants %}
-                            <option value="{{ participant.email }}">{{ participant.name }} ({{ participant.email }})</option>
+                    <p class="mt-1 text-xs text-gray-500">Emails go to the booking buyer / contact, not every participant (except when you type addresses).</p>
+                    <p id="recipientPreview" class="mt-1 text-xs text-gray-600 hidden"></p>
+
+                    <div id="packageFilter" class="mt-2 hidden space-y-2">
+                        <select id="packageFilterSelect" class="admin-select block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 sm:text-sm">
+                            <option value="">Select a package…</option>
+                            {% for pkg in trip.packages %}
+                            <option value="pkg-{{ pkg.id }}">Package: {{ pkg.name }} ({{ message_recipient_counts.packages.get(pkg.id|string, 0) }})</option>
+                            {% endfor %}
+                            {% for addon in trip.add_ons %}
+                            <option value="addon-{{ addon.id }}">Add-on: {{ addon.name }} ({{ message_recipient_counts.addons.get(addon.id|string, 0) }})</option>
                             {% endfor %}
                         </select>
                     </div>
+
+                    <div id="specificRecipients" class="mt-2 hidden">
+                        <select name="specific_recipients" id="specificRecipientsSelect" multiple
+                            class="admin-select block w-full rounded-md border-0 h-32 px-3 py-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 sm:text-sm">
+                            {% for buyer in message_buyers %}
+                            <option value="{{ buyer.email }}">{{ buyer.name }} ({{ buyer.email }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div id="customRecipients" class="mt-2 hidden">
+                        <textarea id="customEmailsInput" rows="3" placeholder="One or more emails, separated by commas or new lines&#10;e.g. alex@school.edu, Jordan Lee &lt;jordan@example.com&gt;"
+                            class="block w-full rounded-md border-0 px-3 py-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm"></textarea>
+                        <p class="mt-1 text-xs text-gray-500">Paste any addresses — not limited to bookings on this trip.</p>
+                    </div>
                 </div>
 
-                <!-- Reply-to Email -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Reply-to email</label>
-                    <input type="email" name="reply_to_email" value="{{ sender_email }}" 
-                        class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6" required>
+                    <input type="email" value="{{ reply_to_default }}" readonly
+                        class="block w-full rounded-md border-0 h-9 px-3 text-gray-700 bg-gray-50 shadow-sm ring-1 ring-inset ring-gray-300 sm:text-sm sm:leading-6 cursor-default">
+                    <p class="mt-1 text-xs text-gray-500">Customer replies go to <span class="font-mono">{{ reply_to_default }}</span>. The From address remains <span class="font-mono">{{ sender_email }}</span>.</p>
                 </div>
 
-                <!-- Subject -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Subject</label>
-                    <input type="text" name="subject" 
+                    <input type="text" name="subject" id="messageSubject"
                         class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6" required>
                 </div>
 
-                <!-- Message Body -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Message</label>
-                    <div id="messageEditor" style="height: 300px;"></div>
+                    <div id="messageEditor" style="height: 220px;"></div>
                     <textarea name="body_html" id="messageBodyHtml" style="display: none;"></textarea>
                 </div>
 
-                <!-- Add Attachment -->
-                <div>
-                    <button type="button" onclick="document.getElementById('attachmentInput').click()" 
-                        class="border border-wetravel-cyan text-wetravel-cyan px-4 py-2 rounded text-sm hover:bg-gray-50">
-                        Add Attachment
-                    </button>
-                    <input type="file" id="attachmentInput" multiple style="display: none;" onchange="handleAttachmentChange(event)">
-                    <div id="attachmentList" class="mt-2"></div>
-                </div>
-
-                <!-- Send Options -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Send:</label>
                     <div class="flex space-x-4">
                         <label class="flex items-center">
-                            <input type="radio" name="send_option" value="now" checked class="mr-2">
+                            <input type="radio" name="send_option" value="now" checked class="mr-2" onchange="updateMessageSendButton()">
                             <span>Now</span>
                         </label>
                         <label class="flex items-center">
-                            <input type="radio" name="send_option" value="schedule" class="mr-2">
+                            <input type="radio" name="send_option" value="schedule" class="mr-2" onchange="updateMessageSendButton()">
                             <span>Schedule</span>
                         </label>
                     </div>
-                    <!-- Schedule Date/Time (hidden by default) -->
                     <div id="scheduleDateTime" class="mt-2 hidden">
-                        <input type="datetime-local" name="scheduled_at" 
-                            class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
+                        <input type="text" name="scheduled_at" id="scheduledAtInput"
+                            placeholder="Pick date and time…"
+                            autocomplete="off"
+                            class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 sm:text-sm">
+                        <p class="mt-1 text-xs text-gray-500">Must be after the current time. Year options: this year through +30 years.</p>
                     </div>
                 </div>
             </div>
 
-            <!-- Modal Footer -->
-            <div class="p-6 border-t flex justify-end space-x-4">
-                <button type="button" onclick="closeNewMessageModal()" 
-                    class="border border-wetravel-cyan text-wetravel-cyan px-4 py-2 rounded text-sm hover:bg-gray-50">
-                    Discard
-                </button>
-                <button type="button" onclick="saveMessageAsDraft()" 
-                    class="bg-wetravel-cyan text-white px-4 py-2 rounded text-sm hover:bg-cyan-600">
-                    Save As Draft
-                </button>
-                <button type="submit" 
-                    class="bg-wetravel-green text-white px-4 py-2 rounded text-sm hover:bg-green-600">
-                    Send Now
-                </button>
+            <div class="p-4 border-t flex justify-end space-x-3 flex-shrink-0 bg-white">
+                <button type="button" onclick="closeNewMessageModal()"
+                    class="border border-wetravel-cyan text-wetravel-cyan px-4 py-2 rounded text-sm hover:bg-gray-50">Discard</button>
+                <button type="button" onclick="saveMessageAsDraft()"
+                    class="bg-wetravel-cyan text-white px-4 py-2 rounded text-sm hover:bg-cyan-600">Save As Draft</button>
+                <button type="submit" id="messageSubmitBtn"
+                    class="bg-wetravel-green text-white px-4 py-2 rounded text-sm hover:bg-green-600">Send Now</button>
             </div>
         </form>
     </div>
 </div>
 
-<!-- Quill.js CSS and JS -->
+<!-- View Message Modal -->
+<div id="viewMessageModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+    <div class="relative top-8 mx-auto mb-10 w-full max-w-3xl shadow-lg rounded-lg bg-white flex flex-col" style="max-height: calc(100vh - 4rem);">
+        <div class="p-6 border-b flex justify-between items-start flex-shrink-0">
+            <div class="min-w-0 pr-4">
+                <p class="text-xs uppercase tracking-wide text-wetravel-cyan font-medium" id="viewMessageStatusBadge">Sent</p>
+                <h3 class="text-lg font-medium text-gray-900 mt-1 break-words" id="viewMessageSubject">Message</h3>
+            </div>
+            <button type="button" onclick="document.getElementById('viewMessageModal').classList.add('hidden')" class="text-gray-400 hover:text-gray-500 flex-shrink-0">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        <div class="p-6 overflow-y-auto flex-1 space-y-5">
+            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                <div>
+                    <dt class="text-gray-500">From</dt>
+                    <dd class="mt-0.5 text-gray-900 font-medium" id="viewMessageFrom">—</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">Reply-to</dt>
+                    <dd class="mt-0.5 text-gray-900 font-mono text-xs sm:text-sm" id="viewMessageReplyTo">—</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">Sent at</dt>
+                    <dd class="mt-0.5 text-gray-900" id="viewMessageSentAt">—</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">Delivery</dt>
+                    <dd class="mt-0.5 text-gray-900" id="viewMessageDelivery">—</dd>
+                </div>
+                <div class="sm:col-span-2">
+                    <dt class="text-gray-500">Send to</dt>
+                    <dd class="mt-0.5 text-gray-900" id="viewMessageSendTo">—</dd>
+                </div>
+            </dl>
+            <div>
+                <h4 class="text-sm font-medium text-gray-700 mb-2">Recipients <span class="text-gray-400 font-normal" id="viewMessageRecipientCount"></span></h4>
+                <ul id="viewMessageRecipients" class="border border-gray-200 rounded-md divide-y divide-gray-100 max-h-40 overflow-y-auto text-sm bg-gray-50"></ul>
+            </div>
+            <div>
+                <h4 class="text-sm font-medium text-gray-700 mb-2">Message</h4>
+                <div class="border border-gray-200 rounded-md p-4 prose max-w-none text-sm bg-white" id="viewMessageBody"></div>
+            </div>
+        </div>
+        <div class="px-6 py-4 border-t flex justify-end flex-shrink-0 bg-gray-50 rounded-b-lg">
+            <button type="button" onclick="document.getElementById('viewMessageModal').classList.add('hidden')"
+                class="border border-wetravel-cyan text-wetravel-cyan px-4 py-2 rounded text-sm hover:bg-white">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Confirm dialog (project style, replaces native window.confirm) -->
+<div id="messageConfirmModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden z-[60] flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-lg w-full max-w-md" role="dialog" aria-modal="true" aria-labelledby="messageConfirmTitle">
+        <div class="p-6">
+            <div class="flex items-start gap-3">
+                <div id="messageConfirmIconWrap" class="flex-shrink-0 h-10 w-10 rounded-full bg-cyan-50 flex items-center justify-center">
+                    <svg id="messageConfirmIcon" class="h-5 w-5 text-wetravel-cyan" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <h3 class="text-lg font-medium text-gray-900" id="messageConfirmTitle">Confirm</h3>
+                    <p class="mt-2 text-sm text-gray-600" id="messageConfirmMessage"></p>
+                </div>
+            </div>
+        </div>
+        <div class="px-6 py-4 border-t bg-gray-50 rounded-b-lg flex justify-end gap-3">
+            <button type="button" id="messageConfirmCancel"
+                class="border border-wetravel-cyan text-wetravel-cyan px-4 py-2 rounded text-sm hover:bg-white">
+                Cancel
+            </button>
+            <button type="button" id="messageConfirmOk"
+                class="bg-wetravel-green text-white px-4 py-2 rounded text-sm hover:bg-green-600">
+                Confirm
+            </button>
+        </div>
+    </div>
+</div>
+
 <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
 <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
 
 <script>
-    // Initialize Quill editor when modal opens
     let messageQuill = null;
+    let scheduleFlatpickr = null;
+    const MESSAGE_COUNTS = {{ message_recipient_counts | tojson }};
+    const DEFAULT_SENDER_NAME = {{ sender_name | tojson }};
+    const MESSAGE_API_BASE = {{ ('/admin/trips/' ~ trip.id ~ '/messages') | tojson }};
+    const MESSAGE_CREATE_URL = {{ url_for('admin.create_message', id=trip.id) | tojson }};
 
-    // Handle recipient type change
-    document.getElementById('recipientType')?.addEventListener('change', function() {
-        if (this.value === 'specific') {
-            document.getElementById('specificRecipients').classList.remove('hidden');
+    /** Project-style confirm (Promise). options: { confirmText, cancelText, danger } */
+    function showMessageConfirm(title, message, options = {}) {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('messageConfirmModal');
+            const titleEl = document.getElementById('messageConfirmTitle');
+            const msgEl = document.getElementById('messageConfirmMessage');
+            const okBtn = document.getElementById('messageConfirmOk');
+            const cancelBtn = document.getElementById('messageConfirmCancel');
+            const iconWrap = document.getElementById('messageConfirmIconWrap');
+            if (!modal || !okBtn || !cancelBtn) {
+                resolve(window.confirm(`${title}\n\n${message}`));
+                return;
+            }
+
+            titleEl.textContent = title || 'Confirm';
+            msgEl.textContent = message || '';
+            cancelBtn.textContent = options.cancelText || 'Cancel';
+            okBtn.textContent = options.confirmText || 'Confirm';
+
+            const danger = !!options.danger;
+            okBtn.className = danger
+                ? 'bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700'
+                : 'bg-wetravel-green text-white px-4 py-2 rounded text-sm hover:bg-green-600';
+            if (iconWrap) {
+                iconWrap.className = danger
+                    ? 'flex-shrink-0 h-10 w-10 rounded-full bg-red-50 flex items-center justify-center'
+                    : 'flex-shrink-0 h-10 w-10 rounded-full bg-cyan-50 flex items-center justify-center';
+            }
+
+            modal.classList.remove('hidden');
+
+            const onKey = (e) => {
+                if (e.key === 'Escape') {
+                    cleanup();
+                    resolve(false);
+                }
+            };
+
+            const cleanup = () => {
+                modal.classList.add('hidden');
+                okBtn.onclick = null;
+                cancelBtn.onclick = null;
+                modal.onclick = null;
+                document.removeEventListener('keydown', onKey);
+            };
+
+            okBtn.onclick = () => { cleanup(); resolve(true); };
+            cancelBtn.onclick = () => { cleanup(); resolve(false); };
+            modal.onclick = (e) => {
+                if (e.target === modal) { cleanup(); resolve(false); }
+            };
+            document.addEventListener('keydown', onKey);
+            okBtn.focus();
+        });
+    }
+
+    function scheduleYearBounds() {
+        const nowY = new Date().getFullYear();
+        return { minY: nowY, maxY: nowY + 30 };
+    }
+
+    function attachScheduleYearDropdown(fp) {
+        const yearEl = fp.currentYearElement;
+        if (!yearEl || yearEl.dataset.yearSelectAttached === '1') return;
+        yearEl.dataset.yearSelectAttached = '1';
+
+        const wrap = yearEl.parentNode;
+        if (wrap) {
+            wrap.querySelectorAll('.arrowUp, .arrowDown').forEach(a => { a.style.display = 'none'; });
+        }
+        yearEl.style.display = 'none';
+
+        const select = document.createElement('select');
+        select.className = 'flatpickr-year-select';
+        select.setAttribute('aria-label', 'Year');
+
+        const refresh = () => {
+            const { minY, maxY } = scheduleYearBounds();
+            let cur = fp.currentYear;
+            if (cur < minY) cur = minY;
+            if (cur > maxY) cur = maxY;
+            select.innerHTML = '';
+            for (let y = minY; y <= maxY; y++) {
+                const opt = document.createElement('option');
+                opt.value = String(y);
+                opt.textContent = String(y);
+                if (y === cur) opt.selected = true;
+                select.appendChild(opt);
+            }
+        };
+        refresh();
+
+        select.addEventListener('change', () => {
+            const y = parseInt(select.value, 10);
+            if (!Number.isNaN(y)) fp.changeYear(y);
+        });
+
+        (wrap || yearEl.parentNode).appendChild(select);
+        fp._scheduleYearSelect = select;
+        fp._refreshScheduleYearSelect = refresh;
+    }
+
+    function nextScheduleSlot() {
+        // Round up to next 5-minute step after now
+        const d = new Date();
+        d.setSeconds(0, 0);
+        const m = d.getMinutes();
+        const rem = m % 5;
+        if (rem !== 0) d.setMinutes(m + (5 - rem));
+        else d.setMinutes(m + 5);
+        return d;
+    }
+
+    function ensureScheduleFlatpickr() {
+        if (typeof flatpickr === 'undefined') return null;
+        const el = document.getElementById('scheduledAtInput');
+        if (!el) return null;
+        if (scheduleFlatpickr) {
+            // Keep minDate current whenever reused
+            scheduleFlatpickr.set('minDate', new Date());
+            if (typeof scheduleFlatpickr._refreshScheduleYearSelect === 'function') {
+                scheduleFlatpickr._refreshScheduleYearSelect();
+            }
+            return scheduleFlatpickr;
+        }
+
+        const { maxY } = scheduleYearBounds();
+        const maxDate = new Date(maxY, 11, 31, 23, 59, 0);
+
+        scheduleFlatpickr = flatpickr(el, {
+            enableTime: true,
+            time_24hr: false,
+            minuteIncrement: 5,
+            minDate: new Date(),
+            maxDate: maxDate,
+            monthSelectorType: 'dropdown',
+            dateFormat: 'Y-m-d\\TH:i',
+            altInput: true,
+            altFormat: 'F j, Y \\a\\t h:i K',
+            altInputClass: 'fp-datetime-alt',
+            allowInput: false,
+            disableMobile: true,
+            appendTo: document.body,
+            onReady: function(selectedDates, dateStr, instance) {
+                attachScheduleYearDropdown(instance);
+            },
+            onOpen: function(selectedDates, dateStr, instance) {
+                const cal = instance.calendarContainer;
+                if (cal) cal.style.zIndex = '100000';
+                // Disallow any time earlier than now
+                instance.set('minDate', new Date());
+                if (typeof instance._refreshScheduleYearSelect === 'function') {
+                    instance._refreshScheduleYearSelect();
+                }
+            },
+            onYearChange: function(selectedDates, dateStr, instance) {
+                if (typeof instance._refreshScheduleYearSelect === 'function') {
+                    instance._refreshScheduleYearSelect();
+                }
+            },
+            onClose: function(selectedDates, dateStr, instance) {
+                if (!selectedDates || !selectedDates[0]) return;
+                const picked = selectedDates[0];
+                if (picked.getTime() < Date.now()) {
+                    instance.setDate(nextScheduleSlot(), true);
+                    showToast('Schedule time must be after now; adjusted to the next available slot.', 'warning');
+                }
+            },
+        });
+        return scheduleFlatpickr;
+    }
+
+    function setScheduleDateTime(value) {
+        const fp = ensureScheduleFlatpickr();
+        if (!fp) {
+            const el = document.getElementById('scheduledAtInput');
+            if (el) el.value = value || '';
+            return;
+        }
+        if (value) {
+            // Accept "YYYY-MM-DDTHH:MM" from API
+            fp.setDate(value, true, 'Y-m-d\\TH:i');
         } else {
-            document.getElementById('specificRecipients').classList.add('hidden');
-        }
-    });
-
-    // Handle send option change
-    document.querySelectorAll('input[name="send_option"]').forEach(radio => {
-        radio.addEventListener('change', function() {
-            if (this.value === 'schedule') {
-                document.getElementById('scheduleDateTime').classList.remove('hidden');
-            } else {
-                document.getElementById('scheduleDateTime').classList.add('hidden');
-            }
-        });
-    });
-
-    // Handle attachment change
-    function handleAttachmentChange(event) {
-        const files = event.target.files;
-        const attachmentList = document.getElementById('attachmentList');
-        attachmentList.innerHTML = '';
-        Array.from(files).forEach(file => {
-            const div = document.createElement('div');
-            div.className = 'text-sm text-gray-600 mb-1';
-            div.textContent = file.name;
-            attachmentList.appendChild(div);
-        });
-    }
-
-    // Handle message submit
-    async function handleMessageSubmit(event) {
-        event.preventDefault();
-        const form = event.target;
-        const formData = new FormData(form);
-        
-        // Get Quill content
-        if (messageQuill) {
-            formData.append('body_html', messageQuill.root.innerHTML);
-        }
-        
-        // Get recipient config
-        const recipientType = formData.get('recipient_type');
-        const recipientConfig = { type: recipientType };
-        
-        if (recipientType === 'specific') {
-            const specificRecipients = Array.from(form.querySelectorAll('select[name="specific_recipients"] option:checked'))
-                .map(opt => ({ email: opt.value, name: opt.text.split(' (')[0] }));
-            recipientConfig.recipients = specificRecipients;
-        }
-        
-        formData.append('recipient_config', JSON.stringify(recipientConfig));
-        
-        // Send to server
-        try {
-            const response = await fetch('{{ url_for("admin.create_message", id=trip.id) }}', {
-                method: 'POST',
-                body: formData
-            });
-            
-            const result = await response.json();
-            if (result.success) {
-                showToast('Message sent successfully!', 'success');
-                closeNewMessageModal();
-                location.reload();
-            } else {
-                showToast('Error: ' + result.message, 'error');
-            }
-        } catch (error) {
-            showToast('Error sending message: ' + error.message, 'error');
+            fp.clear();
         }
     }
 
-    // Save as draft
-    async function saveMessageAsDraft() {
-        const form = document.getElementById('newMessageForm');
-        const formData = new FormData(form);
-        
-        if (messageQuill) {
-            formData.append('body_html', messageQuill.root.innerHTML);
-        }
-        
-        formData.append('status', 'draft');
-        formData.append('recipient_config', JSON.stringify({ type: formData.get('recipient_type') }));
-        
-        try {
-            const response = await fetch('{{ url_for("admin.create_message", id=trip.id) }}', {
-                method: 'POST',
-                body: formData
-            });
-            
-            const result = await response.json();
-            if (result.success) {
-                showToast('Draft saved successfully!', 'success');
-                closeNewMessageModal();
-                location.reload();
-            } else {
-                showToast('Error: ' + result.message, 'error');
-            }
-        } catch (error) {
-            showToast('Error saving draft: ' + error.message, 'error');
-        }
-    }
-
-    // Edit draft message
-    function editDraftMessage(messageId) {
-        // TODO: Load draft message and open modal
-        console.log('Edit draft:', messageId);
-    }
-
-    // Initialize Quill when modal opens
-    window.openNewMessageModal = function() {
-        document.getElementById('newMessageModal').classList.remove('hidden');
+    function ensureMessageQuill() {
         if (!messageQuill) {
             messageQuill = new Quill('#messageEditor', {
                 theme: 'snow',
@@ -3487,7 +3956,438 @@
                     ]
                 }
             });
+            window.messageQuill = messageQuill;
         }
-    };
+        return messageQuill;
+    }
+
+    function resetMessageForm() {
+        const form = document.getElementById('newMessageForm');
+        if (form) form.reset();
+        const idInput = document.getElementById('messageIdInput');
+        if (idInput) idInput.value = '';
+        const title = document.getElementById('newMessageModalTitle');
+        if (title) title.textContent = 'New Message';
+        const sender = document.getElementById('messageSenderName');
+        if (sender) sender.value = DEFAULT_SENDER_NAME;
+        document.getElementById('packageFilter')?.classList.add('hidden');
+        document.getElementById('specificRecipients')?.classList.add('hidden');
+        document.getElementById('customRecipients')?.classList.add('hidden');
+        document.getElementById('scheduleDateTime')?.classList.add('hidden');
+        const customInput = document.getElementById('customEmailsInput');
+        if (customInput) customInput.value = '';
+        if (messageQuill) messageQuill.setContents([]);
+        setScheduleDateTime('');
+        document.querySelector('input[name="send_option"][value="now"]')?.click();
+        updateRecipientPreview();
+        updateMessageSendButton();
+    }
+
+    function parseCustomEmailsFromInput() {
+        const raw = document.getElementById('customEmailsInput')?.value || '';
+        const emailRe = /[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/gi;
+        const seen = new Set();
+        const list = [];
+        raw.split(/[\n,;]+/).forEach(part => {
+            part = part.trim();
+            if (!part) return;
+            const angle = part.match(/^(.+?)\s*<([^>]+)>$/);
+            let email = '';
+            let name = 'Guest';
+            if (angle) {
+                name = angle[1].trim().replace(/^["']|["']$/g, '') || 'Guest';
+                email = angle[2].trim();
+            } else {
+                const m = part.match(emailRe);
+                if (!m) return;
+                email = m[0];
+                name = part.replace(email, '').trim().replace(/^["']|["']$/g, '') || 'Guest';
+            }
+            const key = email.toLowerCase();
+            if (seen.has(key)) return;
+            seen.add(key);
+            list.push({ email, name });
+        });
+        return list;
+    }
+
+    function getSelectedRecipientCount() {
+        const type = document.getElementById('recipientType')?.value;
+        if (type === 'all') return MESSAGE_COUNTS.all || 0;
+        if (type === 'payment_due' || type === 'balance_due') return MESSAGE_COUNTS.payment_due || 0;
+        if (type === 'incomplete_questions') return MESSAGE_COUNTS.incomplete_questions || 0;
+        if (type === 'missing_signatures') return MESSAGE_COUNTS.missing_signatures || 0;
+        if (type === 'package') {
+            const val = document.getElementById('packageFilterSelect')?.value || '';
+            if (val.startsWith('pkg-')) {
+                return (MESSAGE_COUNTS.packages || {})[val.slice(4)] || 0;
+            }
+            if (val.startsWith('addon-')) {
+                return (MESSAGE_COUNTS.addons || {})[val.slice(6)] || 0;
+            }
+            return 0;
+        }
+        if (type === 'specific') {
+            return document.querySelectorAll('#specificRecipientsSelect option:checked').length;
+        }
+        if (type === 'custom') {
+            return parseCustomEmailsFromInput().length;
+        }
+        return 0;
+    }
+
+    function buildRecipientConfig() {
+        const type = document.getElementById('recipientType')?.value || 'all';
+        const config = { type };
+        if (type === 'specific') {
+            config.recipients = Array.from(
+                document.querySelectorAll('#specificRecipientsSelect option:checked')
+            ).map(opt => ({ email: opt.value, name: opt.text.split(' (')[0] }));
+        } else if (type === 'custom') {
+            const recipients = parseCustomEmailsFromInput();
+            config.recipients = recipients;
+            config.emails_text = document.getElementById('customEmailsInput')?.value || '';
+        } else if (type === 'package') {
+            const val = document.getElementById('packageFilterSelect')?.value || '';
+            if (val.startsWith('pkg-')) config.package_id = parseInt(val.slice(4), 10);
+            if (val.startsWith('addon-')) config.addon_id = parseInt(val.slice(6), 10);
+        }
+        return config;
+    }
+
+    function updateRecipientPreview() {
+        const preview = document.getElementById('recipientPreview');
+        const type = document.getElementById('recipientType')?.value;
+        if (!preview) return;
+        if (!type) {
+            preview.classList.add('hidden');
+            return;
+        }
+        const n = getSelectedRecipientCount();
+        if (type === 'custom') {
+            preview.textContent = `Will send to ${n} address${n === 1 ? '' : 'es'}.`;
+        } else {
+            preview.textContent = `Will send to ${n} booking contact${n === 1 ? '' : 's'}.`;
+        }
+        preview.classList.remove('hidden');
+    }
+
+    function updateMessageSendButton() {
+        const btn = document.getElementById('messageSubmitBtn');
+        const schedule = document.querySelector('input[name="send_option"][value="schedule"]')?.checked;
+        const scheduleBox = document.getElementById('scheduleDateTime');
+        if (scheduleBox) {
+            if (schedule) {
+                scheduleBox.classList.remove('hidden');
+                ensureScheduleFlatpickr();
+            } else {
+                scheduleBox.classList.add('hidden');
+            }
+        }
+        if (btn) btn.textContent = schedule ? 'Schedule' : 'Send Now';
+    }
+
+    function onRecipientTypeChange() {
+        const type = document.getElementById('recipientType')?.value;
+        document.getElementById('specificRecipients')?.classList.toggle('hidden', type !== 'specific');
+        document.getElementById('packageFilter')?.classList.toggle('hidden', type !== 'package');
+        document.getElementById('customRecipients')?.classList.toggle('hidden', type !== 'custom');
+        updateRecipientPreview();
+    }
+
+    document.getElementById('recipientType')?.addEventListener('change', onRecipientTypeChange);
+    document.getElementById('packageFilterSelect')?.addEventListener('change', updateRecipientPreview);
+    document.getElementById('specificRecipientsSelect')?.addEventListener('change', updateRecipientPreview);
+    document.getElementById('customEmailsInput')?.addEventListener('input', updateRecipientPreview);
+    document.querySelectorAll('input[name="send_option"]').forEach(radio => {
+        radio.addEventListener('change', updateMessageSendButton);
+    });
+
+    async function postMessageForm(formData) {
+        const response = await fetch(MESSAGE_CREATE_URL, { method: 'POST', body: formData });
+        return response.json();
+    }
+
+    async function handleMessageSubmit(event) {
+        event.preventDefault();
+        const form = event.target;
+        const formData = new FormData(form);
+        ensureMessageQuill();
+        formData.set('body_html', messageQuill.root.innerHTML);
+
+        const recipientType = formData.get('recipient_type');
+        if (!recipientType) {
+            showToast('Please select recipients', 'warning');
+            return;
+        }
+        const recipientConfig = buildRecipientConfig();
+        if (recipientType === 'specific' && !(recipientConfig.recipients || []).length) {
+            showToast('Select at least one booking contact', 'warning');
+            return;
+        }
+        if (recipientType === 'custom' && !(recipientConfig.recipients || []).length) {
+            showToast('Enter at least one valid email address', 'warning');
+            return;
+        }
+        if (recipientType === 'package' && !recipientConfig.package_id && !recipientConfig.addon_id) {
+            showToast('Select a package or add-on', 'warning');
+            return;
+        }
+
+        const n = getSelectedRecipientCount();
+        if (n < 1) {
+            showToast('No recipients for this selection', 'warning');
+            return;
+        }
+
+        const sendOption = formData.get('send_option') || 'now';
+        const who = recipientType === 'custom'
+            ? `${n} address${n === 1 ? '' : 'es'}`
+            : `${n} booking contact${n === 1 ? '' : 's'}`;
+        if (sendOption === 'schedule') {
+            if (!formData.get('scheduled_at')) {
+                showToast('Please choose a schedule date/time', 'warning');
+                return;
+            }
+            const picked = scheduleFlatpickr?.selectedDates?.[0];
+            if (picked && picked.getTime() < Date.now()) {
+                showToast('Schedule time must be after now', 'warning');
+                setScheduleDateTime('');
+                scheduleFlatpickr?.setDate(nextScheduleSlot(), true);
+                return;
+            }
+            const ok = await showMessageConfirm(
+                'Schedule message',
+                `Schedule this message to ${who}? It will send automatically at the selected time.`,
+                { confirmText: 'Schedule' }
+            );
+            if (!ok) return;
+        } else {
+            const ok = await showMessageConfirm(
+                'Send message',
+                `Send this message to ${who} now?`,
+                { confirmText: 'Send now' }
+            );
+            if (!ok) return;
+        }
+
+        formData.set('recipient_config', JSON.stringify(recipientConfig));
+        formData.set('send_option', sendOption);
+        // 明确意图：发送/定时绝不能缺省成 draft（后端缺省曾误当草稿）
+        if (sendOption === 'schedule') {
+            formData.set('status', 'scheduled');
+        } else {
+            formData.set('status', 'sent');
+        }
+        const mid = document.getElementById('messageIdInput')?.value;
+        if (mid) formData.set('message_id', mid);
+
+        // flatpickr altInput 时确保取到机器格式时间
+        if (sendOption === 'schedule' && scheduleFlatpickr) {
+            const machine = scheduleFlatpickr.input?.value || formData.get('scheduled_at');
+            if (machine) formData.set('scheduled_at', machine);
+        }
+
+        try {
+            const result = await postMessageForm(formData);
+            if (result.success) {
+                if (result.status === 'scheduled') {
+                    showToast(`Scheduled for ${result.total_recipients || n} contact(s)`, 'success');
+                } else if (result.status === 'sent') {
+                    const sent = result.sent_count || 0;
+                    const failed = result.failed_count || 0;
+                    if (failed > 0 && sent === 0) {
+                        showToast(`Send failed for all ${failed} recipient(s). Check SES / logs.`, 'error');
+                    } else if (failed > 0) {
+                        showToast(`Sent ${sent}, failed ${failed}`, 'warning');
+                    } else {
+                        showToast(`Sent to ${sent} contact(s)`, 'success');
+                    }
+                } else {
+                    showToast('Saved as draft', 'success');
+                }
+                closeNewMessageModal();
+                let stay = 'messages/sent';
+                if (result.status === 'scheduled') stay = 'messages/scheduled';
+                else if (result.status === 'sent') stay = 'messages/sent';
+                else stay = 'messages/drafts';
+                reloadManagePage(stay);
+            } else {
+                showToast('Error: ' + result.message, 'error');
+            }
+        } catch (error) {
+            showToast('Error sending message: ' + error.message, 'error');
+        }
+    }
+
+    async function saveMessageAsDraft() {
+        const form = document.getElementById('newMessageForm');
+        const formData = new FormData(form);
+        ensureMessageQuill();
+        formData.set('body_html', messageQuill.root.innerHTML);
+        formData.set('status', 'draft');
+        formData.set('recipient_config', JSON.stringify(buildRecipientConfig()));
+        const mid = document.getElementById('messageIdInput')?.value;
+        if (mid) formData.set('message_id', mid);
+        try {
+            const result = await postMessageForm(formData);
+            if (result.success) {
+                showToast('Draft saved!', 'success');
+                closeNewMessageModal();
+                reloadManagePage('messages/drafts');
+            } else {
+                showToast('Error: ' + result.message, 'error');
+            }
+        } catch (error) {
+            showToast('Error saving draft: ' + error.message, 'error');
+        }
+    }
+
+    async function editDraftMessage(messageId) {
+        try {
+            const res = await fetch(`${MESSAGE_API_BASE}/${messageId}`);
+            const data = await res.json();
+            if (!data.success) {
+                showToast(data.message || 'Failed to load message', 'error');
+                return;
+            }
+            const m = data.message;
+            resetMessageForm();
+            document.getElementById('newMessageModalTitle').textContent = m.status === 'scheduled' ? 'Edit Scheduled Message' : 'Edit Draft';
+            document.getElementById('messageIdInput').value = m.id;
+            document.getElementById('messageSenderName').value = m.sender_name || DEFAULT_SENDER_NAME;
+            document.getElementById('messageSubject').value = m.subject === '(No subject)' ? '' : (m.subject || '');
+            const cfg = m.recipient_config || {};
+            const typeSelect = document.getElementById('recipientType');
+            let type = cfg.type || 'all';
+            if (type === 'balance_due') type = 'payment_due';
+            typeSelect.value = type;
+            onRecipientTypeChange();
+            if (type === 'package') {
+                const pf = document.getElementById('packageFilterSelect');
+                if (cfg.package_id) pf.value = 'pkg-' + cfg.package_id;
+                else if (cfg.addon_id) pf.value = 'addon-' + cfg.addon_id;
+            }
+            if (type === 'specific' && Array.isArray(cfg.recipients)) {
+                const emails = new Set(cfg.recipients.map(r => (r.email || r).toLowerCase()));
+                document.querySelectorAll('#specificRecipientsSelect option').forEach(opt => {
+                    opt.selected = emails.has(opt.value.toLowerCase());
+                });
+            }
+            if (type === 'custom') {
+                const ta = document.getElementById('customEmailsInput');
+                if (ta) {
+                    ta.value = cfg.emails_text || (Array.isArray(cfg.recipients)
+                        ? cfg.recipients.map(r => r.email || r).join('\n')
+                        : '');
+                }
+            }
+            if (m.scheduled_at) {
+                document.querySelector('input[name="send_option"][value="schedule"]').checked = true;
+                updateMessageSendButton();
+                setScheduleDateTime(m.scheduled_at);
+            }
+            document.getElementById('newMessageModal').classList.remove('hidden');
+            ensureMessageQuill();
+            messageQuill.root.innerHTML = m.body_html || '';
+            updateRecipientPreview();
+            updateMessageSendButton();
+        } catch (e) {
+            showToast('Error loading message: ' + e.message, 'error');
+        }
+    }
+
+    async function viewMessage(messageId) {
+        try {
+            const res = await fetch(`${MESSAGE_API_BASE}/${messageId}`);
+            const data = await res.json();
+            if (!data.success) {
+                showToast(data.message || 'Failed to load', 'error');
+                return;
+            }
+            const m = data.message;
+            const statusEl = document.getElementById('viewMessageStatusBadge');
+            if (statusEl) {
+                statusEl.textContent = (m.status || 'message').toUpperCase();
+            }
+            document.getElementById('viewMessageSubject').textContent = m.subject || '(No subject)';
+            document.getElementById('viewMessageFrom').textContent = m.sender_name || '—';
+            document.getElementById('viewMessageReplyTo').textContent = m.reply_to_email || '—';
+            document.getElementById('viewMessageSentAt').textContent =
+                m.sent_at_display || m.scheduled_at_display || '—';
+            const sent = m.sent_count || 0;
+            const failed = m.failed_count || 0;
+            const total = m.total_recipients || 0;
+            document.getElementById('viewMessageDelivery').textContent =
+                m.status === 'sent'
+                    ? `${sent} delivered${failed ? `, ${failed} failed` : ''} (of ${total})`
+                    : `${total} recipient(s) · ${m.status}`;
+            document.getElementById('viewMessageSendTo').textContent = m.send_to_label || '—';
+
+            const listEl = document.getElementById('viewMessageRecipients');
+            const countEl = document.getElementById('viewMessageRecipientCount');
+            const recipients = Array.isArray(m.recipients) ? m.recipients : [];
+            if (countEl) countEl.textContent = `(${recipients.length})`;
+            if (listEl) {
+                if (!recipients.length) {
+                    listEl.innerHTML = '<li class="px-3 py-2 text-gray-500">No recipient list available</li>';
+                } else {
+                    listEl.innerHTML = recipients.map(r => {
+                        const name = (r.name || 'Guest').replace(/</g, '&lt;');
+                        const email = (r.email || '').replace(/</g, '&lt;');
+                        return `<li class="px-3 py-2 flex justify-between gap-2"><span class="text-gray-900 truncate">${name}</span><span class="text-gray-500 font-mono text-xs truncate">${email}</span></li>`;
+                    }).join('');
+                }
+            }
+
+            document.getElementById('viewMessageBody').innerHTML =
+                m.body_html || '<p class="text-gray-500">Empty message</p>';
+            document.getElementById('viewMessageModal').classList.remove('hidden');
+        } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+        }
+    }
+
+    async function deleteMessage(messageId) {
+        const ok = await showMessageConfirm(
+            'Delete message',
+            'Delete this message? This cannot be undone.',
+            { confirmText: 'Delete', danger: true }
+        );
+        if (!ok) return;
+        try {
+            const res = await fetch(`${MESSAGE_API_BASE}/${messageId}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) {
+                showToast('Deleted', 'success');
+                reloadManagePage();
+            } else {
+                showToast(data.message || 'Delete failed', 'error');
+            }
+        } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+        }
+    }
+
+    async function cancelScheduledMessage(messageId) {
+        const ok = await showMessageConfirm(
+            'Cancel schedule',
+            'Cancel the schedule and move this message back to Drafts?',
+            { confirmText: 'Move to Drafts' }
+        );
+        if (!ok) return;
+        try {
+            const res = await fetch(`${MESSAGE_API_BASE}/${messageId}/cancel-schedule`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                showToast('Moved to Drafts', 'success');
+                reloadManagePage('messages/drafts');
+            } else {
+                showToast(data.message || 'Cancel failed', 'error');
+            }
+        } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+        }
+    }
 </script>
 {% endblock %}

@@ -35,6 +35,8 @@ def build_booking_metadata(booking, extra=None):
         'buyer_email': booking.buyer_email,
         'buyer_name': f"{booking.buyer_first_name or ''} {booking.buyer_last_name or ''}".strip(),
     }
+    if getattr(booking, 'order_number', None):
+        base['order_number'] = booking.order_number
     if extra:
         base.update(extra)
     return _normalize_metadata(base)
@@ -263,47 +265,215 @@ def calculate_fee(base_amount_cents, funding, brand):
     return int(math.ceil(base_amount_cents * 0.029))
 
 
+def extract_stripe_charge_id(payment_intent):
+    """从 PaymentIntent（dict 或 Stripe 对象）取出 latest_charge id。"""
+    if not payment_intent:
+        return None
+    if isinstance(payment_intent, dict):
+        latest = payment_intent.get('latest_charge')
+        charges = (payment_intent.get('charges') or {}).get('data') or []
+    else:
+        latest = getattr(payment_intent, 'latest_charge', None)
+        charges_obj = getattr(payment_intent, 'charges', None)
+        charges = list(getattr(charges_obj, 'data', None) or []) if charges_obj else []
+    if isinstance(latest, str) and latest.startswith('ch_'):
+        return latest
+    if latest is not None and hasattr(latest, 'id'):
+        return latest.id
+    if charges:
+        first = charges[0]
+        if isinstance(first, dict):
+            return first.get('id')
+        return getattr(first, 'id', None)
+    return None
+
+
+def payment_charged_amount(payment):
+    """客户该笔实扣（美元，含手续费）。"""
+    if payment.final_amount_cents is not None:
+        return round(payment.final_amount_cents / 100.0, 2)
+    return round(float(payment.amount or 0.0), 2)
+
+
+def payment_base_amount(payment):
+    """该笔基础金额（美元，不含卡费）。卡费不退。"""
+    if payment.base_amount_cents is not None:
+        return round(payment.base_amount_cents / 100.0, 2)
+    charged = payment_charged_amount(payment)
+    fee = (payment.fee_cents or 0) / 100.0
+    return round(max(0.0, charged - fee), 2)
+
+
+def payment_fee_amount(payment):
+    """该笔卡手续费（美元），永不退还。"""
+    if payment.fee_cents is not None:
+        return round(payment.fee_cents / 100.0, 2)
+    return round(max(0.0, payment_charged_amount(payment) - payment_base_amount(payment)), 2)
+
+
+def payment_refundable_remaining(payment):
+    """
+    该笔剩余可退（基础金额口径，不含卡费）。
+    refunded_amount 存的是已退的基础美元（与 Stripe 退款金额一致，因手续费不退）。
+    """
+    base = payment_base_amount(payment)
+    already = round(float(payment.refunded_amount or 0.0), 2)
+    return round(max(0.0, base - already), 2)
+
+
+def booking_deposit_reserved(booking, deposit_hint=None):
+    """订单上默认保留不退的定金（基础金额）。"""
+    if deposit_hint is None:
+        deposit_hint = 0.0
+        for bp in booking.booking_packages:
+            cfg = (bp.package.payment_plan_config if bp.package else None) or {}
+            dep = cfg.get('deposit_amount') or cfg.get('deposit')
+            if dep is not None:
+                try:
+                    deposit_hint = float(dep) * (int(bp.quantity) if bp.quantity else 1)
+                    break
+                except (TypeError, ValueError):
+                    pass
+    try:
+        deposit_hint = float(deposit_hint or 0.0)
+    except (TypeError, ValueError):
+        deposit_hint = 0.0
+    paid = round(float(booking.amount_paid or 0.0), 2)
+    return round(min(max(0.0, deposit_hint), paid), 2)
+
+
+def payment_max_refund(payment, booking, include_deposit=False, deposit_hint=None):
+    """
+    管理员可退上限（基础金额）：
+    - 不超过该笔剩余基础可退
+    - 默认不含定金：不超过 booking.amount_paid − 定金保留
+    - 勾选 include_deposit 后可退满该笔剩余
+    """
+    pay_remaining = payment_refundable_remaining(payment)
+    if include_deposit:
+        return pay_remaining
+    reserved = booking_deposit_reserved(booking, deposit_hint=deposit_hint)
+    booking_cap = round(max(0.0, float(booking.amount_paid or 0.0) - reserved), 2)
+    return round(min(pay_remaining, booking_cap), 2)
+
+
+def stripe_refunded_as_base(payment, stripe_refunded_charged):
+    """
+    Stripe Charge.amount_refunded（实扣口径累计）→ 本地应记的基础已退。
+    手续费不退：超过 base 的部分（卡费）忽略，不扣 Booking.amount_paid。
+    """
+    base = payment_base_amount(payment)
+    return round(min(max(0.0, float(stripe_refunded_charged or 0.0)), base), 2)
+
+
+def charged_refund_to_base(payment, refund_amount):
+    """
+    兼容旧调用：将实扣口径退款映射为基础金额（手续费部分截断）。
+    新代码优先用 stripe_refunded_as_base 做累计换算。
+    """
+    return stripe_refunded_as_base(payment, refund_amount)
+
+
 def process_refund(payment_intent_id, amount, reason=None):
     """
-    处理 Stripe 退款
-    
-    Args:
-        payment_intent_id: Stripe Payment Intent ID 或 Charge ID
-        amount: 退款金额（美元，例如 100.00）
-        reason: 退款原因（可选）
-        
+    通过 Stripe PaymentIntent 发起退款（金额为美元基础金额，不含卡费）。
+
     Returns:
-        refund: Stripe Refund 对象，如果失败则返回 None
+        (refund, error_message): 成功时 (Refund, None)；失败时 (None, str)
     """
     stripe.api_key = current_app.config.get('STRIPE_SECRET_KEY')
-    
+
     if not stripe.api_key:
-        current_app.logger.error("STRIPE_SECRET_KEY not configured")
-        return None
-    
+        return None, 'STRIPE_SECRET_KEY not configured'
+
+    if not payment_intent_id or not str(payment_intent_id).startswith('pi_'):
+        return None, 'Invalid payment_intent_id (expected pi_…)'
+
     try:
-        # Convert amount to cents (Stripe uses smallest currency unit)
-        amount_cents = int(amount * 100)
-        
-        # Create refund
-        refund = stripe.Refund.create(
-            payment_intent=payment_intent_id,
-            amount=amount_cents,
-            reason='requested_by_customer' if reason else None,
-            metadata={
-                'refund_reason': reason or 'No reason provided'
-            } if reason else None
-        )
-        
-        current_app.logger.info(f"Refund created: {refund.id} for amount ${amount}")
-        return refund
-        
+        amount_cents = int(round(float(amount) * 100))
+        if amount_cents <= 0:
+            return None, 'Refund amount must be positive'
+
+        params = {
+            'payment_intent': payment_intent_id,
+            'amount': amount_cents,
+        }
+        if reason:
+            params['reason'] = 'requested_by_customer'
+            params['metadata'] = {'refund_reason': reason[:500]}
+
+        refund = stripe.Refund.create(**params)
+        current_app.logger.info(f"Refund created: {refund.id} for amount ${amount} on {payment_intent_id}")
+        return refund, None
+
     except stripe.error.StripeError as e:
         current_app.logger.error(f"Stripe refund failed: {str(e)}")
-        return None
+        return None, str(e)
     except Exception as e:
         current_app.logger.error(f"Unexpected error during refund: {str(e)}")
-        return None
+        return None, str(e)
+
+
+def apply_refund_to_ledger(payment, booking, refund_amount, reason=None, stripe_refund_id=None,
+                           cancel_booking=False, manual_only=False):
+    """
+    将一笔退款写入 Payment + Booking（调用方负责 commit）。
+
+    refund_amount: 基础金额美元（不含卡费）。卡费永不计入。
+    """
+    refund_amount = round(float(refund_amount), 2)
+    remaining = payment_refundable_remaining(payment)
+    if refund_amount <= 0:
+        raise ValueError('Refund amount must be positive')
+    if refund_amount > remaining + 0.001:
+        raise ValueError(f'Refund amount ${refund_amount:.2f} exceeds remaining ${remaining:.2f}')
+
+    already = round(float(payment.refunded_amount or 0.0), 2)
+    payment.refunded_amount = round(already + refund_amount, 2)
+    payment.refunded_at = datetime.utcnow()
+    if reason:
+        payment.refund_reason = (reason or '')[:200]
+
+    meta = dict(payment.payment_metadata or {})
+    history = list(meta.get('refund_history') or [])
+    history.append({
+        'amount': refund_amount,
+        'reason': reason or '',
+        'stripe_refund_id': stripe_refund_id,
+        'manual_only': bool(manual_only),
+        'excludes_fee': True,
+        'at': datetime.utcnow().isoformat() + 'Z',
+    })
+    meta['refund_history'] = history
+    if stripe_refund_id:
+        meta['last_stripe_refund_id'] = stripe_refund_id
+    payment.payment_metadata = meta
+
+    base = payment_base_amount(payment)
+    if payment.refunded_amount >= base - 0.001:
+        payment.status = 'refunded'
+        payment.refunded_amount = base
+    else:
+        payment.status = 'partially_refunded'
+
+    # 基础金额退款，直接扣 Booking.amount_paid
+    booking.amount_paid = max(0.0, round(float(booking.amount_paid or 0.0) - refund_amount, 2))
+
+    if cancel_booking or booking.amount_paid <= 0.001:
+        if booking.amount_paid <= 0.001:
+            booking.amount_paid = 0.0
+        if cancel_booking or booking.amount_paid == 0.0:
+            booking.status = 'cancelled'
+    elif booking.status == 'fully_paid':
+        booking.status = 'deposit_paid'
+
+    return {
+        'refund_amount': refund_amount,
+        'base_reduction': refund_amount,
+        'payment_refunded_amount': payment.refunded_amount,
+        'booking_amount_paid': booking.amount_paid,
+        'booking_status': booking.status,
+    }
 
 
 def calculate_booking_total(booking):

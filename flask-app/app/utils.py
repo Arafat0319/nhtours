@@ -8,6 +8,9 @@ import boto3
 from botocore.exceptions import ClientError
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
+from email.header import Header
+from email.utils import formataddr, parseaddr, formatdate, make_msgid
 from datetime import datetime
 from flask import current_app, url_for
 from app import db
@@ -15,66 +18,221 @@ from app.models import Lead, Testimonial
 import json
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
+# 个人邮箱域名：经 SES 发出时无法配自家 SPF/DKIM，且 Reply-To 跨域易被判钓鱼
+_FREEMAIL_DOMAINS = frozenset({
+    'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.jp',
+    'hotmail.com', 'outlook.com', 'live.com', 'msn.com',
+    'icloud.com', 'me.com', 'aol.com', 'qq.com', '163.com', '126.com',
+})
 
-def send_email_via_ses(sender, recipient, subject, html_body, text_body, reply_to=None):
+
+def _email_domain(addr):
+    if not addr or '@' not in addr:
+        return ''
+    return addr.rsplit('@', 1)[-1].strip().lower()
+
+
+def _normalize_reply_to(from_email, reply_to):
+    """
+    投递优化：From 为个人邮箱时，Reply-To 不要指到另一域名（Gmail 常进垃圾箱）。
+    生产用公司域名发信时，Reply-To 可指向 info@ 工作邮箱。
+    """
+    if not reply_to:
+        return None
+    reply_to = reply_to.strip()
+    from_d = _email_domain(from_email)
+    reply_d = _email_domain(reply_to)
+    if from_d in _FREEMAIL_DOMAINS and reply_d and reply_d != from_d:
+        current_app.logger.warning(
+            f'Reply-To {reply_to} ignored for freemail From {from_email}; '
+            f'using From for deliverability'
+        )
+        return from_email
+    return reply_to
+
+
+def _email_brand_footer(from_email, reply_to):
+    """
+    事务邮件页脚（参考 Stripe / Postmark / MailerSend 常见写法）：
+    - 不把「品牌 · 邮箱」挤成一行
+    - 先写如何联系（Reply / contact），再写公司名与官网
+    - 不展示 noreply@ 作为联系方式
+    """
+    brand = current_app.config.get('SENDER_DISPLAY_NAME', 'Nexus Horizons Tours')
+    site = (current_app.config.get('BASE_URL') or '').rstrip('/') or 'https://nhtours.com'
+    contact = (reply_to or '').strip()
+    if not contact or contact.lower().startswith('noreply@'):
+        contact = (current_app.config.get('REPLY_TO_EMAIL') or '').strip()
+    if contact.lower().startswith('noreply@'):
+        contact = ''
+
+    lines = ['', '--']
+    if contact:
+        lines.append(f'Questions? Reply to this email or contact us at {contact}.')
+    else:
+        lines.append('Questions? Reply to this email.')
+    lines.extend(['', brand, site])
+    plain = '\n'.join(lines) + '\n'
+
+    if contact:
+        contact_html = (
+            f'<p style="margin:0 0 8px;font-size:12px;color:#6b7280;line-height:1.5;">'
+            f'Questions? Reply to this email or contact us at '
+            f'<a href="mailto:{contact}" style="color:#6b7280;">{contact}</a>.'
+            f'</p>'
+        )
+    else:
+        contact_html = (
+            '<p style="margin:0 0 8px;font-size:12px;color:#6b7280;line-height:1.5;">'
+            'Questions? Reply to this email.'
+            '</p>'
+        )
+    site_label = site.replace('https://', '').replace('http://', '')
+    html = (
+        '<hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0 16px;">'
+        f'{contact_html}'
+        f'<p style="margin:0;font-size:12px;color:#6b7280;line-height:1.5;">'
+        f'<strong style="color:#374151;font-weight:600;">{brand}</strong><br>'
+        f'<a href="{site}" style="color:#6b7280;text-decoration:underline;">{site_label}</a>'
+        f'</p>'
+    )
+    return plain, html
+
+
+def send_email_via_ses(
+    sender,
+    recipient,
+    subject,
+    html_body,
+    text_body,
+    reply_to=None,
+    include_list_unsubscribe=False,
+    attachments=None,
+):
     """
     使用AWS SES发送邮件
     
     Args:
-        sender: 发件人邮箱（必须在SES中验证）
+        sender: 发件人。可为纯邮箱，或 ``显示名 <email@domain>``（须为 SES 已验证身份）
         recipient: 收件人邮箱
         subject: 邮件主题
         html_body: HTML格式的邮件正文
         text_body: 纯文本格式的邮件正文
         reply_to: 回复地址（可选）
+        include_list_unsubscribe: 是否加 List-Unsubscribe。默认关闭——
+            Gmail 常因此把信分到 Promotions；收据/行程通知等事务信不应带退订头。
+        attachments: 可选附件列表，每项为 dict：
+            ``{'filename': 'x.pdf', 'content': bytes, 'mime_subtype': 'pdf'}``
     
     Returns:
         tuple: (success: bool, message: str)
     """
     try:
-        # 获取AWS配置
         region = current_app.config.get('AWS_REGION', 'us-east-1')
         access_key = current_app.config.get('AWS_ACCESS_KEY_ID')
         secret_key = current_app.config.get('AWS_SECRET_ACCESS_KEY')
-        
-        # 创建SES客户端
+
         if access_key and secret_key:
             ses_client = boto3.client(
                 'ses',
                 region_name=region,
                 aws_access_key_id=access_key,
-                aws_secret_access_key=secret_key
+                aws_secret_access_key=secret_key,
             )
         else:
-            # 使用默认凭证（IAM角色、环境变量等）
             ses_client = boto3.client('ses', region_name=region)
-        
-        # 构建邮件消息
-        message = MIMEMultipart('alternative')
-        message['Subject'] = subject
-        message['From'] = sender
+
+        display_name, email_addr = parseaddr(sender or '')
+        if not email_addr and sender:
+            email_addr = sender.strip()
+            display_name = ''
+        from_header = formataddr((display_name, email_addr)) if email_addr else sender
+        domain = _email_domain(email_addr) or 'localhost'
+
+        attachments = attachments or []
+        # 有附件用 mixed；无附件保持 alternative（与旧行为一致）
+        if attachments:
+            message = MIMEMultipart('mixed')
+            body_root = MIMEMultipart('alternative')
+            message.attach(body_root)
+        else:
+            message = MIMEMultipart('alternative')
+            body_root = message
+
+        message['Subject'] = Header(subject or '', 'utf-8')
+        message['From'] = from_header
         message['To'] = recipient
-        
-        if reply_to:
-            message['Reply-To'] = reply_to
-        
-        # 添加文本和HTML部分
-        text_part = MIMEText(text_body, 'plain', 'utf-8')
-        html_part = MIMEText(html_body, 'html', 'utf-8')
-        
-        message.attach(text_part)
-        message.attach(html_part)
-        
-        # 发送邮件
-        response = ses_client.send_raw_email(
-            Source=sender,
-            Destinations=[recipient],
-            RawMessage={'Data': message.as_string()}
+        message['Date'] = formatdate(localtime=True)
+        message['Message-ID'] = make_msgid(domain=domain)
+
+        effective_reply = _normalize_reply_to(email_addr, reply_to)
+        if effective_reply:
+            message['Reply-To'] = effective_reply
+
+        # List-Unsubscribe 仅在明确需要时开启（营销群发）；默认不加，减少进 Gmail Promotions
+        if include_list_unsubscribe:
+            unsub = (
+                current_app.config.get('REPLY_TO_EMAIL')
+                or current_app.config.get('RECIPIENT_EMAIL')
+                or email_addr
+            )
+            if unsub and '@' in unsub:
+                message['List-Unsubscribe'] = f'<mailto:{unsub}?subject=unsubscribe>'
+
+        # MIME-Version 由 MIMEMultipart 自带，勿再手动加（SES 会报 Duplicate header）
+        message['X-Mailer'] = 'Nexus Horizons Tours'
+
+        plain = (text_body or '').strip() or 'Please view this email in an HTML-capable client.'
+        footer_plain, footer_html = _email_brand_footer(email_addr, effective_reply)
+
+        html = (html_body or '').strip() or f'<p>{plain}</p>'
+        if '</body>' in html.lower():
+            # 调用方已提供完整 HTML 文档时不强制改结构，只保证纯文本有页脚
+            html_out = html
+        else:
+            html_out = (
+                '<!DOCTYPE html><html><head><meta charset="utf-8"></head>'
+                '<body style="font-family:Segoe UI,Helvetica,Arial,sans-serif;font-size:15px;'
+                'line-height:1.5;color:#222;">'
+                f'{html}'
+                f'{footer_html}'
+                '</body></html>'
+            )
+
+        body_root.attach(MIMEText(plain + footer_plain, 'plain', 'utf-8'))
+        body_root.attach(MIMEText(html_out, 'html', 'utf-8'))
+
+        for att in attachments:
+            raw = att.get('content') or b''
+            if not raw:
+                continue
+            filename = att.get('filename') or 'attachment.pdf'
+            subtype = att.get('mime_subtype') or 'pdf'
+            part = MIMEApplication(raw, _subtype=subtype)
+            part.add_header('Content-Disposition', 'attachment', filename=filename)
+            message.attach(part)
+
+        # as_bytes 保留 PDF 等二进制附件；无附件时与 as_string 等价
+        raw_data = message.as_bytes()
+        send_kwargs = {
+            'Source': email_addr or from_header,
+            'Destinations': [recipient],
+            'RawMessage': {'Data': raw_data},
+        }
+        # 可选：SES Configuration Set（打开打开率/退信追踪时配置）
+        config_set = (current_app.config.get('SES_CONFIGURATION_SET') or '').strip()
+        if config_set:
+            send_kwargs['ConfigurationSetName'] = config_set
+
+        response = ses_client.send_raw_email(**send_kwargs)
+
+        message_id = response.get('MessageId', '')
+        current_app.logger.info(
+            f'邮件发送成功，MessageId: {message_id} To={recipient} From={email_addr}'
+            + (f' attachments={len(attachments)}' if attachments else '')
         )
-        
-        current_app.logger.info(f'邮件发送成功，MessageId: {response["MessageId"]}')
-        return True, '邮件发送成功'
-        
+        return True, message_id or '邮件发送成功'
+
     except ClientError as e:
         error_code = e.response['Error']['Code']
         error_message = e.response['Error']['Message']

@@ -44,23 +44,25 @@
 
 
 
-1. SES 控制台 → 验证域名 `nhtours.com`
+1. SES 控制台 → 验证域名 `nhtours.com`（务必开 **Easy DKIM**）
 
-2. GoDaddy DNS 添加 SES 提供的 **DKIM CNAME**（与网站 `@` A 记录可并存）
+2. GoDaddy DNS 添加 SES 提供的 **DKIM CNAME**；建议再加 SPF（`v=spf1 include:amazonses.com ~all`，或并入现有 SPF）
 
-3. 申请移出 SES 沙箱
+3. 申请移出 SES 沙箱（否则只能发给已验证邮箱）
 
 4. **`/var/www/nhtours/flask-app/.env`** 确认：
 
    - `AWS_REGION`、`AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY`
 
-   - `SENDER_EMAIL=noreply@nhtours.com`（与 SES 已验证身份一致）
+   - `SENDER_EMAIL=noreply@nhtours.com`（与 SES 已验证身份一致；**不要用个人 Gmail 当地址**，否则易进垃圾箱）
+
+   - `REPLY_TO_EMAIL=info@nhtours.com`（客户点回复进工作邮箱）
 
    - **`BASE_URL=https://nhtours.com`**（分期提醒邮件中的支付链接）
 
 5. `sudo systemctl restart nhtours`
 
-6. 冒烟：Contact 表单、Test 支付收据、后台「发送分期提醒」、链接是否为 `https://nhtours.com/...`
+6. 冒烟：Contact 表单、Test 支付收据、后台 Messages / 分期提醒；收件箱而非 Spam
 
 
 

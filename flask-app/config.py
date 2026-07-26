@@ -40,8 +40,15 @@ class Config:
     AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY', '')
     
     # 邮件配置
+    # RECIPIENT_EMAIL：站内通知/咨询落到何处（本地常设成个人邮箱方便测）
     RECIPIENT_EMAIL = os.environ.get('RECIPIENT_EMAIL', 'info@nhtours.com')
     SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'noreply@nhtours.com')
+    # Messages 群发 Reply-To：客户点「回复」进工作邮箱（与 RECIPIENT_EMAIL 解耦，避免本地测试邮箱污染 UI）
+    REPLY_TO_EMAIL = os.environ.get('REPLY_TO_EMAIL', 'info@nhtours.com')
+    # Messages / 群发：客户收件箱 From 显示名（可改）
+    SENDER_DISPLAY_NAME = os.environ.get('SENDER_DISPLAY_NAME', 'Nexus Horizons Tours')
+    # 可选：SES Configuration Set 名称（打开投递/退信事件追踪时配置）
+    SES_CONFIGURATION_SET = os.environ.get('SES_CONFIGURATION_SET', '')
 
     # 数据库配置 (必须提供 DATABASE_URL)
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')

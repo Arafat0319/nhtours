@@ -1,32 +1,44 @@
-{{ receipt_title }}
+{{ receipt_title }} — Nexus Horizons Tours
 
-Order number: {{ receipt_number }}
+{% if customer_name and customer_name != 'Customer' -%}
+Thanks for your payment, {{ customer_name }}!
+{% else -%}
+Thanks for your payment!
+{% endif %}
+
+{{ amount_charged_label|default('Amount charged today') }}: ${{ (total_amount)|format_price }}
+{% if payment_method_summary %}Paid with {{ payment_method_summary }}
+{% endif %}
+Order number: {{ order_number or receipt_number }}
 Issued: {{ issued_at }}
-Booking ID: {{ booking_id }}
-Payment Status: {{ payment_status }}
-{% if payment_intent_id %}Payment Intent: {{ payment_intent_id }}{% endif %}
-{% if payment_method_summary %}Payment Method: {{ payment_method_summary }}{% endif %}
+Status: {{ payment_status }}
 
 Trip: {{ trip_title }}
 Dates: {{ trip_dates }}
 
 Customer: {{ customer_name }}
-Email: {{ customer_email }}
-
-Line Items:
+{% if customer_email %}Email: {{ customer_email }}
+{% endif %}
+Payment details:
 {% for item in line_items -%}
 - {{ item.label }}: ${{ (item.amount)|format_price }}
 {% endfor %}
-
 {% if discount_amount is defined and discount_amount > 0 -%}
-Subtotal: ${{ (base_amount + discount_amount)|format_price }}
-Discount{% if discount_code %} ({{ discount_code }}){% endif %}: -${{ (discount_amount)|format_price }}
-Amount After Discount: ${{ (base_amount)|format_price }}
-{% else -%}
-Base Amount: ${{ (base_amount)|format_price }}
+- Discount{% if discount_code %} ({{ discount_code }}){% endif %}: -${{ (discount_amount)|format_price }}
 {% endif -%}
-Card Fee: ${{ (fee_amount)|format_price }}
-Total: ${{ (total_amount)|format_price }}
+- Subtotal: ${{ (base_amount)|format_price }}
+{% if fee_amount and fee_amount > 0 -%}
+- Card processing fee: ${{ (fee_amount)|format_price }}
+{% endif -%}
+{{ amount_charged_label|default('Total charged') }}: ${{ (total_amount)|format_price }}
 
-Thank you for your payment.
-Questions? Contact info@nhtours.com
+{% if receipt_download_url -%}
+A PDF receipt is attached to this email.
+You can also download it here:
+{{ receipt_download_url }}
+{% else -%}
+A PDF receipt is attached to this email (if your mail client supports attachments).
+{% endif %}
+
+Questions? Reply to this email or contact info@nhtours.com
+Nexus Horizons Tours — https://nhtours.com

@@ -14,6 +14,7 @@ class LoginForm(FlaskForm):
 class TripBasicsForm(FlaskForm):
     title = StringField('Trip Title', validators=[DataRequired(), Length(max=128)])
     slug = StringField('URL Slug', validators=[DataRequired(), Length(max=128)])
+    trip_abbr = StringField('Trip Abbreviation', validators=[Optional(), Length(min=2, max=4)])
     destination_text = StringField('Destination', validators=[DataRequired(), Length(max=128)])
     start_date = DateField('Start Date', validators=[DataRequired()])
     end_date = DateField('End Date', validators=[DataRequired()])
@@ -23,6 +24,14 @@ class TripBasicsForm(FlaskForm):
     hero_image = FileField('Hero Image', validators=[FileAllowed(['jpg', 'png', 'jpeg'], 'Images only!')])
     color = StringField('Calendar Color', default='#00D1C1')
     submit = SubmitField('Next')
+
+    def validate_trip_abbr(self, field):
+        from app.order_numbers import normalize_trip_abbr
+        if field.data:
+            cleaned = normalize_trip_abbr(field.data)
+            if len(cleaned) < 2 or len(cleaned) > 4:
+                raise ValidationError('Abbreviation must be 2–4 letters or digits.')
+            field.data = cleaned
 
 
 from wtforms import HiddenField

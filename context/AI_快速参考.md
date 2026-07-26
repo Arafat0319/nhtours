@@ -10,7 +10,20 @@
 | 端口 | **8080**（`PORT` 环境变量可改；不是 5000） |
 | 后台 | `http://localhost:8080/admin/login` |
 | 迁移 | `flask db upgrade`（在 flask-app 目录，激活 venv 后） |
-| 开发 DB | 本机 **MySQL 8** 推荐（`nhtours_dev`）；轻量 UI 可用 SQLite；测支付用 MySQL |
+| 开发 DB | 本机 **MySQL 8**；当前常用库名 **`nhtours`**（可从生产整库复制；见下） |
+| SSH 生产 | 本机 `ssh nhtours`（`~/.ssh/config` → `54.69.40.218`，见 `手册/安全手册.md`） |
+
+### 从生产复制数据到本地（按需）
+
+用于按客户测试数据改功能，避免反复 push 看效果：
+
+1. 线上：`mysqldump`（读 `/var/www/nhtours/flask-app/.env` 的 `DATABASE_URL`）→ `/tmp/nhtours_prod_dump.sql`
+2. 拉到本机：`flask-app/_prod_sync/`（已 gitignore）
+3. 本机：`DROP/CREATE` 本地库后导入（Windows：`MySQL Server 8.0\bin\mysql.exe`）
+4. 同步静态文件：`app/static/uploads/`、`app/static/trip_images/`（含护照等）
+5. 本地后台登录用**与生产相同**的 admin 账号
+
+**禁止**把 dump、`.env`、客户护照文件 commit 进仓库。
 
 ## 代码入口
 
@@ -19,6 +32,7 @@
 | 前台路由 | `flask-app/app/routes.py`（蓝图 `main`） |
 | 后台路由 + 登录 | `flask-app/app/admin/routes.py` |
 | 模型 | `flask-app/app/models.py` |
+| 业务单号 | `flask-app/app/order_numbers.py` |
 | 支付逻辑 | `flask-app/app/payments.py` |
 | App 工厂 | `flask-app/app/__init__.py` |
 | 生产 WSGI | `flask-app/wsgi.py` |
@@ -40,7 +54,49 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 - `PendingBooking.payment_intent_id`（可以是 `pi_…` 或 `free_…`）
 - 折扣抵「现在应付」；`$0` 勿建 Stripe PI
 - 未支付草稿：`expires_at=+24h`；03:00 cleanup → `expired` + `safe_cancel_payment_intent`
-- 报名在 `/trips/<slug>` **弹窗内** 5 步；File Upload：`POST /api/booking/upload`
+- 报名在 `/trips/<slug>` **弹窗内** 5 步；File Upload：`POST /api/booking/upload`（UI：自定义 dropzone，见 `05` / `booking-modal.css`）
+- DOB 日历：月/年 Uiverse 下拉（同 Gender）；选月年不关日历；逻辑在 `trip_booking.html`
+
+## 业务单号 Order number
+
+| 项 | 值 |
+|----|-----|
+| 格式 | `{YYMM}{ABBR}-{SEQ}` → `2612MT-001` |
+| YYMM | Trip `start_date` 出发年月（写入后改期不改旧号） |
+| ABBR | `Trip.trip_abbr`（标题前两实词首字母；Basics 可改） |
+| SEQ | 每 trip `001…`；取消不回收 |
+| 时机 | 正式 Booking 创建时；PendingBooking 不生成 |
+| 代码 | `app/order_numbers.py` → `assign_order_number` |
+| 展示 | 对外只显示 Order number；后台 + 小字内部 `id` |
+| 路由 | URL/API 仍用 `booking.id` |
+
+## 后台 Excel 导出
+
+| 项 | 值 |
+|----|-----|
+| 入口 | Manage → **Download Excel** |
+| 路由 | `GET /admin/trips/<id>/bookings/export` |
+| 内容 | 静态快照：Participants / Contact / Bookings Summary / **Canceled** |
+| Summary | Expected、Payments Received、**Refunds**、Net Paid、Balance due + Totals + Collected Funds |
+| 取消/退款 | 取消单在 Summary 标 cancelled 并显示退款；详表见 Canceled sheet |
+| 列宽 | 按内容撑开、不换行（`export_bookings` `_autosize`） |
+| 不再使用 | Power Query / Web 连接刷新；Manage「验证数据源」已移除 |
+
+## AI 快速参考 — 本地全量回归
+
+| 项 | 值 |
+|----|-----|
+| 冒烟编排 | `cd flask-app && python local_tests/run_all.py` |
+| 金钱 E2E | `python local_tests/e2e_full_suite.py`（Stripe Test 真扣/真退 + SES） |
+| Messaging | `python local_tests/test_messaging.py` |
+
+
+| 项 | 值 |
+|----|-----|
+| 口径 | **基础金额**退款；**卡手续费永不退** |
+| 定金 | 默认不退；勾选 **Also refund deposit** 才可退定金部分 |
+| $0 取消 | `amount=0` + Cancel booking；不要求 Payment / 不调 Stripe |
+| 代码 | `payments.py`（`payment_max_refund` / `stripe_refunded_as_base`）、`refund_booking`、`handle_refund` |
 
 ## 部署
 
@@ -85,4 +141,4 @@ push 前更新 context（至少 `07`）→ 用户确认 → 同一 commit push�
 | UI | `05` |
 | 部署 | `06` |
 
-**最后更新**: 2026-07-06（安全加固 + nh-audit 生产验证完成）
+**最后更新**: 2026-07-26（报名弹窗 UX：DOB 月年 / 文件上传 / 折扣间距）

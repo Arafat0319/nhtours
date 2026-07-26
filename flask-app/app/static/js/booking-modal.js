@@ -25,6 +25,14 @@
                 btn.classList.add('is-loading');
                 if (typeof btn.disabled !== 'undefined') btn.disabled = true;
             }
+            // 若上次停在付款成功页，开新单前先清结果态与支付会话
+            var resultWrap = document.getElementById('booking-modal-result');
+            var stuckOnResult = resultWrap && !resultWrap.classList.contains('hidden');
+            if (stuckOnResult && window.BookingWizard && typeof window.BookingWizard.prepareNewBooking === 'function') {
+                window.BookingWizard.prepareNewBooking({ keepFormData: false });
+            } else if (window.BookingWizard && typeof window.BookingWizard.showBookingModalResult === 'function') {
+                window.BookingWizard.showBookingModalResult(null);
+            }
             loadingOverlay.classList.remove('hidden');
             setTimeout(function() {
                 loadingOverlay.classList.add('hidden');
@@ -85,6 +93,14 @@
         function closeModal() {
             var scrollEl = document.getElementById('booking-modal-scroll');
             if (scrollEl) scrollEl.style.minHeight = '';
+            var resultWrap = document.getElementById('booking-modal-result');
+            var onResult = resultWrap && !resultWrap.classList.contains('hidden');
+            if (onResult && window.BookingWizard && typeof window.BookingWizard.prepareNewBooking === 'function') {
+                // 成功/失败结果页关闭：清结果态 + 支付会话，下次可重新下单
+                window.BookingWizard.prepareNewBooking({ keepFormData: false });
+            } else if (window.BookingWizard && typeof window.BookingWizard.showBookingModalResult === 'function') {
+                window.BookingWizard.showBookingModalResult(null);
+            }
             if (bookingModal) {
                 bookingModal.classList.add('hidden');
                 bookingModal.style.display = '';
