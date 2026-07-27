@@ -115,7 +115,7 @@
 | `/api/booking/upload` | POST | 报名文件上传（护照等），multipart `file` → `uploads/booking/` |
 | `/api/booking/<id>/summary` | GET | 付款后订单摘要 JSON：`trip_total`=套餐+附加目录价合计（**勿用**本笔 Payment.base，以免 $0 单变成 0）；`due_at_booking`/`fee`/`discount_amount`/`order_summary_lines` |
 | `/booking/payment/<id>` | GET | 独立支付页（邮件链接等） |
-| `/booking/<id>/receipt` | GET | 客户收据：**须 `?token=` 签名**（与分期链接同机制，默认约 2 年有效）；默认 PDF；`?format=html` 网页；无 token → 404 |
+| `/booking/<id>/receipt` | GET | 客户收据：**须 `?token=`**；默认 PDF（页脚 logo + **Due at booking**）；`?format=html` 网页；无 token → 404 |
 
 #### POST /api/payment/intent
 

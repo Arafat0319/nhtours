@@ -114,11 +114,12 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | Gunicorn | Unix socket `flask-app/nhtours.sock`（非 8000 端口） |
 | Nginx | `/etc/nginx/sites-enabled/nhtours` |
 | 触发部署 | 用户同意后才 `git push origin main` |
-| Workflow | 根目录 `.github/workflows/deploy.yml`（装依赖 + 校验 fpdf2） |
+| Workflow | 根目录 `.github/workflows/deploy.yml`（reset 前 chown；装依赖 + 校验 fpdf2） |
 | 域名脚本 | `deploy/setup-domain.sh`；DNS 验证 `deploy/verify-dns.ps1` |
 | Stripe Webhook | `https://nhtours.com/webhooks/stripe`（**仅沙盒** Test mode；Live 延后） |
 | 邮件 SES | **生产已配置**（`nhtours.com` / `us-west-2`，已出沙箱）；详见 `06` / `08` |
-| 收据邮件 | HTML：**Download Receipt** 按钮（签名 `?token=`，无明文裸链）+ PDF 附件；`/booking/<id>/receipt?token=…` |
+| 收据邮件 | HTML：**Download Receipt**（`?token=`）+ PDF 附件；页脚 logo `nexus-horizons-email.png`；PDF 含 **Due at booking** |
+| 报名校验 | 前端 `booking.js` + 后端 `booking_validation.py`（email/phone/name/dob/zip）；Promo 未选套餐 → `#discount-message` 琥珀提示 |
 | 安全审计 | `/var/log/nhtours/audit.log`；`nh-audit` / `nh-audit --all` / `nh-audit -f` |
 | 安全加固 | ✅ **生产已完成**（2026-07-06）；凭据轮换、审计、限流；详见 `06` / [手册/安全手册.md](../手册/安全手册.md) |
 | 生产 DB | **现网** VM 本机 MySQL → **目标** Lightsail 托管 MySQL（**方案 B 待迁移**；见 `08`） |
@@ -146,4 +147,4 @@ push 前更新 context（至少 `07`）→ 用户确认 → 同一 commit push�
 | UI | `05` |
 | 部署 | `06` |
 
-**最后更新**: 2026-07-27（Deploy venv=`flask-app/venv`；收据 PDF；正式页实验弹窗；summary trip_total）
+**最后更新**: 2026-07-27（收据 logo + Due at booking；Promo 提示；字段校验；Deploy chown）
