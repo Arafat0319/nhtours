@@ -1608,18 +1608,19 @@ def api_booking_summary(booking_id):
         Payment.stripe_payment_intent_id.isnot(None)
     ).order_by(Payment.created_at.desc()).first()
 
+    # Trip Total 始终为套餐+附加目录价合计（与弹窗一致）；勿用本笔 Payment.base（$0 单会变成 0）
+    trip_total_display = round(trip_total, 2)
+
     if payment and payment.final_amount_cents is not None:
         fee_dollars = (payment.fee_cents or 0) / 100.0
         due_at_booking = payment.final_amount_cents / 100.0
-        trip_total_display = (payment.base_amount_cents / 100.0) if payment.base_amount_cents is not None else round(trip_total, 2)
     else:
-        # $0 / 折扣免付：无卡支付记录时，Due/Amount Paid = 实际已付（通常为 0），勿用整单余额
+        # $0 / 折扣免付：无卡支付记录时，Due = 实际已付（通常为 0）
         fee_dollars = 0.0
         due_at_booking = float(booking.amount_paid or 0.0)
-        trip_total_display = round(trip_total, 2)
 
     return jsonify({
-        'trip_total': round(trip_total_display, 2),
+        'trip_total': trip_total_display,
         'fee': round(fee_dollars, 2),
         'due_at_booking': round(due_at_booking, 2),
         'amount_paid': round(float(booking.amount_paid or 0.0), 2),

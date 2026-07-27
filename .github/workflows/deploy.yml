@@ -33,8 +33,9 @@ jobs:
             else
               "$PYTHON" -m pip install -q -r requirements.txt
             fi
-            # 收据 PDF 强依赖；显式安装避免偶发漏装导致邮件下载链回退 HTML
-            "$PYTHON" -m pip install -q "fpdf2==2.8.3"
+            # 收据 PDF：强制安装并校验 import，失败则让 Deploy 红灯（避免静默回退 HTML）
+            "$PYTHON" -m pip install --force-reinstall -q "fpdf2==2.8.3"
+            "$PYTHON" -c "from fpdf import FPDF; print('fpdf_ok', getattr(FPDF, '__module__', 'fpdf'))"
             set -a
             if [ -f "$DEPLOY_ROOT/.env" ]; then
               . "$DEPLOY_ROOT/.env"
