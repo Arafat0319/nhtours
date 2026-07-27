@@ -5,11 +5,11 @@ alwaysApply: true
 
 # 推送前 context 同步
 
-用户同意 push **之前**：
+**硬性准则**：用户同意 push **之前**必须完成；漏写 context 不得推送。
 
-1. 按 **`context/11_推送与上下文同步.md`** 更新适用文档
+1. 按 **`context/11_推送与上下文同步.md`** 更新适用文档（UI→`05`，功能状态→`08`，给人看→`手册/` 等）
 2. **至少**写 `context/07_开发日志.md` 一条
-3. `git add` 含 **context/**，与代码同一 commit
+3. `git add` 含 **context/**（及已改的 `手册/`），与代码同一 commit
 4. 禁止在 context 写密钥/真实 `.env`
 
-顺序：改代码 → 更新 context → 用户确认 → commit → push
+顺序：改代码 → 更新 context（核对 11 检查表）→ 用户确认 → commit → push

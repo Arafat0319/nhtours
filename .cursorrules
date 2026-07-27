@@ -3,5 +3,5 @@
 - **人工文档**：`手册/` · **AI 文档**：`context/`（先读 `AI_快速参考.md`）
 - **未经用户同意不得** `git push origin main`（触发生产 Deploy）
 - **未经用户同意不得**改动页面前端视觉效果（测试/优化/排查中亦同；需改须先征得同意）
-- **push 前**：按 `context/11` 更新文档（至少 `07`）；详见 `.cursor/rules/*.mdc`
+- **每次 push 前必须**按 `context/11` 更新 context（至少 `07`，与代码同一 commit）；详见 `.cursor/rules/context-sync-before-push.mdc`
 - **Git 覆盖工作区前**：读 `context/10_防灾与备份机制.md`
