@@ -128,6 +128,12 @@
                         <span class="text-gray-900">$0.00</span>
                     </div>
                 {% endif %}
+                {% if due_at_booking is defined and due_at_booking is not none %}
+                <div class="flex justify-between">
+                    <span class="text-gray-600">Due at booking:</span>
+                    <span class="text-gray-900">${{ (due_at_booking)|format_price }}</span>
+                </div>
+                {% endif %}
                 {% set addons_total = namespace(value=0) %}
                 {% set seen_addon_ids = [] %}
                 {% for participant in booking.participants %}
@@ -148,6 +154,12 @@
                 <div class="flex justify-between">
                     <span class="text-gray-600">Add-ons:</span>
                     <span class="text-gray-900">${{ (addons_total.value)|format_price }}</span>
+                </div>
+                {% endif %}
+                {% if discount_amount is defined and discount_amount and discount_amount > 0 %}
+                <div class="flex justify-between">
+                    <span class="text-emerald-600">Discount{% if discount_code %} ({{ discount_code }}){% endif %}:</span>
+                    <span class="text-emerald-600">-${{ (discount_amount)|format_price }}</span>
                 </div>
                 {% endif %}
                 <div class="flex justify-between pt-2 border-t border-gray-300">
@@ -188,6 +200,12 @@
                 </button>
             </div>
             <div class="mt-4 text-center text-sm text-gray-500">
+                <img src="{{ url_for('static', filename='images/icons/nexus-horizons-email.png') }}"
+                     alt="Nexus Horizons"
+                     width="140"
+                     height="58"
+                     class="mx-auto mb-3"
+                     style="width:140px;height:auto;">
                 <p>Thank you for choosing Nexus Horizons Tours!</p>
                 <p class="mt-1">For inquiries, please contact us at info@nhtours.com</p>
             </div>

@@ -23,6 +23,9 @@ Payment details:
 {% for item in line_items -%}
 - {{ item.label }}: ${{ (item.amount)|format_price }}
 {% endfor %}
+{% if due_at_booking is defined and due_at_booking is not none -%}
+- Due at booking: ${{ (due_at_booking)|format_price }}
+{% endif -%}
 {% if discount_amount is defined and discount_amount > 0 -%}
 - Discount{% if discount_code %} ({{ discount_code }}){% endif %}: -${{ (discount_amount)|format_price }}
 {% endif -%}

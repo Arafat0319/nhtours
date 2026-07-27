@@ -308,6 +308,26 @@
   height: 40px;
   box-sizing: border-box;
 }
+#booking-modal #discount-message {
+  margin-top: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 500;
+}
+#booking-modal #discount-message.discount-msg--warn {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-left: 3px solid #0066ff;
+  color: #92400e;
+}
+#booking-modal #discount-message.discount-msg--error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-left: 3px solid #dc2626;
+  color: #b91c1c;
+}
 #booking-modal .apply-discount-btn-match {
   height: 40px;
   min-height: 40px;

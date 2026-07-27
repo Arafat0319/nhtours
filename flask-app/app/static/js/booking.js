@@ -1039,7 +1039,147 @@
             }
         }
 
+        // 格式校验（邮箱/电话/姓名/生日/邮编）：必填非空通过后再查格式
+        if (!validateFieldFormats(currentContainer, invalidFields)) {
+            isValid = false;
+        }
+
         return isValid;
+    }
+
+    /**
+     * 字段格式规则（与后端 booking_validation 对齐）
+     */
+    var BOOKING_FIELD_RE = {
+        email: /^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i,
+        phoneAllowed: /^[\d\s+\-().]+$/,
+        name: /^[\w\s\-'·.\u00C0-\u024F\u0400-\u04FF\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]{1,64}$/u,
+        zip: /^[A-Z0-9\s\-]{3,12}$/i,
+        dob: /^\d{4}-\d{2}-\d{2}$/
+    };
+
+    function bookingFormatMessage(kind) {
+        if (kind === 'email') return 'Please enter a valid email address.';
+        if (kind === 'phone') return 'Please enter a valid phone number.';
+        if (kind === 'name') return 'Please enter a valid name.';
+        if (kind === 'dob') return 'Please enter a valid date of birth.';
+        if (kind === 'zip') return 'Please enter a valid ZIP/postal code.';
+        return 'Invalid value.';
+    }
+
+    function checkBookingFormat(kind, value) {
+        var s = (value || '').trim();
+        if (!s) return true;
+        if (kind === 'email') return BOOKING_FIELD_RE.email.test(s);
+        if (kind === 'phone') {
+            if (!BOOKING_FIELD_RE.phoneAllowed.test(s)) return false;
+            var digits = s.replace(/\D/g, '');
+            return digits.length >= 7 && digits.length <= 15;
+        }
+        if (kind === 'name') return BOOKING_FIELD_RE.name.test(s);
+        if (kind === 'zip') return BOOKING_FIELD_RE.zip.test(s);
+        if (kind === 'dob') {
+            if (!BOOKING_FIELD_RE.dob.test(s)) return false;
+            var parts = s.split('-');
+            var y = parseInt(parts[0], 10);
+            var m = parseInt(parts[1], 10);
+            var d = parseInt(parts[2], 10);
+            var dt = new Date(y, m - 1, d);
+            if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return false;
+            var today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (dt > today) return false;
+            var maxAge = new Date(today.getFullYear() - 120, today.getMonth(), today.getDate());
+            if (dt < maxAge) return false;
+            return true;
+        }
+        return true;
+    }
+
+    function inferFormatKind(field) {
+        var name = (field.getAttribute('name') || '').toLowerCase();
+        var type = (field.getAttribute('type') || '').toLowerCase();
+        var qtype = (field.getAttribute('data-question-type') || '').toLowerCase();
+        if (qtype === 'email' || type === 'email' || name.indexOf('email') !== -1) return 'email';
+        if (qtype === 'phone' || qtype === 'tel' || type === 'tel' || name.indexOf('phone') !== -1) return 'phone';
+        if (qtype === 'date' || qtype === 'dob' || name.indexOf('_dob') !== -1 || name.indexOf('date_of_birth') !== -1) return 'dob';
+        if (name.indexOf('zip') !== -1 || name.indexOf('postal') !== -1) return 'zip';
+        if (
+            name.indexOf('first_name') !== -1 ||
+            name.indexOf('last_name') !== -1 ||
+            name.indexOf('middle_name') !== -1 ||
+            name === 'buyer_emergency_contact_name' ||
+            /emergency_contact_name/.test(name)
+        ) return 'name';
+        return null;
+    }
+
+    function markFormatError(field, message, invalidFields) {
+        field.classList.add('border-red-500', 'border-2');
+        field.style.borderColor = '#ef4444';
+        field.style.borderWidth = '2px';
+        var fieldContainer = field.closest('.flex.flex-col') || field.parentElement;
+        if (fieldContainer) {
+            var errorMsg = fieldContainer.querySelector('.error-message');
+            if (!errorMsg) {
+                errorMsg = document.createElement('span');
+                errorMsg.className = 'error-message text-red-500 text-xs mt-1 block';
+                if (field.nextSibling) {
+                    field.parentElement.insertBefore(errorMsg, field.nextSibling);
+                } else {
+                    field.parentElement.appendChild(errorMsg);
+                }
+            }
+            errorMsg.textContent = message;
+        }
+        if (invalidFields && invalidFields.indexOf(field) === -1) {
+            invalidFields.push(field);
+            if (invalidFields.length === 1) {
+                field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                try { field.focus(); } catch (e) { /* ignore */ }
+            }
+        }
+        var clearError = function() {
+            if (!checkBookingFormat(inferFormatKind(field), field.value) && (field.value || '').trim()) return;
+            field.classList.remove('border-red-500', 'border-2');
+            field.style.borderColor = '';
+            field.style.borderWidth = '';
+            var msg = field.closest('.flex.flex-col')?.querySelector('.error-message');
+            if (msg) msg.remove();
+            field.removeEventListener('input', clearError);
+            field.removeEventListener('change', clearError);
+        };
+        field.addEventListener('input', clearError);
+        field.addEventListener('change', clearError);
+    }
+
+    function validateFieldFormats(container, invalidFields) {
+        if (!container) return true;
+        var ok = true;
+        var fields = container.querySelectorAll('input, textarea, select');
+        fields.forEach(function(field) {
+            if (field.disabled || field.type === 'hidden' || field.type === 'checkbox' || field.type === 'radio' || field.type === 'file') return;
+            var kind = inferFormatKind(field);
+            if (!kind) return;
+            var val = field.value || '';
+            if (!val.trim()) return;
+            if (!checkBookingFormat(kind, val)) {
+                markFormatError(field, bookingFormatMessage(kind), invalidFields);
+                ok = false;
+            }
+        });
+        // Custom question types via data attribute on generated inputs
+        container.querySelectorAll('[data-question-type]').forEach(function(field) {
+            var kind = inferFormatKind(field);
+            if (!kind) return;
+            var val = field.value || '';
+            if (!val.trim()) return;
+            if (!checkBookingFormat(kind, val)) {
+                markFormatError(field, bookingFormatMessage(kind), invalidFields);
+                ok = false;
+            }
+        });
+        return ok;
     }
 
     /**
@@ -1235,6 +1375,7 @@
                             participant.custom_answers[question.id] = {
                                 question_id: question.id,
                                 label: question.label,
+                                type: question.type || 'text',
                                 value: input.value || ''
                             };
                         }
@@ -1441,6 +1582,7 @@
                             <label class="text-sm font-medium mb-1">${question.label}${requiredMark}</label>
                             <input type="text" name="${fieldName}" 
                                 class="fp-date w-full min-w-0" 
+                                data-question-type="date"
                                 placeholder="YYYY-MM-DD" ${requiredAttr}>
                         </div>
                     `;
@@ -1514,11 +1656,14 @@
                 } else {
                     // text, email, phone 等文本类型
                     const inputType = question.type === 'email' ? 'email' : (question.type === 'phone' ? 'tel' : 'text');
+                    const qTypeAttr = (question.type === 'email' || question.type === 'phone')
+                        ? ` data-question-type="${question.type}"`
+                        : '';
                     fieldsHtml += `
                         <div class="mt-4">
                             <label class="text-sm font-medium mb-1">${question.label}${requiredMark}</label>
                             <input type="${inputType}" name="${fieldName}" 
-                                class="w-full min-w-0" ${requiredAttr}>
+                                class="w-full min-w-0"${qTypeAttr} ${requiredAttr}>
                         </div>
                     `;
                 }
@@ -2044,11 +2189,30 @@
     }
 
     /**
+     * 折扣码提示（不依赖 Tailwind 动态类，避免继承成黑色字）
+     * kind: 'warn' | 'error'
+     */
+    function showDiscountMessage(text, kind) {
+        var messageEl = document.getElementById('discount-message');
+        if (!messageEl) return;
+        messageEl.textContent = text || '';
+        messageEl.className = 'discount-msg--' + (kind === 'warn' ? 'warn' : 'error');
+        messageEl.classList.remove('hidden');
+    }
+
+    function hideDiscountMessage() {
+        var messageEl = document.getElementById('discount-message');
+        if (!messageEl) return;
+        messageEl.textContent = '';
+        messageEl.className = '';
+        messageEl.classList.add('hidden');
+    }
+
+    /**
      * 应用折扣码
      */
     async function applyDiscountCode() {
         const codeInput = document.getElementById('discount-code-input');
-        const messageEl = document.getElementById('discount-message');
         const applyBtn = document.getElementById('apply-discount-btn');
         const discountInputSection = document.getElementById('discount-input-section');
         const discountApplied = document.getElementById('discount-applied');
@@ -2056,11 +2220,20 @@
         const discountAmountDisplay = document.getElementById('discount-amount-display');
         
         if (!codeInput || !codeInput.value.trim()) {
-            if (messageEl) {
-                messageEl.textContent = 'Please enter a discount code.';
-                messageEl.className = 'text-sm text-red-600 mt-2';
-                messageEl.classList.remove('hidden');
+            showDiscountMessage('Please enter a discount code.', 'error');
+            return;
+        }
+
+        // 未选套餐时不要调 API（固定额折扣会变成 $0 并显示已应用）
+        var hasPackage = false;
+        for (const pkg of (bookingData.packages || [])) {
+            if ((parseInt(pkg.quantity, 10) || 0) > 0) {
+                hasPackage = true;
+                break;
             }
+        }
+        if (!hasPackage) {
+            showDiscountMessage('Please select a package before applying a discount code.', 'warn');
             return;
         }
         
@@ -2123,6 +2296,8 @@
                 bookingData.discount_code_id = result.discount.id;
                 bookingData.discount_amount = result.discount.discount_amount;
                 
+                hideDiscountMessage();
+
                 // 更新 UI - 隐藏输入框，显示已应用状态
                 if (discountInputSection) discountInputSection.classList.add('hidden');
                 if (discountApplied) {
@@ -2175,20 +2350,11 @@
                 
                 console.log('Discount applied:', result.discount);
             } else {
-                // 显示错误
-                if (messageEl) {
-                    messageEl.textContent = result.message || 'Invalid discount code.';
-                    messageEl.className = 'text-sm text-red-600 mt-2';
-                    messageEl.classList.remove('hidden');
-                }
+                showDiscountMessage(result.message || 'Invalid discount code.', 'error');
             }
         } catch (error) {
             console.error('Error validating discount code:', error);
-            if (messageEl) {
-                messageEl.textContent = 'Error validating discount code. Please try again.';
-                messageEl.className = 'text-sm text-red-600 mt-2';
-                messageEl.classList.remove('hidden');
-            }
+            showDiscountMessage('Error validating discount code. Please try again.', 'error');
         } finally {
             if (applyBtn) {
                 applyBtn.disabled = false;
@@ -2216,6 +2382,7 @@
             codeInput.value = '';
         }
         if (discountApplied) discountApplied.classList.add('hidden');
+        hideDiscountMessage();
         
         // 更新订单总结
         updateOrderSummary();
@@ -2758,7 +2925,11 @@
             var discountMessage = document.getElementById('discount-message');
             if (discountInputSection) discountInputSection.classList.remove('hidden');
             if (discountApplied) discountApplied.classList.add('hidden');
-            if (discountMessage) discountMessage.classList.add('hidden');
+            if (discountMessage) {
+                discountMessage.textContent = '';
+                discountMessage.className = '';
+                discountMessage.classList.add('hidden');
+            }
         }
 
         if (goToPayment && stepContainers && stepContainers.length) {

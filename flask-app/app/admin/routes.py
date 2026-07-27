@@ -3817,6 +3817,7 @@ def generate_receipt(trip_id, booking_id):
     """生成预订收据 PDF（默认下载）；?format=html 查看网页版。"""
     from flask import make_response
     from app.receipt_pdf import build_booking_receipt_pdf
+    from app.routes import _booking_receipt_context
 
     trip = Trip.query.get_or_404(trip_id)
     booking = Booking.query.get_or_404(booking_id)
@@ -3825,61 +3826,31 @@ def generate_receipt(trip_id, booking_id):
         flash('Booking does not belong to this trip', 'error')
         return redirect(url_for('admin.manage_trip', id=trip_id))
 
-    expected_amount = 0.0
-    has_packages = False
-
-    for bp in booking.booking_packages:
-        if bp.package:
-            package_price = float(bp.package.price) if bp.package.price is not None else 0.0
-            quantity = int(bp.quantity) if bp.quantity is not None else 1
-            expected_amount += package_price * quantity
-            has_packages = True
-
-    for participant in booking.participants:
-        for booking_addon in participant.addons:
-            if booking_addon.addon:
-                addon_price = float(booking_addon.addon.price) if booking_addon.addon.price is not None else 0.0
-                quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 0
-                expected_amount += addon_price * quantity
-
-    discount_amount = float(booking.discount_amount) if booking.discount_amount else 0.0
-    expected_amount = max(0.0, expected_amount - discount_amount)
-
-    if not has_packages:
-        expected_amount = float(booking.amount_paid) if booking.amount_paid is not None else 0.0
-
-    participants_info = []
-    for participant in booking.participants:
-        addons_info = []
-        for booking_addon in participant.addons:
-            if booking_addon.addon:
-                addons_info.append({
-                    'name': booking_addon.addon.name,
-                    'quantity': booking_addon.quantity,
-                    'price': booking_addon.addon.price,
-                    'total': (booking_addon.addon.price or 0) * (booking_addon.quantity or 0)
-                })
-        participants_info.append({
-            'name': participant.name,
-            'email': participant.email,
-            'phone': participant.phone,
-            'addons': addons_info
-        })
+    ctx = _booking_receipt_context(booking)
+    if not ctx:
+        flash('Unable to build receipt for this booking', 'error')
+        return redirect(url_for('admin.manage_trip', id=trip_id))
 
     if request.args.get('format') == 'html':
         return render_template(
             'admin/trips/receipt.html',
-            trip=trip,
-            booking=booking,
-            expected_amount=expected_amount,
-            participants_info=participants_info,
+            trip=ctx['trip'],
+            booking=ctx['booking'],
+            expected_amount=ctx['expected_amount'],
+            due_at_booking=ctx.get('due_at_booking'),
+            discount_amount=ctx.get('discount_amount'),
+            discount_code=ctx.get('discount_code'),
+            participants_info=ctx['participants_info'],
         )
 
     pdf_bytes = build_booking_receipt_pdf(
-        booking=booking,
-        trip=trip,
-        expected_amount=expected_amount,
-        participants_info=participants_info,
+        booking=ctx['booking'],
+        trip=ctx['trip'],
+        expected_amount=ctx['expected_amount'],
+        participants_info=ctx['participants_info'],
+        due_at_booking=ctx.get('due_at_booking'),
+        discount_amount=ctx.get('discount_amount'),
+        discount_code=ctx.get('discount_code'),
     )
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'

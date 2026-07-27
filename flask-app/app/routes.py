@@ -600,6 +600,15 @@ def handle_booking_submission(request, trip):
         
         if not buyer_info.get('email'):
             return jsonify({'success': False, 'error': 'Buyer email is required'}), 400
+
+        from app.booking_validation import validate_booking_payload
+        format_errors = validate_booking_payload(buyer_info, participants_data)
+        if format_errors:
+            return jsonify({
+                'success': False,
+                'error': format_errors[0],
+                'errors': format_errors,
+            }), 400
         
         # 检查库存（不锁定，只检查）
         for pkg_data in packages_data:
@@ -1633,6 +1642,60 @@ def api_booking_summary(booking_id):
     })
 
 
+def _compute_due_at_booking_gross(booking):
+    """
+    报名当时应付（折扣前）：定金×数量 + 报名日已逾期分期×数量 + 附加项。
+    与 calculate_initial_payment / 弹窗 Due at Booking 口径一致；逾期以 booking.created_at 为准。
+    """
+    ref = booking.created_at.date() if getattr(booking, 'created_at', None) else date.today()
+    deposit_amount = 0.0
+    overdue_total = 0.0
+    addons_total = 0.0
+
+    for bp in booking.booking_packages:
+        package = bp.package
+        if not package:
+            continue
+        quantity = int(bp.quantity or 1)
+        plan = (bp.payment_plan_type or 'full').strip()
+
+        if plan == 'deposit_installment' and package.payment_plan_config:
+            config = package.payment_plan_config
+            if config and config.get('enabled'):
+                deposit = config.get('deposit_amount', 0.0) or config.get('deposit', 0.0)
+                deposit_amount += float(deposit or 0) * quantity
+                for inst_data in config.get('installments', []) or []:
+                    due_date_str = inst_data.get('date')
+                    if not due_date_str:
+                        continue
+                    try:
+                        due_date = datetime.strptime(due_date_str, '%Y-%m-%d').date()
+                        if due_date < ref:
+                            overdue_total += float(inst_data.get('amount', 0.0) or 0) * quantity
+                    except (ValueError, TypeError):
+                        continue
+            elif package.price:
+                deposit_amount += float(package.price) * quantity
+        else:
+            if package.price:
+                deposit_amount += float(package.price) * quantity
+
+    seen = set()
+    for participant in booking.participants:
+        for booking_addon in participant.addons:
+            if booking_addon.id in seen or not booking_addon.addon:
+                continue
+            seen.add(booking_addon.id)
+            addons_total += float(booking_addon.addon.price or 0) * int(booking_addon.quantity or 0)
+    for booking_addon in booking.addons:
+        if booking_addon.id in seen or not booking_addon.addon:
+            continue
+        seen.add(booking_addon.id)
+        addons_total += float(booking_addon.addon.price or 0) * int(booking_addon.quantity or 0)
+
+    return round(deposit_amount + overdue_total + addons_total, 2)
+
+
 def _booking_receipt_context(booking):
     """Shared receipt amounts + participants for HTML/PDF."""
     trip = Trip.query.get(booking.trip_id) if booking.trip_id else None
@@ -1676,10 +1739,17 @@ def _booking_receipt_context(booking):
             'addons': addons_info
         })
 
+    discount_code = None
+    if getattr(booking, 'discount_code', None) and getattr(booking.discount_code, 'code', None):
+        discount_code = booking.discount_code.code
+
     return {
         'trip': trip,
         'booking': booking,
         'expected_amount': expected_amount,
+        'due_at_booking': _compute_due_at_booking_gross(booking),
+        'discount_amount': discount_amount,
+        'discount_code': discount_code,
         'participants_info': participants_info,
     }
 
@@ -1727,6 +1797,9 @@ def booking_receipt(booking_id):
             trip=ctx['trip'],
             expected_amount=ctx['expected_amount'],
             participants_info=ctx['participants_info'],
+            due_at_booking=ctx.get('due_at_booking'),
+            discount_amount=ctx.get('discount_amount'),
+            discount_code=ctx.get('discount_code'),
         )
     except ImportError as e:
         current_app.logger.exception(f'receipt PDF dependency missing: {e}')
@@ -3633,6 +3706,12 @@ def _receipt_public_download_url(booking_id):
     return f'{base}/booking/{int(booking_id)}/receipt?token={token}'
 
 
+def _email_brand_logo_url():
+    """收据邮件页脚品牌图（PNG；邮件客户端基本不支持 SVG）。"""
+    base = (current_app.config.get('BASE_URL') or '').rstrip('/') or 'https://nhtours.com'
+    return f'{base}/static/images/icons/nexus-horizons-email.png'
+
+
 def _receipt_pdf_attachment(booking):
     """生成收据 PDF 附件；失败返回 None（邮件仍可发，仅无附件）。"""
     try:
@@ -3645,6 +3724,9 @@ def _receipt_pdf_attachment(booking):
             trip=ctx['trip'],
             expected_amount=ctx['expected_amount'],
             participants_info=ctx['participants_info'],
+            due_at_booking=ctx.get('due_at_booking'),
+            discount_amount=ctx.get('discount_amount'),
+            discount_code=ctx.get('discount_code'),
         )
         order_label = getattr(booking, 'order_number', None) or booking.id
         safe_name = ''.join(c if c.isalnum() or c in '-_' else '-' for c in str(order_label))
@@ -3755,6 +3837,7 @@ def send_booking_confirmation_email(booking, is_full_payment):
         'customer_name': f"{booking.buyer_first_name or ''} {booking.buyer_last_name or ''}".strip() or 'Customer',
         'customer_email': booking.buyer_email or '',
         'line_items': line_items,
+        'due_at_booking': _compute_due_at_booking_gross(booking),
         'base_amount': base_amount_cents / 100.0,
         'fee_amount': fee_cents / 100.0,
         'total_amount': total_cents / 100.0,
@@ -3762,6 +3845,7 @@ def send_booking_confirmation_email(booking, is_full_payment):
         'discount_code': discount_code,
         'amount_charged_label': 'Amount charged today',
         'receipt_download_url': _receipt_public_download_url(booking.id),
+        'email_logo_url': _email_brand_logo_url(),
     }
 
     html_body = render_template('emails/receipt.html', **context)
@@ -3837,6 +3921,7 @@ def send_installment_confirmation_email(installment):
         'discount_code': None,
         'amount_charged_label': f'Installment #{installment.installment_number} charged',
         'receipt_download_url': _receipt_public_download_url(booking.id),
+        'email_logo_url': _email_brand_logo_url(),
     }
 
     html_body = render_template('emails/receipt.html', **context)

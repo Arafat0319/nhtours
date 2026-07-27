@@ -1,8 +1,17 @@
 """Generate booking receipt PDF for download."""
 
 from io import BytesIO
+from pathlib import Path
 
 from fpdf import FPDF
+
+_EMAIL_LOGO = (
+    Path(__file__).resolve().parent
+    / "static"
+    / "images"
+    / "icons"
+    / "nexus-horizons-email.png"
+)
 
 
 def _money(value):
@@ -26,14 +35,28 @@ def _safe(text):
 
 class ReceiptPDF(FPDF):
     def footer(self):
-        self.set_y(-18)
+        # Logo + two thank-you lines
+        self.set_y(-36)
+        if _EMAIL_LOGO.is_file():
+            logo_w = 34
+            x = (self.w - logo_w) / 2
+            self.image(str(_EMAIL_LOGO), x=x, y=self.get_y(), w=logo_w)
+            self.set_y(self.get_y() + 15)
         self.set_font("Helvetica", size=9)
         self.set_text_color(120, 120, 120)
         self.cell(0, 5, "Thank you for choosing Nexus Horizons Tours!", align="C", new_x="LMARGIN", new_y="NEXT")
         self.cell(0, 5, "For inquiries, please contact us at info@nhtours.com", align="C")
 
 
-def build_booking_receipt_pdf(booking, trip, expected_amount, participants_info=None):
+def build_booking_receipt_pdf(
+    booking,
+    trip,
+    expected_amount,
+    participants_info=None,
+    due_at_booking=None,
+    discount_amount=None,
+    discount_code=None,
+):
     """
     Build a PDF receipt for a booking.
 
@@ -41,8 +64,12 @@ def build_booking_receipt_pdf(booking, trip, expected_amount, participants_info=
         bytes: PDF file content
     """
     participants_info = participants_info or []
+    if discount_amount is None:
+        discount_amount = float(getattr(booking, "discount_amount", 0) or 0)
+    if discount_code is None and getattr(booking, "discount_code", None):
+        discount_code = getattr(booking.discount_code, "code", None)
     pdf = ReceiptPDF(format="Letter")
-    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.set_auto_page_break(auto=True, margin=40)
     pdf.add_page()
     pdf.set_margins(18, 18, 18)
 
@@ -155,6 +182,10 @@ def build_booking_receipt_pdf(booking, trip, expected_amount, participants_info=
             pdf.cell(130, 6, _safe(f"{bp.package.name} x{qty}:"))
             pdf.cell(0, 6, _money(price), align="R", new_x="LMARGIN", new_y="NEXT")
 
+    if due_at_booking is not None:
+        pdf.cell(130, 6, "Due at booking:")
+        pdf.cell(0, 6, _money(due_at_booking), align="R", new_x="LMARGIN", new_y="NEXT")
+
     addons_total = 0.0
     seen = set()
     for participant in booking.participants:
@@ -173,12 +204,10 @@ def build_booking_receipt_pdf(booking, trip, expected_amount, participants_info=
         pdf.cell(130, 6, "Add-ons:")
         pdf.cell(0, 6, _money(addons_total), align="R", new_x="LMARGIN", new_y="NEXT")
 
-    discount = float(getattr(booking, "discount_amount", 0) or 0)
+    discount = float(discount_amount or 0)
     if discount > 0:
         pdf.set_text_color(16, 185, 129)
-        code = ""
-        if getattr(booking, "discount_code", None) and getattr(booking.discount_code, "code", None):
-            code = f" ({booking.discount_code.code})"
+        code = f" ({discount_code})" if discount_code else ""
         pdf.cell(130, 6, _safe(f"Discount{code}:"))
         pdf.cell(0, 6, f"-{_money(discount)}", align="R", new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(55, 65, 81)
