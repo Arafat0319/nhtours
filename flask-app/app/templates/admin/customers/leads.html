@@ -105,12 +105,34 @@
         </div>
     </div>
 
+    <!-- Bulk bar（勾选后出现） -->
+    {% if current_user.is_admin %}
+    <div id="leadsBulkBar" class="hidden bg-white rounded-lg shadow-sm border border-gray-200 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <p class="text-sm text-gray-600">
+            <span id="leadsSelectedCount" class="font-semibold text-gray-900">0</span> selected
+        </p>
+        <div class="flex items-center gap-2">
+            <button type="button" id="leadsBulkDeleteBtn"
+                class="px-3 py-1.5 text-sm font-medium rounded-md bg-red-600 text-white hover:bg-red-700">
+                Delete selected
+            </button>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Leads Table（与 Testimonials 同套：table-fixed、data 属性菜单、截断） -->
     <div class="bg-white rounded-lg shadow-sm overflow-hidden">
         <table class="w-full table-fixed divide-y divide-gray-200">
             <thead class="bg-gray-50">
                 <tr>
-                    <th scope="col" class="w-[20%] px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    {% if current_user.is_admin %}
+                    <th scope="col" class="w-[4%] px-2 py-3 text-center">
+                        <input type="checkbox" id="leadsSelectAll"
+                            class="rounded border-gray-300 text-wetravel-cyan focus:ring-wetravel-cyan"
+                            title="Select all on this page" aria-label="Select all on this page">
+                    </th>
+                    {% endif %}
+                    <th scope="col" class="{% if current_user.is_admin %}w-[18%]{% else %}w-[20%]{% endif %} px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Contact
                     </th>
                     <th scope="col" class="w-[12%] px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -119,7 +141,7 @@
                     <th scope="col" class="w-[12%] px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Interest
                     </th>
-                    <th scope="col" class="w-[28%] px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th scope="col" class="{% if current_user.is_admin %}w-[26%]{% else %}w-[28%]{% endif %} px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Message
                     </th>
                     <th scope="col" class="w-[10%] px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -143,6 +165,12 @@
                     data-email="{{ (lead.email or '')|lower }}"
                     data-phone="{{ (lead.phone or '')|lower }}"
                     data-organization="{{ (lead.organization or '')|lower }}">
+                    {% if current_user.is_admin %}
+                    <td class="px-2 py-3 text-center align-top">
+                        <input type="checkbox" class="lead-row-check rounded border-gray-300 text-wetravel-cyan focus:ring-wetravel-cyan"
+                            value="{{ lead.id }}" aria-label="Select lead {{ lead.id }}">
+                    </td>
+                    {% endif %}
                     <td class="px-3 py-3 overflow-hidden">
                         <div class="text-sm font-medium text-gray-900 truncate" title="{{ lead.name or '-' }}">{{ lead.name or '-' }}</div>
                         {% if lead.email %}
@@ -210,7 +238,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="7" class="px-4 py-8 text-center text-sm text-gray-500">
+                    <td colspan="{% if current_user.is_admin %}8{% else %}7{% endif %}" class="px-4 py-8 text-center text-sm text-gray-500">
                         No leads found.
                     </td>
                 </tr>
@@ -220,6 +248,37 @@
         {% include 'admin/includes/pagination.html' %}
     </div>
 </div>
+
+<!-- Bulk Delete Confirmation Modal -->
+{% if current_user.is_admin %}
+<div id="bulkDeleteModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3 text-center">
+            <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                <svg class="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+            </div>
+            <h3 class="text-lg leading-6 font-medium text-gray-900 mt-5">Delete selected leads</h3>
+            <div class="mt-2 px-7 py-3">
+                <p class="text-sm text-gray-500">
+                    Permanently delete <span id="bulkDeleteCount" class="font-semibold text-gray-900">0</span> lead(s)? This cannot be undone.
+                </p>
+            </div>
+            <div class="items-center px-4 py-3">
+                <button type="button" id="confirmBulkDeleteBtn"
+                    class="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md w-full shadow-sm hover:bg-red-700">
+                    Delete
+                </button>
+                <button type="button" id="cancelBulkDeleteBtn"
+                    class="mt-2 px-4 py-2 bg-gray-300 text-gray-800 text-sm font-medium rounded-md w-full shadow-sm hover:bg-gray-400">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <!-- Delete Confirmation Modal -->
 <div id="deleteModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
@@ -355,6 +414,92 @@ document.addEventListener('DOMContentLoaded', function() {
             );
         });
     });
+
+    // —— Bulk select / delete ——
+    const selectAll = document.getElementById('leadsSelectAll');
+    const bulkBar = document.getElementById('leadsBulkBar');
+    const selectedCountEl = document.getElementById('leadsSelectedCount');
+    const bulkDeleteBtn = document.getElementById('leadsBulkDeleteBtn');
+    const bulkDeleteModal = document.getElementById('bulkDeleteModal');
+    const confirmBulkDeleteBtn = document.getElementById('confirmBulkDeleteBtn');
+    const cancelBulkDeleteBtn = document.getElementById('cancelBulkDeleteBtn');
+    const bulkDeleteCountEl = document.getElementById('bulkDeleteCount');
+
+    function getLeadCheckboxes() {
+        return Array.from(document.querySelectorAll('.lead-row-check'));
+    }
+
+    function getSelectedLeadIds() {
+        return getLeadCheckboxes().filter((c) => c.checked).map((c) => Number(c.value));
+    }
+
+    function syncLeadsBulkUI() {
+        const boxes = getLeadCheckboxes();
+        const selected = boxes.filter((c) => c.checked);
+        const n = selected.length;
+        if (selectedCountEl) selectedCountEl.textContent = String(n);
+        if (bulkBar) bulkBar.classList.toggle('hidden', n === 0);
+        if (selectAll && boxes.length) {
+            selectAll.checked = n === boxes.length;
+            selectAll.indeterminate = n > 0 && n < boxes.length;
+        }
+    }
+
+    if (selectAll) {
+        selectAll.addEventListener('change', () => {
+            getLeadCheckboxes().forEach((c) => { c.checked = selectAll.checked; });
+            syncLeadsBulkUI();
+        });
+    }
+    getLeadCheckboxes().forEach((c) => c.addEventListener('change', syncLeadsBulkUI));
+    if (bulkDeleteBtn) {
+        bulkDeleteBtn.addEventListener('click', () => {
+            const ids = getSelectedLeadIds();
+            if (!ids.length || !bulkDeleteModal) return;
+            if (bulkDeleteCountEl) bulkDeleteCountEl.textContent = String(ids.length);
+            bulkDeleteModal.classList.remove('hidden');
+        });
+    }
+    function closeBulkDeleteModal() {
+        if (bulkDeleteModal) bulkDeleteModal.classList.add('hidden');
+    }
+    if (cancelBulkDeleteBtn) cancelBulkDeleteBtn.addEventListener('click', closeBulkDeleteModal);
+    if (bulkDeleteModal) {
+        bulkDeleteModal.addEventListener('click', (event) => {
+            if (event.target === bulkDeleteModal) closeBulkDeleteModal();
+        });
+    }
+    if (confirmBulkDeleteBtn) {
+        confirmBulkDeleteBtn.addEventListener('click', async () => {
+            const ids = getSelectedLeadIds();
+            if (!ids.length) return;
+            confirmBulkDeleteBtn.disabled = true;
+            try {
+                const response = await fetch('/admin/customers/leads/bulk-delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids }),
+                });
+                const data = await response.json();
+                if (data.success) {
+                    closeBulkDeleteModal();
+                    if (typeof showToast === 'function') {
+                        showToast(data.message || 'Deleted', 'success');
+                    }
+                    setTimeout(() => location.reload(), 400);
+                } else if (typeof showToast === 'function') {
+                    showToast(data.message || 'Delete failed', 'error');
+                }
+            } catch (err) {
+                console.error(err);
+                if (typeof showToast === 'function') {
+                    showToast('Delete failed, please try again', 'error');
+                }
+            } finally {
+                confirmBulkDeleteBtn.disabled = false;
+            }
+        });
+    }
 
     const actionModal = document.getElementById('actionModal');
     actionModal.addEventListener('click', function(event) {

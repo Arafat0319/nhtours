@@ -1526,6 +1526,31 @@ def delete_lead(id):
         return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
 
 
+@bp.route('/customers/leads/bulk-delete', methods=['POST'])
+@admin_required
+def bulk_delete_leads():
+    """批量删除 Lead（仅删除请求中的 id 列表）"""
+    data = request.get_json(silent=True) or {}
+    raw_ids = data.get('ids') or []
+    try:
+        ids = sorted({int(x) for x in raw_ids})
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'Invalid ids'}), 400
+    if not ids:
+        return jsonify({'success': False, 'message': 'No leads selected'}), 400
+    if len(ids) > 200:
+        return jsonify({'success': False, 'message': 'Too many ids (max 200)'}), 400
+
+    try:
+        deleted = Lead.query.filter(Lead.id.in_(ids)).delete(synchronize_session=False)
+        db.session.commit()
+        return jsonify({'success': True, 'message': f'Deleted {deleted} lead(s)', 'deleted': deleted})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error bulk deleting leads: {str(e)}")
+        return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
+
+
 @bp.route('/customers/testimonials')
 @login_required
 def testimonials():
@@ -1793,6 +1818,44 @@ def delete_testimonial(id):
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error deleting testimonial: {str(e)}")
+        return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
+
+
+@bp.route('/customers/testimonials/bulk-delete', methods=['POST'])
+@login_required
+def bulk_delete_testimonials():
+    """批量删除 Testimonials（仅请求中的 id；含 approved 时需 confirm_approved）"""
+    data = request.get_json(silent=True) or {}
+    raw_ids = data.get('ids') or []
+    confirm_approved = bool(data.get('confirm_approved'))
+    try:
+        ids = sorted({int(x) for x in raw_ids})
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'Invalid ids'}), 400
+    if not ids:
+        return jsonify({'success': False, 'message': 'No testimonials selected'}), 400
+    if len(ids) > 200:
+        return jsonify({'success': False, 'message': 'Too many ids (max 200)'}), 400
+
+    rows = Testimonial.query.filter(Testimonial.id.in_(ids)).all()
+    if not rows:
+        return jsonify({'success': False, 'message': 'No matching testimonials'}), 404
+    approved_count = sum(1 for r in rows if r.status == 'approved')
+    if approved_count and not confirm_approved:
+        return jsonify({
+            'success': False,
+            'need_confirm_approved': True,
+            'approved_count': approved_count,
+            'message': f'{approved_count} selected item(s) are approved (homepage carousel). Confirm to delete.',
+        }), 400
+
+    try:
+        deleted = Testimonial.query.filter(Testimonial.id.in_(ids)).delete(synchronize_session=False)
+        db.session.commit()
+        return jsonify({'success': True, 'message': f'Deleted {deleted} testimonial(s)', 'deleted': deleted})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error bulk deleting testimonials: {str(e)}")
         return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
 
 

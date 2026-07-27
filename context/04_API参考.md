@@ -83,6 +83,8 @@
 | `/admin/customers` | GET | 客户列表 |
 | `/admin/customers/<id>` | GET | 客户详情 |
 | `/admin/customers/leads` | GET | 潜在客户列表 |
+| `/admin/customers/leads/<id>/delete` | POST | 删除单条（admin） |
+| `/admin/customers/leads/bulk-delete` | POST | 批量删除 JSON `{ ids: [...] }`（admin；最多 200） |
 | `/admin/customers/testimonials` | GET | Testimonials 列表；`?status=`、`?source=homepage\|feedback` |
 | `/admin/customers/testimonials/save` | POST | 弹窗创建/更新 JSON `{ id?, quote, author_name, organization?, status }` |
 | `/admin/customers/testimonials/<id>/json` | GET | 编辑弹窗加载单条 JSON |
@@ -92,6 +94,7 @@
 | `/admin/customers/testimonials/<id>/approve` | POST | 批准 |
 | `/admin/customers/testimonials/<id>/reject` | POST | 拒绝 |
 | `/admin/customers/testimonials/<id>/delete` | POST | 删除 |
+| `/admin/customers/testimonials/bulk-delete` | POST | 批量删除 `{ ids, confirm_approved? }`；含 approved 须确认 |
 
 ### 数据导出
 
