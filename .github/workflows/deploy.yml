@@ -19,7 +19,8 @@ jobs:
           script: |
             set -e
             DEPLOY_ROOT=/var/www/nhtours
-            VENV="$DEPLOY_ROOT/venv"
+            # 必须与 systemd nhtours.service 一致（gunicorn 用 flask-app/venv，不是仓库根 venv）
+            VENV="$DEPLOY_ROOT/flask-app/venv"
             cd "$DEPLOY_ROOT"
             git fetch origin main
             git reset --hard origin/main
@@ -36,14 +37,17 @@ jobs:
             # 收据 PDF：强制安装并校验 import，失败则让 Deploy 红灯（避免静默回退 HTML）
             "$PYTHON" -m pip install --force-reinstall -q "fpdf2==2.8.3"
             "$PYTHON" -c "from fpdf import FPDF; print('fpdf_ok', getattr(FPDF, '__module__', 'fpdf'))"
+            cd "$DEPLOY_ROOT/flask-app"
+            PYTHONPATH=. "$PYTHON" -c "from app.receipt_pdf import build_booking_receipt_pdf; print('receipt_pdf_ok')"
             set -a
-            if [ -f "$DEPLOY_ROOT/.env" ]; then
+            if [ -f "$DEPLOY_ROOT/flask-app/.env" ]; then
+              . "$DEPLOY_ROOT/flask-app/.env"
+            elif [ -f "$DEPLOY_ROOT/.env" ]; then
               . "$DEPLOY_ROOT/.env"
             fi
             set +a
             export FLASK_APP=wsgi.py
             export FLASK_ENV=production
-            cd "$DEPLOY_ROOT/flask-app"
             "$PYTHON" -m flask db upgrade
             sudo bash "$DEPLOY_ROOT/deploy/security/setup_audit_log.sh" || true
             sudo systemctl restart nhtours || true
