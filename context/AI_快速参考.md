@@ -146,7 +146,13 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 首页提交 | `POST /`，`form=testimonial` |
 | Feedback 页 | `/feedback`（不进主导航） |
 | 数据表 | `testimonials`；`source=homepage\|feedback` |
-| 后台 | `/admin/customers/testimonials` |
+| 后台 | `/admin/customers/testimonials`；勾选批量删除（含 approved 须确认） |
+
+## Leads
+
+| 项 | 值 |
+|----|-----|
+| 后台 | `/admin/customers/leads`；折叠 Show more；**批量删除** `POST .../bulk-delete`（admin） |
 
 ## 协作规则
 
