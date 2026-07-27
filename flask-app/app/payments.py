@@ -414,6 +414,24 @@ def process_refund(payment_intent_id, amount, reason=None):
         return None, str(e)
 
 
+def cancel_unpaid_installments(booking):
+    """
+    订单取消后：未付分期（pending/overdue）标为 cancelled，定时催款不再命中。
+    已付分期不动。调用方负责 commit。
+    """
+    from app.models import InstallmentPayment
+
+    if not booking or not getattr(booking, 'id', None):
+        return 0
+    rows = InstallmentPayment.query.filter(
+        InstallmentPayment.booking_id == booking.id,
+        InstallmentPayment.status.in_(('pending', 'overdue')),
+    ).all()
+    for inst in rows:
+        inst.status = 'cancelled'
+    return len(rows)
+
+
 def apply_refund_to_ledger(payment, booking, refund_amount, reason=None, stripe_refund_id=None,
                            cancel_booking=False, manual_only=False):
     """
@@ -464,6 +482,7 @@ def apply_refund_to_ledger(payment, booking, refund_amount, reason=None, stripe_
             booking.amount_paid = 0.0
         if cancel_booking or booking.amount_paid == 0.0:
             booking.status = 'cancelled'
+            cancel_unpaid_installments(booking)
     elif booking.status == 'fully_paid':
         booking.status = 'deposit_paid'
 

@@ -2497,47 +2497,29 @@ def send_installment_reminder(installment_id):
         return jsonify({'success': False, 'error': 'Booking not found'}), 404
     
     try:
-        # 生成支付链接（TODO: 实现支付页面路由）
-        payment_token = generate_installment_token(installment.id)
-        payment_link = url_for(
-            'main.pay_installment',
-            installment_id=installment.id,
-            token=payment_token,
-            _external=True
-        )
-        
-        subject = f"Payment Reminder: {installment.booking.trip.title if installment.booking.trip else 'Trip Booking'}"
-        body = f"""
-        Dear {installment.booking.buyer_first_name or 'Customer'},
-        
-        This is a reminder that your installment payment is due soon.
-        
-        Payment Details:
-        - Installment #{installment.installment_number}
-        - Amount: ${installment.amount:.2f}
-        - Due Date: {installment.due_date.strftime('%B %d, %Y') if installment.due_date else 'N/A'}
-        - Order number: {installment.booking.order_number or installment.booking.id}
-        
-        Please complete your payment here: {payment_link}
-        
-        Thank you!
-        
-        Best regards,
-        Nexus Horizons Team
-        """
-        
-        send_email_via_ses(
-            to=installment.booking.buyer_email,
-            subject=subject,
-            body=body
-        )
-        
-        # 更新提醒记录
+        from app.tasks import send_installment_reminder_email, send_overdue_reminder_email
+
+        today = date.today()
+        due = installment.due_date
+        if due and due < today:
+            ok = send_overdue_reminder_email(installment, (today - due).days)
+        elif due:
+            ok = send_installment_reminder_email(
+                installment, days_until_due=max(0, (due - today).days)
+            )
+        else:
+            ok = send_installment_reminder_email(installment, days_until_due=3)
+
+        if not ok:
+            return jsonify({'success': False, 'error': 'Failed to send reminder email'}), 500
+
         installment.reminder_sent = True
         installment.reminder_sent_at = datetime.utcnow()
         installment.reminder_count = (installment.reminder_count or 0) + 1
+        if due and due < today and installment.status == 'pending':
+            installment.status = 'overdue'
         db.session.commit()
-        
+
         return jsonify({
             'success': True,
             'message': 'Reminder email sent successfully'
@@ -3973,6 +3955,8 @@ def refund_booking(trip_id, booking_id):
             booking.status = 'cancelled'
             if float(booking.amount_paid or 0) <= 0.001:
                 booking.amount_paid = 0.0
+            from app.payments import cancel_unpaid_installments
+            cancel_unpaid_installments(booking)
             db.session.commit()
             return jsonify({
                 'success': True,

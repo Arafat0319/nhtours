@@ -1824,26 +1824,32 @@ def booking_success():
     booking_id = request.args.get('booking_id', type=int)
     booking = Booking.query.get(booking_id) if booking_id else None
     payment = None
+    payment_status = 'pending'
     if booking_id:
-        payment = Payment.query.filter(
-            Payment.booking_id == booking_id,
-            Payment.stripe_payment_intent_id.isnot(None)
-        ).order_by(Payment.created_at.desc()).first()
-    
-    # 确定 payment_status
+        payments = (
+            Payment.query.filter(
+                Payment.booking_id == booking_id,
+                Payment.stripe_payment_intent_id.isnot(None),
+            )
+            .order_by(Payment.created_at.desc())
+            .all()
+        )
+        # 优先展示已成功的付款；勿被「打开分期页时新建的 pending/failed PI」盖住
+        payment = next((p for p in payments if p.status == 'succeeded'), None)
+        if not payment and payments:
+            payment = payments[0]
+
     if payment:
-        payment_status = payment.status
+        payment_status = payment.status or 'pending'
     elif booking and booking.status in ('deposit_paid', 'fully_paid'):
         # $0 订单：没有 Payment 记录，但 Booking 状态已确认
         payment_status = 'succeeded'
-    else:
-        payment_status = 'pending'
-    
+
     return render_template(
         'booking/success.html',
         booking_id=booking_id,
         booking=booking,
-        payment_status=payment_status
+        payment_status=payment_status,
     )
 
 
@@ -2338,27 +2344,27 @@ def pay_installment(installment_id):
     from app.models import InstallmentPayment
 
     token = request.args.get('token')
-    
+
     installment = InstallmentPayment.query.options(
         joinedload(InstallmentPayment.booking).joinedload(Booking.trip)
     ).get_or_404(installment_id)
 
     if not verify_installment_token(token, installment.id):
         abort(403)
-    
+
     if installment.status == 'paid':
         flash('This installment has already been paid.', 'info')
         return redirect(url_for('main.booking_success', booking_id=installment.booking_id))
-    
+
     booking = installment.booking
     if not booking:
         abort(404)
-    
+
     # 获取该预订的所有分期付款记录（用于显示付款进度）
     all_installments = InstallmentPayment.query.filter_by(
         booking_id=booking.id
     ).order_by(InstallmentPayment.installment_number).all()
-    
+
     total_info = calculate_booking_total(booking)
     remaining_amount = max((total_info['total'] or 0.0) - (booking.amount_paid or 0.0), 0.0)
     remaining_amount_cents = int(round(remaining_amount * 100))
@@ -3621,6 +3627,8 @@ def handle_refund(charge_data):
             if booking.amount_paid <= 0.001:
                 booking.amount_paid = 0.0
                 booking.status = 'cancelled'
+                from app.payments import cancel_unpaid_installments
+                cancel_unpaid_installments(booking)
             elif booking.status == 'fully_paid':
                 booking.status = 'deposit_paid'
 

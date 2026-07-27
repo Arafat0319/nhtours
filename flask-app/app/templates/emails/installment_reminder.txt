@@ -1,0 +1,21 @@
+{{ subject_line }}
+
+{% if customer_name and customer_name != 'Customer' %}Hi {{ customer_name }},{% else %}Hi,{% endif %}
+
+{{ urgency_text }}
+
+Payment details:
+- Trip: {{ trip_title }}
+- Installment: {{ installment_label }}
+- Amount: ${{ '%.2f'|format(amount) }}
+- Due date: {{ due_date_label }}{% if days_overdue is defined and days_overdue %} ({{ days_overdue }} day(s) overdue){% endif %}
+- Order number: {{ order_number }}
+
+Pay here: {{ payment_link }}
+
+{{ footer_note }}
+
+Questions? Contact info@nhtours.com
+
+Nexus Horizons Tours
+https://nhtours.com

@@ -10,8 +10,8 @@
         --spacing: 0.25rem;
     }
 </style>
-<div class="w-full h-[70vh]"
-    style="background-image: url('{{ url_for('static', filename='images/backgrounds/tibet_background.jpg') }}'); background-position: center; background-size: cover; background-repeat: no-repeat;">
+<div class="w-full"
+    style="height: 49vh; background-image: url('{{ url_for('static', filename='images/backgrounds/tibet_background.jpg') }}'); background-position: center; background-size: cover; background-repeat: no-repeat;">
 </div>
 <div class="w-full h-[16px] bg-indigo-800"></div>
 <div id="payment-status-root" data-booking-id="{{ booking_id or '' }}" class="max-w-4xl mx-auto py-28 px-8 md:px-0 text-center">
@@ -55,7 +55,7 @@
     {% endif %}
 </div>
 
-{% if payment_status != 'succeeded' %}
+{% if payment_status == 'pending' %}
 <script>
     const rootEl = document.getElementById("payment-status-root");
     const bookingId = (rootEl && rootEl.dataset && rootEl.dataset.bookingId) ? rootEl.dataset.bookingId : "";
@@ -68,11 +68,8 @@
             try {
                 const res = await fetch(statusUrl);
                 const data = await res.json();
-                if (data.status === 'succeeded') {
-                    window.location.reload();
-                    return;
-                }
-                if (data.status === 'failed') {
+                // Only reload when leaving pending; failed/succeeded pages must not poll (reload loop).
+                if (data.status === 'succeeded' || data.status === 'failed') {
                     window.location.reload();
                     return;
                 }
