@@ -20,4 +20,4 @@
 
 专项：`booking-modal-scroll布局分析.md`、`designs/`（按需）
 
-**最后更新**: 2026-07-26
+**最后更新**: 2026-07-27（Deploy venv / 收据 / SES 状态对齐；用户手册 2.6）

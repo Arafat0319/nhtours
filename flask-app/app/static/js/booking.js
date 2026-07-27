@@ -2620,7 +2620,10 @@
                 
                 if (result.success && result.booking_id) {
                     console.log('Free booking created successfully:', result);
-                    showBookingModalResult('success', { booking_id: result.booking_id });
+                    showBookingModalResult('success', {
+                        booking_id: result.booking_id,
+                        receipt_url: result.receipt_url
+                    });
                     var btn = submitButton || nextButton;
                     if (btn) { btn.disabled = false; btn.textContent = 'Confirm Booking'; }
                     return;
@@ -2860,7 +2863,7 @@
             if (successEl) successEl.classList.remove('hidden');
             const bid = data && data.booking_id;
             if (receiptLink && bid) {
-                receiptLink.href = '/booking/' + bid + '/receipt';
+                receiptLink.href = (data && data.receipt_url) || ('/booking/' + bid + '/receipt');
                 receiptLink.setAttribute('download', 'NHTours-Order-' + bid + '.pdf');
                 receiptLink.removeAttribute('target');
                 if (receiptWrap) receiptWrap.classList.remove('hidden');
@@ -2905,7 +2908,7 @@
                         if (amountPaidRow) amountPaidRow.classList.remove('hidden');
                         if (receiptLink && bid) {
                             var onum = summary.order_number || bid;
-                            receiptLink.href = '/booking/' + bid + '/receipt';
+                            receiptLink.href = summary.receipt_url || ('/booking/' + bid + '/receipt');
                             receiptLink.setAttribute('download', 'NHTours-Order-' + onum + '.pdf');
                         }                    })
                     .catch(function() { if (typeof updateOrderSummary === 'function') updateOrderSummary(); });
@@ -2929,7 +2932,10 @@
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
                     if (data.status === 'succeeded') {
-                        showBookingModalResult('success', { booking_id: data.booking_id });
+                        showBookingModalResult('success', {
+                            booking_id: data.booking_id,
+                            receipt_url: data.receipt_url
+                        });
                         var btn = submitButton || nextButton;
                         if (btn) { btn.disabled = false; btn.textContent = 'Confirm Booking'; }
                         return;

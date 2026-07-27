@@ -609,6 +609,39 @@ def verify_installment_token(token, installment_id, max_age_seconds=60 * 60 * 24
     return data.get('installment_id') == installment_id
 
 
+def _receipt_token_serializer():
+    secret_key = current_app.config.get('SECRET_KEY')
+    return URLSafeTimedSerializer(secret_key, salt='booking-receipt-download')
+
+
+def generate_receipt_token(booking_id):
+    """客户收据下载链接签名（与分期付款链接同机制）。"""
+    serializer = _receipt_token_serializer()
+    return serializer.dumps({'booking_id': int(booking_id)})
+
+
+def verify_receipt_token(token, booking_id, max_age_seconds=None):
+    """
+    校验收据 token 是否对应该 booking_id。
+    默认有效期 2 年（行程结束后客户仍可能下载）；可用 RECEIPT_TOKEN_MAX_AGE_SECONDS 覆盖。
+    """
+    if not token:
+        return False
+    if max_age_seconds is None:
+        max_age_seconds = current_app.config.get(
+            'RECEIPT_TOKEN_MAX_AGE_SECONDS', 60 * 60 * 24 * 730
+        )
+    serializer = _receipt_token_serializer()
+    try:
+        data = serializer.loads(token, max_age=max_age_seconds)
+    except (BadSignature, SignatureExpired):
+        return False
+    try:
+        return int(data.get('booking_id')) == int(booking_id)
+    except (TypeError, ValueError):
+        return False
+
+
 def _export_token_serializer():
     secret_key = current_app.config.get('SECRET_KEY')
     return URLSafeTimedSerializer(secret_key, salt='excel-export-refresh')

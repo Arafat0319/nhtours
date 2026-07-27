@@ -2,14 +2,17 @@
 
 本文档说明 `designs/booking-modal.pen` 中的设计如何对应项目里的 **报名弹窗** 代码与视觉规范，便于在 Pencil 中调视觉后落回模板/CSS。
 
+> **2026-07 起**：正式 `/trips/<slug>` 已使用 `_modal_steps_experimental.html`（套餐卡 + Travelers 步进器）。下文部分描述仍对旧 `_modal_steps.html`（Uiverse 数量下拉），作历史对照；落代码时以 experimental + `booking-modal.css` 为准。
+
 ---
 
 ## 1. 代码与资源位置
 
 | 类型 | 路径 |
 |------|------|
-| 弹窗 HTML 结构 | `flask-app/app/templates/booking/trip_booking.html`（约 611–751 行） |
-| 步骤内容（Package / Participant / Add-ons / Payment） | `flask-app/app/templates/booking/_modal_steps.html` |
+| 弹窗 HTML 结构 | `flask-app/app/templates/booking/trip_booking.html` |
+| 步骤内容（**现用**） | `flask-app/app/templates/booking/_modal_steps_experimental.html` |
+| 步骤内容（旧对照） | `flask-app/app/templates/booking/_modal_steps.html` |
 | 支付步骤共用片段 | `flask-app/app/templates/booking/_modal_payment_step_content.html` |
 | 弹窗专用 CSS | `flask-app/app/static/css/booking-modal.css` |
 | 内联/覆盖样式 | `trip_booking.html` 内 `<style>` 及部分内联 style |

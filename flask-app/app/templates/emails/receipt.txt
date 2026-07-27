@@ -32,13 +32,8 @@ Payment details:
 {% endif -%}
 {{ amount_charged_label|default('Total charged') }}: ${{ (total_amount)|format_price }}
 
-{% if receipt_download_url -%}
-A PDF receipt is attached to this email.
-You can also download it here:
-{{ receipt_download_url }}
-{% else -%}
 A PDF receipt is attached to this email (if your mail client supports attachments).
-{% endif %}
+Use the Download Receipt button in the HTML version of this message if needed.
 
 Questions? Reply to this email or contact info@nhtours.com
 Nexus Horizons Tours — https://nhtours.com

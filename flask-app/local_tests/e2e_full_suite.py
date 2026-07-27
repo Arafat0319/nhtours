@@ -169,10 +169,15 @@ def run():
         att = _receipt_pdf_attachment(booking_full)
         if not att:
             _fail("receipt attachment builder failed")
-        # local receipt route
-        rr = client.get(f"/booking/{booking_full.id}/receipt")
+        # local receipt route (signed token required)
+        from app.utils import generate_receipt_token
+        tok = generate_receipt_token(booking_full.id)
+        rr = client.get(f"/booking/{booking_full.id}/receipt?token={tok}")
         if rr.status_code != 200 or not rr.data.startswith(b"%PDF"):
             _fail(f"local receipt route status={rr.status_code}")
+        rr_no = client.get(f"/booking/{booking_full.id}/receipt")
+        if rr_no.status_code != 404:
+            _fail(f"receipt without token should 404, got {rr_no.status_code}")
         _ok(
             f"1.1 full pay booking={booking_full.id} order={booking_full.order_number} "
             f"base={base} fee={fee} charged={charged} status={booking_full.status}"

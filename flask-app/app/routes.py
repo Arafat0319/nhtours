@@ -17,6 +17,8 @@ from app.utils import (
     send_email_via_ses,
     generate_installment_token,
     verify_installment_token,
+    generate_receipt_token,
+    verify_receipt_token,
     save_booking_upload,
 )
 from app.models import (
@@ -1627,6 +1629,7 @@ def api_booking_summary(booking_id):
         'order_number': booking.order_number or str(booking.id),
         'order_summary_lines': lines,
         'discount_amount': round(discount, 2),
+        'receipt_url': _receipt_public_download_url(booking.id),
     })
 
 
@@ -1683,8 +1686,13 @@ def _booking_receipt_context(booking):
 
 @bp.route('/booking/<int:booking_id>/receipt')
 def booking_receipt(booking_id):
-    """客户下载收据 PDF（默认）；?format=html 可查看网页版。"""
+    """客户下载收据 PDF（默认）；须带签名 token；?format=html 可查看网页版。"""
     from flask import make_response
+
+    token = request.args.get('token')
+    if not verify_receipt_token(token, booking_id):
+        # 不区分「无单 / token 无效」，避免枚举 booking id
+        abort(404)
 
     try:
         booking = Booking.query.get(booking_id)
@@ -1865,6 +1873,7 @@ def api_payment_status():
                     'booking_id': booking_id,
                     'payment_intent_id': payment_intent_id,
                     'redirect_url': url_for('main.booking_success', booking_id=booking_id, _external=True),
+                    'receipt_url': _receipt_public_download_url(booking_id),
                 }), 200
         return jsonify({'status': 'pending', 'payment_intent_id': payment_intent_id}), 200
 
@@ -1889,14 +1898,17 @@ def api_payment_status():
     
     # 构建 redirect_url
     redirect_url = None
+    receipt_url = None
     if payment.status == 'succeeded' and payment.booking_id:
         redirect_url = url_for('main.booking_success', booking_id=payment.booking_id, _external=True)
+        receipt_url = _receipt_public_download_url(payment.booking_id)
 
     return jsonify({
         'status': payment.status or 'pending',
         'booking_id': payment.booking_id,
         'payment_intent_id': payment.stripe_payment_intent_id,
         'redirect_url': redirect_url,
+        'receipt_url': receipt_url,
     }), 200
 
 
@@ -2112,6 +2124,7 @@ def api_create_free_booking():
                 else 'Booking created successfully (no payment required)'
             ),
             'redirect_url': url_for('main.booking_success', booking_id=booking_id, _external=True),
+            'receipt_url': _receipt_public_download_url(booking_id),
         }
 
     # 幂等：已有 Payment → Booking
@@ -3614,9 +3627,10 @@ def create_installment_payments(booking, booking_package, payment_plan_config):
 
 
 def _receipt_public_download_url(booking_id):
-    """客户邮件中的收据 PDF 链接（公开路由 /booking/<id>/receipt）。"""
+    """客户收据 PDF 链接：签名 token，无法仅凭 booking id 枚举下载。"""
     base = (current_app.config.get('BASE_URL') or '').rstrip('/') or 'https://nhtours.com'
-    return f'{base}/booking/{int(booking_id)}/receipt'
+    token = generate_receipt_token(booking_id)
+    return f'{base}/booking/{int(booking_id)}/receipt?token={token}'
 
 
 def _receipt_pdf_attachment(booking):

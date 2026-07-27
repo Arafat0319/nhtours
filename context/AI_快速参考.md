@@ -54,8 +54,11 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 - `PendingBooking.payment_intent_id`（可以是 `pi_…` 或 `free_…`）
 - 折扣抵「现在应付」；`$0` 勿建 Stripe PI
 - 未支付草稿：`expires_at=+24h`；03:00 cleanup → `expired` + `safe_cancel_payment_intent`
-- 报名在 `/trips/<slug>` **弹窗内** 5 步；File Upload：`POST /api/booking/upload`（UI：自定义 dropzone，见 `05` / `booking-modal.css`）
+- 报名在 `/trips/<slug>` **弹窗内** 5 步；正式页 `use_experimental_modal=True` → `_modal_steps_experimental.html`（套餐卡 + Travelers 步进器）
+- File Upload：`POST /api/booking/upload`（UI：自定义 dropzone，见 `05` / `booking-modal.css`）
 - DOB 日历：月/年 Uiverse 下拉（同 Gender）；选月年不关日历；逻辑在 `trip_booking.html`
+- 付款后摘要 `GET /api/booking/<id>/summary`：`trip_total` 用套餐+附加**目录价**（$0 Payment 时勿用 `base_amount_cents`）
+- 静态 CSS/JS 部署后若样式「没变」：先 **Ctrl+F5**（无版本号时易缓存）
 
 ## 业务单号 Order number
 
@@ -107,13 +110,15 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 服务器 IP | `54.69.40.218`（Lightsail 静态 IP，备用） |
 | 目录 | `/var/www/nhtours` |
 | 环境变量 | **`/var/www/nhtours/flask-app/.env`**（非仓库根 `.env`） |
+| **生产 venv** | **`/var/www/nhtours/flask-app/venv`**（与 systemd gunicorn 一致；Deploy 勿装到仓库根 `venv`） |
 | Gunicorn | Unix socket `flask-app/nhtours.sock`（非 8000 端口） |
 | Nginx | `/etc/nginx/sites-enabled/nhtours` |
 | 触发部署 | 用户同意后才 `git push origin main` |
-| Workflow | 根目录 `.github/workflows/deploy.yml` |
+| Workflow | 根目录 `.github/workflows/deploy.yml`（装依赖 + 校验 fpdf2） |
 | 域名脚本 | `deploy/setup-domain.sh`；DNS 验证 `deploy/verify-dns.ps1` |
 | Stripe Webhook | `https://nhtours.com/webhooks/stripe`（**仅沙盒** Test mode；Live 延后） |
 | 邮件 SES | **生产已配置**（`nhtours.com` / `us-west-2`，已出沙箱）；详见 `06` / `08` |
+| 收据邮件 | HTML：**Download Receipt** 按钮（签名 `?token=`，无明文裸链）+ PDF 附件；`/booking/<id>/receipt?token=…` |
 | 安全审计 | `/var/log/nhtours/audit.log`；`nh-audit` / `nh-audit --all` / `nh-audit -f` |
 | 安全加固 | ✅ **生产已完成**（2026-07-06）；凭据轮换、审计、限流；详见 `06` / [手册/安全手册.md](../手册/安全手册.md) |
 | 生产 DB | **现网** VM 本机 MySQL → **目标** Lightsail 托管 MySQL（**方案 B 待迁移**；见 `08`） |
@@ -141,4 +146,4 @@ push 前更新 context（至少 `07`）→ 用户确认 → 同一 commit push�
 | UI | `05` |
 | 部署 | `06` |
 
-**最后更新**: 2026-07-26（报名弹窗 UX：DOB 月年 / 文件上传 / 折扣间距）
+**最后更新**: 2026-07-27（Deploy venv=`flask-app/venv`；收据 PDF；正式页实验弹窗；summary trip_total）

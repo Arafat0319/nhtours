@@ -139,7 +139,7 @@
             if (successEl) successEl.classList.remove('hidden');
             const bid = data && data.booking_id;
             if (receiptLink && bid) {
-                receiptLink.href = '/booking/' + bid + '/receipt';
+                receiptLink.href = (data && data.receipt_url) || ('/booking/' + bid + '/receipt');
                 receiptLink.setAttribute('download', 'NHTours-Order-' + bid + '.pdf');
                 receiptLink.removeAttribute('target');
                 if (receiptWrap) receiptWrap.classList.remove('hidden');
@@ -158,7 +158,10 @@
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
                     if (data.status === 'succeeded') {
-                        showResult('success', { booking_id: data.booking_id });
+                        showResult('success', {
+                            booking_id: data.booking_id,
+                            receipt_url: data.receipt_url
+                        });
                         if (placeOrderBtn) {
                             placeOrderBtn.disabled = false;
                             placeOrderBtn.textContent = 'Confirm payment';

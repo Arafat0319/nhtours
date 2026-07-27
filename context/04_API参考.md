@@ -95,8 +95,7 @@
 
 | 路由 | 方法 | 说明 |
 |------|------|------|
-| `/admin/trips/<id>/bookings/export` | GET | 导出订单 Excel（需登录，xlsx 内含 Web 连接，打开时自动刷新） |
-| `/admin/trips/bookings/export/csv` | GET | 按 token 导出 Participants：`?token=xxx` CSV；`?token=xxx&format=html` HTML（供 Excel 刷新用，无需登录） |
+| `/admin/trips/<id>/bookings/export` | GET | 导出订单 Excel **静态快照**（需登录；Participants / Contact / Summary / Canceled；无 Web 刷新） |
 | `/admin/trips/<id>/financials` | GET | 获取财务统计 JSON |
 
 ---
@@ -114,9 +113,9 @@
 | `/api/payment/fee` | POST | 计算手续费 |
 | `/api/booking/create-free` | POST | 零元首付直接创建 Booking（幂等；`payment_intent_id` 可为 `pi_…` 或 `free_…`） |
 | `/api/booking/upload` | POST | 报名文件上传（护照等），multipart `file` → `uploads/booking/` |
-| `/api/booking/<id>/summary` | GET | 订单摘要 JSON |
+| `/api/booking/<id>/summary` | GET | 付款后订单摘要 JSON：`trip_total`=套餐+附加目录价合计（**勿用**本笔 Payment.base，以免 $0 单变成 0）；`due_at_booking`/`fee`/`discount_amount`/`order_summary_lines` |
 | `/booking/payment/<id>` | GET | 独立支付页（邮件链接等） |
-| `/booking/<id>/receipt` | GET | 前台收据页 |
+| `/booking/<id>/receipt` | GET | 客户收据：**须 `?token=` 签名**（与分期链接同机制，默认约 2 年有效）；默认 PDF；`?format=html` 网页；无 token → 404 |
 
 #### POST /api/payment/intent
 

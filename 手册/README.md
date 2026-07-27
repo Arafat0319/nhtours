@@ -1,7 +1,7 @@
 # 手册（给人看）
 
 > 日常只看 **`手册/`**；技术细节在 **`context/`**（给 AI）  
-> **更新** 2026-07-26
+> **更新** 2026-07-27
 
 ---
 
@@ -27,7 +27,7 @@
     - SSH（`ssh nhtours`）、`nh-audit` / `--all` / `-a`、改密码、巡检
 
 - **[用户手册.md](用户手册.md)**
-    - Trip Builder、Order number、Balance due、Excel 快照导出、客户报名、Testimonials / Feedback
+    - Trip Builder、Order number、退款（定金/手续费）、Excel 快照、客户报名弹窗、收据邮件（PDF 按钮）、Testimonials / Feedback
 
 - **[安全手册-凭据.local.md](安全手册-凭据.local.md)**
     - 用户名密码（本地专用，不提交 Git）
