@@ -77,6 +77,7 @@ def run():
                         "last_name": "Participant",
                         "email": unique_email,
                         "phone": "1234567890",
+                        "dob": "1990-01-15",
                     }
                 ],
                 "discount_code": None,

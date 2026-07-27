@@ -416,7 +416,7 @@ def process_refund(payment_intent_id, amount, reason=None):
 
 def cancel_unpaid_installments(booking):
     """
-    订单取消后：未付分期（pending/overdue）标为 cancelled，定时催款不再命中。
+    订单取消后：未付分期（pending/overdue）标为 cancelled，并尽量取消关联 Stripe PI。
     已付分期不动。调用方负责 commit。
     """
     from app.models import InstallmentPayment
@@ -428,6 +428,11 @@ def cancel_unpaid_installments(booking):
         InstallmentPayment.status.in_(('pending', 'overdue')),
     ).all()
     for inst in rows:
+        if getattr(inst, 'payment_intent_id', None):
+            safe_cancel_payment_intent(
+                inst.payment_intent_id,
+                reason=f'booking {booking.id} cancelled installment {inst.id}',
+            )
         inst.status = 'cancelled'
     return len(rows)
 

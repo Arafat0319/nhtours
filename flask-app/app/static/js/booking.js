@@ -1873,6 +1873,9 @@
 
         const formData = new FormData();
         formData.append('file', file);
+        if (typeof tripData !== 'undefined' && tripData && tripData.id) {
+            formData.append('trip_id', String(tripData.id));
+        }
 
         try {
             const response = await fetch('/api/booking/upload', {
@@ -2789,7 +2792,8 @@
                     console.log('Free booking created successfully:', result);
                     showBookingModalResult('success', {
                         booking_id: result.booking_id,
-                        receipt_url: result.receipt_url
+                        receipt_url: result.receipt_url,
+                        payment_intent_id: embeddedPaymentSession.payment_intent_id
                     });
                     var btn = submitButton || nextButton;
                     if (btn) { btn.disabled = false; btn.textContent = 'Confirm Booking'; }
@@ -3049,7 +3053,16 @@
             syncBookingModalBodyMinHeight();
             var bid = state === 'success' && data && data.booking_id ? data.booking_id : null;
             if (bid) {
-                fetch('/api/booking/' + bid + '/summary')
+                var summaryUrl = '/api/booking/' + bid + '/summary';
+                var piForSummary = (data && data.payment_intent_id)
+                    || (typeof embeddedPaymentSession !== 'undefined' && embeddedPaymentSession && embeddedPaymentSession.payment_intent_id)
+                    || null;
+                if (piForSummary) {
+                    summaryUrl += '?payment_intent_id=' + encodeURIComponent(piForSummary);
+                } else if (data && data.receipt_token) {
+                    summaryUrl += '?token=' + encodeURIComponent(data.receipt_token);
+                }
+                fetch(summaryUrl)
                     .then(function(r) { return r.ok ? r.json() : null; })
                     .then(function(summary) {
                         if (!summary) return;
@@ -3105,7 +3118,8 @@
                     if (data.status === 'succeeded') {
                         showBookingModalResult('success', {
                             booking_id: data.booking_id,
-                            receipt_url: data.receipt_url
+                            receipt_url: data.receipt_url,
+                            payment_intent_id: paymentIntentId || data.payment_intent_id
                         });
                         var btn = submitButton || nextButton;
                         if (btn) { btn.disabled = false; btn.textContent = 'Confirm Booking'; }

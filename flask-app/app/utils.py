@@ -690,6 +690,21 @@ def allowed_booking_upload_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_BOOKING_UPLOAD_EXTENSIONS
 
 
+def _booking_upload_magic_ok(head, ext):
+    """按文件头校验真实类型（扩展名可伪造）。"""
+    if not head:
+        return False
+    if ext in ('jpg', 'jpeg'):
+        return head.startswith(b'\xff\xd8\xff')
+    if ext == 'png':
+        return head.startswith(b'\x89PNG\r\n\x1a\n')
+    if ext == 'webp':
+        return len(head) >= 12 and head[0:4] == b'RIFF' and head[8:12] == b'WEBP'
+    if ext == 'pdf':
+        return head.startswith(b'%PDF')
+    return False
+
+
 def save_booking_upload(file, folder='uploads/booking', max_size=None):
     """
     保存报名流程上传的文件（护照截图等）。
@@ -723,6 +738,11 @@ def save_booking_upload(file, folder='uploads/booking', max_size=None):
         raise ValueError(
             f'Unsupported file type. Allowed: {", ".join(sorted(ALLOWED_BOOKING_UPLOAD_EXTENSIONS))}'
         )
+
+    magic = file.read(16)
+    file.seek(0)
+    if not _booking_upload_magic_ok(magic, ext):
+        raise ValueError('File content does not match the declared type')
 
     base = secure_filename(raw_name.rsplit('.', 1)[0]) or 'upload'
     filename = f'{base}.{ext}'

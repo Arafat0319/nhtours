@@ -3,7 +3,7 @@ Flask路由定义
 定义所有页面的路由和视图函数
 """
 
-from flask import Blueprint, render_template, request, jsonify, redirect, abort, url_for, flash, current_app
+from flask import Blueprint, render_template, request, jsonify, redirect, abort, url_for, flash, current_app, get_flashed_messages
 from flask_login import current_user
 import json
 import re
@@ -999,6 +999,24 @@ def _ensure_booking_payment_intent(booking, payment_plan):
 @bp.route('/booking/payment/<int:booking_id>')
 def booking_payment(booking_id):
     booking = Booking.query.get_or_404(booking_id)
+    token = request.args.get('token')
+    if not verify_receipt_token(token, booking.id):
+        abort(403)
+    if booking.status == 'cancelled':
+        return redirect(url_for(
+            'main.booking_success',
+            booking_id=booking.id,
+            already_paid=1,
+            token=generate_receipt_token(booking.id),
+        ))
+    if booking.status == 'fully_paid':
+        return redirect(url_for(
+            'main.booking_success',
+            booking_id=booking.id,
+            already_paid=1,
+            token=generate_receipt_token(booking.id),
+        ))
+
     payment_plan = request.args.get('payment_plan', 'full')
 
     summary_items = []
@@ -1579,13 +1597,36 @@ def api_payment_intent():
 
 @bp.route('/api/booking/<int:booking_id>/summary')
 def api_booking_summary(booking_id):
-    """付款成功后在弹窗内展示 Your Booking 金额用；返回 trip_total、fee、due_at_booking、order_summary_lines（无需登录，与 receipt 一致）"""
+    """
+    付款成功后弹窗内 Your Booking 金额。
+    须持有 receipt token，或能证明持有该单 payment_intent_id（防匿名枚举签发收据链接）。
+    """
     booking = Booking.query.get(booking_id)
     if not booking:
         return jsonify({'error': 'not_found'}), 404
     trip = Trip.query.get(booking.trip_id) if booking.trip_id else None
     if not trip:
         return jsonify({'error': 'not_found'}), 404
+
+    token = request.args.get('token')
+    payment_intent_id = request.args.get('payment_intent_id')
+    allowed = False
+    if token and verify_receipt_token(token, booking_id):
+        allowed = True
+    elif payment_intent_id:
+        pay = Payment.query.filter_by(
+            booking_id=booking_id,
+            stripe_payment_intent_id=payment_intent_id,
+        ).first()
+        if pay:
+            allowed = True
+        else:
+            pb = PendingBooking.query.filter_by(payment_intent_id=payment_intent_id).first()
+            created_id = (pb.booking_data or {}).get('created_booking_id') if pb else None
+            if created_id and int(created_id) == int(booking_id):
+                allowed = True
+    if not allowed:
+        return jsonify({'error': 'forbidden'}), 403
 
     # 订单明细行：套餐名 x 数量、附加项名 x 数量（金额为单价×数量）
     lines = []
@@ -1822,6 +1863,10 @@ def booking_receipt(booking_id):
 @bp.route('/booking/success')
 def booking_success():
     booking_id = request.args.get('booking_id', type=int)
+    already_paid = request.args.get('already_paid', type=int) == 1
+    token = request.args.get('token')
+    # 本页不展示 flash；消费掉以免漏到其它页面
+    _ = list(get_flashed_messages())
     booking = Booking.query.get(booking_id) if booking_id else None
     payment = None
     payment_status = 'pending'
@@ -1841,15 +1886,22 @@ def booking_success():
 
     if payment:
         payment_status = payment.status or 'pending'
-    elif booking and booking.status in ('deposit_paid', 'fully_paid'):
-        # $0 订单：没有 Payment 记录，但 Booking 状态已确认
+    elif booking and booking.status in ('deposit_paid', 'fully_paid', 'cancelled'):
+        # $0 订单：没有 Payment 记录，但 Booking 状态已确认；已付重入 / 取消也走成功态文案
         payment_status = 'succeeded'
+
+    receipt_url = None
+    if booking_id and token and verify_receipt_token(token, booking_id):
+        receipt_url = url_for('main.booking_receipt', booking_id=booking_id, token=token)
 
     return render_template(
         'booking/success.html',
         booking_id=booking_id,
         booking=booking,
         payment_status=payment_status,
+        already_paid=already_paid,
+        receipt_url=receipt_url,
+        receipt_token=token if (booking_id and token and verify_receipt_token(token, booking_id)) else None,
     )
 
 
@@ -1946,14 +1998,17 @@ def api_payment_status():
         if booking_id:
             booking = Booking.query.get(booking_id)
             if booking and booking.status in ('deposit_paid', 'fully_paid'):
-                # $0 订单已成功
-                return jsonify({
+                payload = {
                     'status': 'succeeded',
                     'booking_id': booking_id,
                     'payment_intent_id': payment_intent_id,
                     'redirect_url': url_for('main.booking_success', booking_id=booking_id, _external=True),
-                    'receipt_url': _receipt_public_download_url(booking_id),
-                }), 200
+                    'receipt_url': None,
+                }
+                # 仅持有 payment_intent_id 时签发收据链接（防仅凭 booking_id 枚举）
+                if payment_intent_id:
+                    payload['receipt_url'] = _receipt_public_download_url(booking_id)
+                return jsonify(payload), 200
         return jsonify({'status': 'pending', 'payment_intent_id': payment_intent_id}), 200
 
     # 如果Payment状态是pending，再次检查Stripe状态（Stripe SDK 返回对象用 getattr 取 status）
@@ -1974,13 +2029,14 @@ def api_payment_status():
     # 重新查询以获取最新状态
     db.session.expire_all()
     payment = Payment.query.filter_by(id=payment.id).first()
-    
-    # 构建 redirect_url
+
+    # 构建 redirect_url；收据 URL 仅在请求带了 payment_intent_id 时返回
     redirect_url = None
     receipt_url = None
     if payment.status == 'succeeded' and payment.booking_id:
         redirect_url = url_for('main.booking_success', booking_id=payment.booking_id, _external=True)
-        receipt_url = _receipt_public_download_url(payment.booking_id)
+        if payment_intent_id:
+            receipt_url = _receipt_public_download_url(payment.booking_id)
 
     return jsonify({
         'status': payment.status or 'pending',
@@ -1995,9 +2051,16 @@ def api_payment_status():
 def api_booking_upload():
     """
     报名流程文件上传（护照页截图等）。
-    multipart field: file
+    multipart field: file；须带 trip_id（绑定行程，防匿名任意写盘）。
     返回: path（相对 static/）、url、original_filename
     """
+    trip_id = request.form.get('trip_id', type=int)
+    if not trip_id:
+        return jsonify({'error': 'trip_id is required'}), 400
+    trip = Trip.query.get(trip_id)
+    if not trip or trip.status == 'archived':
+        return jsonify({'error': 'Invalid trip'}), 400
+
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
 
@@ -2006,7 +2069,7 @@ def api_booking_upload():
         return jsonify({'error': 'No file selected'}), 400
 
     try:
-        rel_path = save_booking_upload(upload)
+        rel_path = save_booking_upload(upload, folder=f'uploads/booking/trip_{trip_id}')
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
     except Exception:
@@ -2086,43 +2149,56 @@ def api_validate_discount():
 @bp.route('/api/discount/apply', methods=['POST'])
 def api_apply_discount():
     """
-    将折扣应用到 PendingBooking，更新 base_amount_cents
-    
-    请求参数:
-    - payment_intent_id: Payment Intent ID
-    - discount_code_id: 折扣码 ID（可选，如果为空则移除折扣）
-    - discount_amount: 折扣金额
+    将折扣应用到 PendingBooking，更新 base_amount_cents。
+    折扣金额一律服务端按 DiscountCode 重算，忽略客户端传入的 discount_amount。
     """
     data = request.get_json(silent=True) or {}
-    
+
     payment_intent_id = data.get('payment_intent_id')
     discount_code_id = data.get('discount_code_id')
-    discount_amount = float(data.get('discount_amount', 0) or 0)
-    
+
     if not payment_intent_id:
         return jsonify({'success': False, 'message': 'payment_intent_id is required'}), 400
-    
-    # 查找 PendingBooking
+
     pending_booking = PendingBooking.query.filter_by(
         payment_intent_id=payment_intent_id,
         status='pending'
     ).first()
-    
+
     if not pending_booking:
         return jsonify({'success': False, 'message': 'Pending booking not found'}), 404
-    
-    booking_data = pending_booking.booking_data
-    
-    # 获取原始金额（gross_amount，没有折扣的金额）
-    gross_amount = booking_data.get('gross_amount', 0)
+
+    booking_data = dict(pending_booking.booking_data or {})
+
+    gross_amount = float(booking_data.get('gross_amount', 0) or 0)
     if not gross_amount:
-        # 如果没有存储 gross_amount，使用 base_amount_cents 加回之前的折扣
-        old_discount = booking_data.get('discount_amount', 0)
-        old_base_amount_cents = booking_data.get('base_amount_cents', 0)
-        gross_amount = (old_base_amount_cents / 100) + old_discount
-    
-    # 计算新的 base_amount（应用折扣后）
-    new_base_amount = max(0, gross_amount - discount_amount)
+        old_discount = float(booking_data.get('discount_amount', 0) or 0)
+        old_base_amount_cents = int(booking_data.get('base_amount_cents', 0) or 0)
+        gross_amount = (old_base_amount_cents / 100.0) + old_discount
+
+    discount_amount = 0.0
+    resolved_code_id = None
+    if discount_code_id:
+        try:
+            discount_code_id = int(discount_code_id)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'Invalid discount code'}), 400
+
+        discount_code = DiscountCode.query.get(discount_code_id)
+        if not discount_code:
+            return jsonify({'success': False, 'message': 'Invalid discount code'}), 400
+
+        trip_id = booking_data.get('trip_id') or pending_booking.trip_id
+        if discount_code.trip_id and trip_id and int(discount_code.trip_id) != int(trip_id):
+            return jsonify({
+                'success': False,
+                'message': 'This discount code is not valid for this trip',
+            }), 400
+
+        discount_amount = float(discount_code.calculate_discount(gross_amount) or 0)
+        resolved_code_id = discount_code.id
+
+    new_base_amount = max(0.0, gross_amount - discount_amount)
     new_base_amount_cents = int(round(new_base_amount * 100))
 
     if 0 < new_base_amount_cents < 50:
@@ -2130,12 +2206,11 @@ def api_apply_discount():
             'success': False,
             'message': 'Discount would leave a payment below the minimum charge. Please contact us.',
         }), 400
-    
-    # 更新 booking_data
-    booking_data['discount_code_id'] = discount_code_id
+
+    booking_data['discount_code_id'] = resolved_code_id
     booking_data['discount_amount'] = discount_amount
     booking_data['base_amount_cents'] = new_base_amount_cents
-    booking_data['gross_amount'] = gross_amount  # 保存原始金额以便后续计算
+    booking_data['gross_amount'] = gross_amount
     booking_data['payment_required'] = new_base_amount_cents > 0
 
     if discount_amount and discount_amount >= gross_amount and gross_amount > 0:
@@ -2147,25 +2222,23 @@ def api_apply_discount():
             discount_amount,
         )
 
-    # 折扣把应付打成 $0：取消已有 Stripe PI（free_ 占位则跳过）
     if new_base_amount_cents == 0 and payment_intent_id:
         safe_cancel_payment_intent(
             payment_intent_id,
             reason='discount reduced amount to $0',
         )
-    
-    # 重新赋值整个字典并标记为已修改（确保 SQLAlchemy 检测到 JSON 字段变更）
-    pending_booking.booking_data = dict(booking_data)
+
+    pending_booking.booking_data = booking_data
     from sqlalchemy.orm.attributes import flag_modified
     flag_modified(pending_booking, 'booking_data')
     db.session.commit()
-    
+
     current_app.logger.info(
         f"Discount applied to PendingBooking: payment_intent_id={payment_intent_id}, "
-        f"discount_code_id={discount_code_id}, discount_amount={discount_amount}, "
+        f"discount_code_id={resolved_code_id}, discount_amount={discount_amount}, "
         f"gross_amount={gross_amount}, new_base_amount_cents={new_base_amount_cents}"
     )
-    
+
     return jsonify({
         'success': True,
         'gross_amount': gross_amount,
@@ -2352,13 +2425,25 @@ def pay_installment(installment_id):
     if not verify_installment_token(token, installment.id):
         abort(403)
 
-    if installment.status == 'paid':
-        flash('This installment has already been paid.', 'info')
-        return redirect(url_for('main.booking_success', booking_id=installment.booking_id))
-
     booking = installment.booking
     if not booking:
         abort(404)
+
+    if booking.status == 'cancelled' or installment.status == 'cancelled':
+        return redirect(url_for(
+            'main.booking_success',
+            booking_id=booking.id,
+            already_paid=1,
+            token=generate_receipt_token(booking.id),
+        ))
+
+    if installment.status == 'paid':
+        return redirect(url_for(
+            'main.booking_success',
+            booking_id=installment.booking_id,
+            already_paid=1,
+            token=generate_receipt_token(installment.booking_id),
+        ))
 
     # 获取该预订的所有分期付款记录（用于显示付款进度）
     all_installments = InstallmentPayment.query.filter_by(
@@ -2464,6 +2549,8 @@ def test_installment_modal():
     测试页：预览分期付款弹窗布局与样式。
     若已配置 Stripe 密钥则创建测试 PaymentIntent，显示真实卡表单；否则仅布局预览（无卡表单项）。
     """
+    if not current_app.debug:
+        abort(404)
     from datetime import date, timedelta
     from types import SimpleNamespace
     from app.payments import create_payment_intent
@@ -2550,6 +2637,8 @@ def test_installment_payment_preview():
     测试路由：预览分期付款页面效果
     使用模拟数据展示分期付款页面
     """
+    if not current_app.debug:
+        abort(404)
     from datetime import date, timedelta
     from types import SimpleNamespace
     from app.payments import create_payment_intent
@@ -2721,10 +2810,23 @@ def pay_installment_payoff(installment_id):
     if not booking:
         abort(404)
 
+    if booking.status == 'cancelled' or installment.status == 'cancelled':
+        return redirect(url_for(
+            'main.booking_success',
+            booking_id=booking.id,
+            already_paid=1,
+            token=generate_receipt_token(booking.id),
+        ))
+
     total_info = calculate_booking_total(booking)
     remaining_amount = max((total_info['total'] or 0.0) - (booking.amount_paid or 0.0), 0.0)
     if remaining_amount <= 0:
-        return redirect(url_for('main.booking_success', booking_id=booking.id))
+        return redirect(url_for(
+            'main.booking_success',
+            booking_id=booking.id,
+            already_paid=1,
+            token=generate_receipt_token(booking.id),
+        ))
 
     remaining_amount_cents = int(round(remaining_amount * 100))
     summary_items = [

@@ -2,6 +2,13 @@
 
 > 人工文档在 **`手册/`**。路由/API/字段以代码及 **`04`**、**`02`** 为准；`07` 历史可能过时。
 
+## 硬性准则（必须遵守）
+
+| 项 | 要求 |
+|----|------|
+| 生产 push | 未经用户明确同意，不得 `git push origin main` |
+| **前端视觉** | 测试 / 优化 / 排查 / 执行任务时，**未经用户允许不得改页面视觉**（布局、文案呈现、颜色、间距、样式、模板观感等）。需要改必须先说明并征得同意 |
+
 ## 本地开发
 
 | 项 | 值 |
@@ -57,7 +64,8 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 - 报名在 `/trips/<slug>` **弹窗内** 5 步；正式页 `use_experimental_modal=True` → `_modal_steps_experimental.html`（套餐卡 + Travelers 步进器）
 - File Upload：`POST /api/booking/upload`（UI：自定义 dropzone，见 `05` / `booking-modal.css`）
 - DOB 日历：月/年 Uiverse 下拉（同 Gender）；选月年不关日历；逻辑在 `trip_booking.html`
-- 付款后摘要 `GET /api/booking/<id>/summary`：`trip_total` 用套餐+附加**目录价**（$0 Payment 时勿用 `base_amount_cents`）
+- 付款后摘要 `GET /api/booking/<id>/summary`：须 `token` 或 `payment_intent_id`；`trip_total` 用套餐+附加**目录价**（$0 Payment 时勿用 `base_amount_cents`）
+- 下载按钮：`.nh-download-btn`（见 `05`）；success 已付页可用
 - 静态 CSS/JS 部署后若样式「没变」：先 **Ctrl+F5**（无版本号时易缓存）
 
 ## 业务单号 Order number

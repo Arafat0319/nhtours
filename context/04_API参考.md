@@ -112,9 +112,9 @@
 | `/api/payment/status` | GET | 查询支付状态 |
 | `/api/payment/fee` | POST | 计算手续费 |
 | `/api/booking/create-free` | POST | 零元首付直接创建 Booking（幂等；`payment_intent_id` 可为 `pi_…` 或 `free_…`） |
-| `/api/booking/upload` | POST | 报名文件上传（护照等），multipart `file` → `uploads/booking/` |
-| `/api/booking/<id>/summary` | GET | 付款后订单摘要 JSON：`trip_total`=套餐+附加目录价合计（**勿用**本笔 Payment.base，以免 $0 单变成 0）；`due_at_booking`/`fee`/`discount_amount`/`order_summary_lines` |
-| `/booking/payment/<id>` | GET | 独立支付页（邮件链接等） |
+| `/api/booking/upload` | POST | 报名文件上传；multipart `file` + **`trip_id`（必填）**；魔数校验；落盘 `uploads/booking/trip_<id>/` |
+| `/api/booking/<id>/summary` | GET | 付款后订单摘要；**须** `token`（收据签名）或 `payment_intent_id`（匹配该单），否则 403；含 `receipt_url` |
+| `/booking/payment/<id>` | GET | 独立支付页；**须** receipt `token`；已取消/已全额付则跳转 success |
 | `/booking/<id>/receipt` | GET | 客户收据：**须 `?token=`**；默认 PDF（页脚 logo + **Due at booking**）；`?format=html` 网页；无 token → 404 |
 
 #### POST /api/payment/intent
@@ -196,7 +196,7 @@
 | 路由 | 方法 | 说明 |
 |------|------|------|
 | `/api/discount/validate` | POST | 验证折扣码并返回折扣金额 |
-| `/api/discount/apply` | POST | 应用折扣码到订单 |
+| `/api/discount/apply` | POST | 应用折扣到 PendingBooking；**折扣金额服务端重算**，忽略客户端 `discount_amount` |
 
 **POST /api/discount/validate 请求体**:
 

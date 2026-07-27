@@ -2546,8 +2546,14 @@ def mark_installment_paid(installment_id):
         }), 400
     
     try:
-        from app.payments import calculate_booking_total
+        from app.payments import calculate_booking_total, safe_cancel_payment_intent
         
+        if getattr(installment, 'payment_intent_id', None):
+            safe_cancel_payment_intent(
+                installment.payment_intent_id,
+                reason=f'admin mark-paid installment {installment.id}',
+            )
+
         installment.status = 'paid'
         installment.paid_at = datetime.utcnow()
         
@@ -3728,7 +3734,9 @@ def manage_booking(trip_id, booking_id):
     if request.method == 'POST':
         # Handle form data (from FormData)
         if request.form:
-            booking.status = request.form.get('status', booking.status)
+            prev_status = booking.status
+            new_status = request.form.get('status', booking.status)
+            booking.status = new_status
             _ap = request.form.get('amount_paid')
             if _ap is not None and _ap != '':
                 try:
@@ -3767,15 +3775,23 @@ def manage_booking(trip_id, booking_id):
                 except (json.JSONDecodeError, KeyError) as e:
                     # Log error but don't fail the whole request
                     print(f"Error updating participants: {e}")
+
+            if new_status == 'cancelled' and prev_status != 'cancelled':
+                from app.payments import cancel_unpaid_installments
+                cancel_unpaid_installments(booking)
             
             db.session.commit()
             return jsonify({'success': True, 'message': 'Booking updated successfully'})
         
         # Handle form validation (if using WTForms)
         if form.validate_on_submit():
+            prev_status = booking.status
             booking.status = form.status.data
             booking.amount_paid = form.amount_paid.data
             booking.special_requests = form.special_requests.data
+            if booking.status == 'cancelled' and prev_status != 'cancelled':
+                from app.payments import cancel_unpaid_installments
+                cancel_unpaid_installments(booking)
             db.session.commit()
             
             if request.is_json or request.headers.get('Content-Type') == 'application/json':
