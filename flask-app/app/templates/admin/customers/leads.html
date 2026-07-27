@@ -146,8 +146,11 @@
                     <td class="px-3 py-3 overflow-hidden">
                         <div class="text-sm font-medium text-gray-900 truncate" title="{{ lead.name or '-' }}">{{ lead.name or '-' }}</div>
                         {% if lead.email %}
-                        <div class="text-sm text-gray-500 truncate mt-0.5" title="{{ lead.email }}">
-                            <a href="mailto:{{ lead.email }}" class="text-wetravel-cyan hover:underline">{{ lead.email }}</a>
+                        <div class="mt-0.5">
+                            <a href="mailto:{{ lead.email }}"
+                                class="admin-clamp-text line-clamp-1 break-all text-sm text-slate-700 hover:text-slate-900 hover:underline"
+                                title="{{ lead.email }}">{{ lead.email }}</a>
+                            <button type="button" class="admin-clamp-toggle hidden mt-0.5 text-xs font-medium text-wetravel-cyan hover:underline">Show more</button>
                         </div>
                         {% else %}
                         <div class="text-sm text-gray-400 mt-0.5">-</div>
@@ -162,17 +165,17 @@
                     <td class="px-3 py-3 overflow-hidden">
                         {% if interest_text %}
                         <p class="admin-clamp-text line-clamp-2 text-sm text-gray-700 break-words" title="{{ interest_text }}">{{ interest_text }}</p>
-                        {% if interest_text|length > 60 %}
-                        <button type="button" class="admin-clamp-toggle mt-1 text-xs font-medium text-wetravel-cyan hover:underline">Show more</button>
-                        {% endif %}
+                        <button type="button" class="admin-clamp-toggle hidden mt-1 text-xs font-medium text-wetravel-cyan hover:underline">Show more</button>
                         {% else %}
                         <span class="text-sm text-gray-400">-</span>
                         {% endif %}
                     </td>
                     <td class="px-3 py-3 text-sm text-gray-700 overflow-hidden">
-                        <p class="admin-clamp-text line-clamp-3 whitespace-pre-wrap break-all leading-relaxed">{{ lead.message or '-' }}</p>
-                        {% if lead.message and lead.message|length > 140 %}
-                        <button type="button" class="admin-clamp-toggle mt-1 text-xs font-medium text-wetravel-cyan hover:underline">Show more</button>
+                        {% if lead.message %}
+                        <p class="admin-clamp-text line-clamp-2 whitespace-pre-wrap break-all leading-relaxed">{{ lead.message }}</p>
+                        <button type="button" class="admin-clamp-toggle hidden mt-1 text-xs font-medium text-wetravel-cyan hover:underline">Show more</button>
+                        {% else %}
+                        <span class="text-sm text-gray-400">-</span>
                         {% endif %}
                     </td>
                     <td class="px-3 py-3 whitespace-nowrap">
@@ -285,19 +288,61 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    document.querySelectorAll('.admin-clamp-toggle').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const textEl = btn.previousElementSibling;
-            if (!textEl) return;
-            if (textEl.classList.contains('line-clamp-2') || textEl.classList.contains('line-clamp-3')) {
-                textEl.dataset.clamp = textEl.classList.contains('line-clamp-3') ? '3' : '2';
-                textEl.classList.remove('line-clamp-2', 'line-clamp-3');
+    const CLAMP_CLASSES = ['line-clamp-1', 'line-clamp-2', 'line-clamp-3'];
+
+    function isTextOverflowing(el) {
+        // 在有 line-clamp 时：真实内容高度大于可视高度 → 被裁切
+        return el.scrollHeight > el.clientHeight + 1;
+    }
+
+    function refreshClampToggles() {
+        document.querySelectorAll('.admin-clamp-text').forEach((textEl) => {
+            const btn = textEl.nextElementSibling;
+            if (!btn || !btn.classList.contains('admin-clamp-toggle')) return;
+
+            const expanded = !CLAMP_CLASSES.some((c) => textEl.classList.contains(c));
+            if (expanded) {
+                // 展开态始终保留 Show less
+                btn.classList.remove('hidden');
                 btn.textContent = 'Show less';
+                return;
+            }
+
+            if (isTextOverflowing(textEl)) {
+                btn.classList.remove('hidden');
+                btn.textContent = 'Show more';
             } else {
-                textEl.classList.add(textEl.dataset.clamp === '3' ? 'line-clamp-3' : 'line-clamp-2');
+                btn.classList.add('hidden');
                 btn.textContent = 'Show more';
             }
         });
+    }
+
+    document.querySelectorAll('.admin-clamp-toggle').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const textEl = btn.previousElementSibling;
+            if (!textEl) return;
+            const active = CLAMP_CLASSES.find((c) => textEl.classList.contains(c));
+            if (active) {
+                textEl.dataset.clamp = active;
+                textEl.classList.remove(...CLAMP_CLASSES);
+                btn.textContent = 'Show less';
+                btn.classList.remove('hidden');
+            } else {
+                textEl.classList.add(textEl.dataset.clamp || 'line-clamp-2');
+                btn.textContent = 'Show more';
+                // 收起后再测一次：仍溢出才继续显示按钮
+                requestAnimationFrame(refreshClampToggles);
+            }
+        });
+    });
+
+    refreshClampToggles();
+    window.addEventListener('resize', () => {
+        window.clearTimeout(window.__leadsClampResizeTimer);
+        window.__leadsClampResizeTimer = window.setTimeout(refreshClampToggles, 150);
     });
 
     document.querySelectorAll('.lead-action-btn').forEach((btn) => {
