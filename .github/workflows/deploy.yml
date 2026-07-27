@@ -22,6 +22,14 @@ jobs:
             # 必须与 systemd nhtours.service 一致（gunicorn 用 flask-app/venv，不是仓库根 venv）
             VENV="$DEPLOY_ROOT/flask-app/venv"
             cd "$DEPLOY_ROOT"
+            git config --global --add safe.directory "$DEPLOY_ROOT" || true
+            # 热修/sudo 可能把模板改成 www-data，导致 reset 无法 unlink
+            sudo chown -R "$(whoami):$(whoami)" \
+              "$DEPLOY_ROOT/.git" \
+              "$DEPLOY_ROOT/context" \
+              "$DEPLOY_ROOT/flask-app/app" \
+              "$DEPLOY_ROOT/手册" \
+              2>/dev/null || true
             git fetch origin main
             git reset --hard origin/main
             if [ ! -x "$VENV/bin/python" ]; then
