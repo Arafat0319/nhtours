@@ -220,19 +220,6 @@
                                                     paid.</p>
                                             </div>
                                         </div>
-                                        <div class="relative flex items-start">
-                                            <div class="flex h-6 items-center">
-                                                <input id="enable_auto_billing" type="checkbox"
-                                                    class="h-4 w-4 rounded border-gray-300 text-wetravel-cyan focus:ring-wetravel-cyan">
-                                            </div>
-                                            <div class="ml-3 text-sm leading-6">
-                                                <label for="enable_auto_billing"
-                                                    class="font-medium text-gray-900">Enable
-                                                    auto-billing</label>
-                                                <p class="text-gray-500 text-xs">Automatically charge saved card on due
-                                                    dates.</p>
-                                            </div>
-                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -495,7 +482,6 @@
 
                 // Populate Plan Config
                 document.getElementById('allow_partial').checked = pkg.payment_plan_config.allow_partial || false;
-                document.getElementById('enable_auto_billing').checked = pkg.payment_plan_config.enable_auto_billing || false;
 
                 const installments = pkg.payment_plan_config.installments || [];
                 numberOfInstallments = installments.length;
@@ -548,7 +534,6 @@
 
             togglePaymentPlan(false);
             document.getElementById('allow_partial').checked = false;
-            document.getElementById('enable_auto_billing').checked = false;
             setInstallments(1); // Default
             // Reset auto-balance mode (will be set when payment plan is enabled)
             autoBalanceEnabled = true;
@@ -1053,7 +1038,6 @@
                     enabled: true,
                     deposit_amount: depositAmt,
                     allow_partial: document.getElementById('allow_partial').checked,
-                    enable_auto_billing: document.getElementById('enable_auto_billing').checked,
                     auto_balance_enabled: autoBalanceEnabled,
                     installments: installments
                 };

@@ -220,12 +220,12 @@ body.home-preview-nav-body-lock {
 	overflow: hidden;
 }
 
-/* 临时隐藏 Hero 下方 indigo 分隔条（全站预览）；恢复时删除此规则 */
+/* 正式隐藏 Hero 下方 indigo 分隔条（产品定稿 2026-07-27；恢复时删除此规则） */
 .w-full.h-\[16px\].bg-indigo-800 {
 	display: none !important;
 }
 
-/* 临时隐藏面包屑导航（全站预览）；恢复时删除此规则 */
+/* 正式隐藏面包屑导航（产品定稿 2026-07-27；恢复时删除此规则） */
 nav:has(> ol.flex.flex-wrap.items-center.space-x-2.text-lg.font-medium.text-amber-800) {
 	display: none !important;
 }

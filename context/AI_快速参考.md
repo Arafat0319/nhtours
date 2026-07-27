@@ -132,6 +132,11 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 安全审计 | `/var/log/nhtours/audit.log`；`nh-audit` / `nh-audit --all` / `nh-audit -f` |
 | 安全加固 | ✅ **生产已完成**（2026-07-06）；凭据轮换、审计、限流；详见 `06` / [手册/安全手册.md](../手册/安全手册.md) |
 | 生产 DB | **现网** VM 本机 MySQL → **目标** Lightsail 托管 MySQL（**方案 B 待迁移**；见 `08`） |
+| 未完成速查 | 见 `08`：方案 B、Stripe Live、防火墙/`SECURITY_ALERTS`（待 SSH） |
+| 后台角色 | `User.role`：`admin`（默认）/ `staff`；敏感操作 `@admin_required` |
+| 测试 | `pytest tests/`（门禁等）；全量冒烟 `local_tests/run_all.py` |
+| 下载按钮 | `.nh-download-btn` → `static/css/nh-download-btn.css` |
+| 支付门禁 | summary 须 token/PI；`/booking/payment` 须 token；discount apply 服务端重算；upload 须 `trip_id`+魔数；`/test/*` 仅 debug |
 
 ## Testimonials / Feedback
 

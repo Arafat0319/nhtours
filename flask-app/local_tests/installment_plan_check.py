@@ -42,7 +42,7 @@ def run():
                 {"date": (date.today() + timedelta(days=30)).strftime("%Y-%m-%d"), "amount": 400},
                 {"date": (date.today() + timedelta(days=60)).strftime("%Y-%m-%d"), "amount": 400},
             ],
-            "auto_billing": False,
+            "auto_balance_enabled": True,
             "allow_partial": False,
         }
         package = TripPackage(

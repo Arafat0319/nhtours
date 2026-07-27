@@ -37,6 +37,8 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(64), unique=True, index=True)
     password_hash = db.Column(db.String(255))
+    # admin = 全权限；staff = 日常运营（行程/订单查看编辑），敏感资金与删除操作除外
+    role = db.Column(db.String(20), default='admin', nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def set_password(self, password):
@@ -44,6 +46,10 @@ class User(UserMixin, db.Model):
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+    @property
+    def is_admin(self):
+        return (self.role or 'admin') == 'admin'
 
     def __repr__(self):
         return f'<User {self.username}>'
@@ -179,9 +185,9 @@ class TripPackage(db.Model):
     #       {"date": "2025-09-03", "amount": 625},
     #       {"date": "2025-10-03", "amount": 625}
     #   ],
-    #   "auto_billing": true,
     #   "allow_partial": false
     # }
+    # （曾有 enable_auto_billing 勾选，无后端扣款；2026-07-27 已从 Builder UI 移除）
     payment_plan_config = db.Column(db.JSON)
     
     # New WeTravel Fields

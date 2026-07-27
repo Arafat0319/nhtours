@@ -23,6 +23,8 @@
 
 ## 后台管理路由
 
+> 登录即可访问日常行程/订单；**敏感操作**（退款、标记已付、删除、支付/订单导出、群发邮件等）须 `User.role=admin`（`@admin_required`）。`staff` → 403。
+
 ### 仪表盘
 
 | 路由 | 方法 | 说明 |
@@ -326,6 +328,8 @@ stripe listen --forward-to localhost:8080/webhooks/stripe
 | `/booking/success` | GET | 支付成功页面 |
 | `/pay-installment/<id>` | GET | 分期付款弹窗页（query: token=，模板 installment_modal_page.html） |
 | `/pay-installment/<id>/payoff` | GET | 一次性付清页（query: token=） |
+| `/test/installment-modal` | GET | 分期弹窗预览；**仅 debug**，生产 404 |
+| `/test/installment-payment-preview` | GET | 分期页预览；**仅 debug** |
 
 ### 其他页面
 
@@ -381,4 +385,4 @@ stripe listen --forward-to localhost:8080/webhooks/stripe
 
 ## 更新日期
 
-**最后更新**: 2026-06-18（对照代码审计：路由/Webhook/支付 API 修正）
+**最后更新**: 2026-07-27（支付门禁；upload trip_id；discount 服务端重算；后台 role）

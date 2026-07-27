@@ -5,8 +5,10 @@ import os
 import re
 from flask import render_template, redirect, url_for, flash, request, jsonify, current_app, send_file
 from flask_login import login_user, logout_user, current_user, login_required
+from app.admin.decorators import admin_required
 from sqlalchemy.orm import joinedload
-from sqlalchemy import or_, and_, case
+from sqlalchemy import or_, and_, case, func
+from collections import defaultdict
 from app import db
 from app.admin import bp
 from app.admin.forms import LoginForm, TripForm, CityForm, ClientForm, TripBasicsForm, TripDescriptionForm, TripPackagesForm, TripAddonsForm, TripParticipantForm, TripCouponForm, EditBookingForm, TestimonialForm
@@ -46,6 +48,52 @@ def inject_trip_builder_publish_gaps():
         return {}
     return {'publish_gaps': get_trip_publish_gaps(trip)}
 
+def _prefetch_booking_finance_graph(trip_id):
+    """一次拉齐行程订单套餐/附加，避免 trips 列表 stats 的 dynamic N+1。"""
+    bookings = (
+        Booking.query.filter_by(trip_id=trip_id)
+        .options(joinedload(Booking.client))
+        .all()
+    )
+    if not bookings:
+        return [], {}, {}, {}
+
+    booking_ids = [b.id for b in bookings]
+    bp_by_booking = defaultdict(list)
+    for bp in (
+        BookingPackage.query.filter(BookingPackage.booking_id.in_(booking_ids))
+        .options(joinedload(BookingPackage.package))
+        .all()
+    ):
+        bp_by_booking[bp.booking_id].append(bp)
+
+    participants = BookingParticipant.query.filter(
+        BookingParticipant.booking_id.in_(booking_ids)
+    ).all()
+    participant_by_id = {p.id: p for p in participants}
+
+    participant_addons_by_booking = defaultdict(list)
+    if participant_by_id:
+        for ba in (
+            BookingAddOn.query.filter(BookingAddOn.participant_id.in_(list(participant_by_id)))
+            .options(joinedload(BookingAddOn.addon))
+            .all()
+        ):
+            p = participant_by_id.get(ba.participant_id)
+            if p:
+                participant_addons_by_booking[p.booking_id].append(ba)
+
+    booking_addons_by_booking = defaultdict(list)
+    for ba in (
+        BookingAddOn.query.filter(BookingAddOn.booking_id.in_(booking_ids))
+        .options(joinedload(BookingAddOn.addon))
+        .all()
+    ):
+        booking_addons_by_booking[ba.booking_id].append(ba)
+
+    return bookings, bp_by_booking, participant_addons_by_booking, booking_addons_by_booking
+
+
 def calculate_trip_stats(trip):
     """
     计算行程的统计信息（参与者数量、已付金额、应付金额）
@@ -58,13 +106,17 @@ def calculate_trip_stats(trip):
     - amount_expected: 净应收金额（gross - discount）
     - amount_available: expected - paid（待收金额）
     """
-    bookings = trip.bookings.all() if trip.bookings else []
-    
-    # 计算参与者总数
-    participants_count = 0
-    for booking in bookings:
-        participants_count += booking.participants.count()
-    
+    bookings, bp_by_booking, participant_addons_by_booking, booking_addons_by_booking = (
+        _prefetch_booking_finance_graph(trip.id)
+    )
+
+    participants_count = (
+        db.session.query(func.count(BookingParticipant.id))
+        .join(Booking, BookingParticipant.booking_id == Booking.id)
+        .filter(Booking.trip_id == trip.id)
+        .scalar()
+    ) or 0
+
     # 计算已付金额（Booking.amount_paid 只记录基础金额，不含手续费）
     amount_paid = sum(b.amount_paid or 0.0 for b in bookings)
     
@@ -78,7 +130,7 @@ def calculate_trip_stats(trip):
         has_packages = False
         
         # Calculate expected amount from BookingPackages
-        for bp in b.booking_packages:
+        for bp in bp_by_booking.get(b.id, []):
             if bp.package:
                 package_price = float(bp.package.price) if bp.package.price is not None else 0.0
                 quantity = int(bp.quantity) if bp.quantity is not None else 1
@@ -88,17 +140,14 @@ def calculate_trip_stats(trip):
         # Add add-ons prices (收集所有 add-ons，避免重复计算)
         seen_addon_ids = set()
         
-        # 方法1：通过 participant.addons 获取
-        for participant in b.participants:
-            for booking_addon in participant.addons:
-                if booking_addon.addon and booking_addon.id not in seen_addon_ids:
-                    addon_price = float(booking_addon.addon.price) if booking_addon.addon.price is not None else 0.0
-                    quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 1
-                    booking_gross += addon_price * quantity
-                    seen_addon_ids.add(booking_addon.id)
+        for booking_addon in participant_addons_by_booking.get(b.id, []):
+            if booking_addon.addon and booking_addon.id not in seen_addon_ids:
+                addon_price = float(booking_addon.addon.price) if booking_addon.addon.price is not None else 0.0
+                quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 1
+                booking_gross += addon_price * quantity
+                seen_addon_ids.add(booking_addon.id)
         
-        # 方法2：通过 booking.addons 获取（直接关联的 add-ons）
-        for booking_addon in b.addons:
+        for booking_addon in booking_addons_by_booking.get(b.id, []):
             if booking_addon.addon and booking_addon.id not in seen_addon_ids:
                 addon_price = float(booking_addon.addon.price) if booking_addon.addon.price is not None else 0.0
                 quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 1
@@ -340,7 +389,11 @@ def trips_json():
 @login_required
 def manage_trip(id):
     trip = Trip.query.get_or_404(id)
-    bookings = trip.bookings.all() if trip.bookings else []
+    bookings = (
+        Booking.query.filter_by(trip_id=trip.id)
+        .options(joinedload(Booking.client))
+        .all()
+    )
     
     # Financial Calculations
     # amount_paid 是客户实际支付的基础金额（不含 Stripe 手续费）
@@ -1163,7 +1216,7 @@ def trip_builder(id, step):
 
 
 @bp.route('/trips/<int:id>/delete', methods=['POST'])
-@login_required
+@admin_required
 def delete_trip(id):
     trip = Trip.query.get_or_404(id)
     # pending_bookings / messages 的 trip_id 为 NOT NULL；无 cascade 时 ORM 会尝试 SET NULL
@@ -1455,7 +1508,7 @@ def update_lead_status(id):
 
 
 @bp.route('/customers/leads/<int:id>/delete', methods=['POST'])
-@login_required
+@admin_required
 def delete_lead(id):
     """删除Lead"""
     lead = Lead.query.get_or_404(id)
@@ -1785,7 +1838,7 @@ def edit_client(id):
 
 
 @bp.route('/clients/<int:id>/delete', methods=['POST'])
-@login_required
+@admin_required
 def delete_client(id):
     client = Client.query.get_or_404(id)
     
@@ -1815,7 +1868,7 @@ def delete_client(id):
 
 
 @bp.route('/customers/<int:id>/delete', methods=['POST'])
-@login_required
+@admin_required
 def delete_customer(id):
     """删除客户（Customers 页面使用）"""
     client = Client.query.get_or_404(id)
@@ -1852,7 +1905,7 @@ def delete_customer(id):
 
 
 @bp.route('/trips/<int:id>/checkout_test')
-@login_required
+@admin_required
 def checkout_test(id):
     trip = Trip.query.get_or_404(id)
     # 模拟一个成功和取消的 URL
@@ -2488,7 +2541,7 @@ def installment_payments_api():
 
 
 @bp.route('/payments/installments/<int:installment_id>/send-reminder', methods=['POST'])
-@login_required
+@admin_required
 def send_installment_reminder(installment_id):
     """发送分期付款提醒邮件"""
     installment = InstallmentPayment.query.get_or_404(installment_id)
@@ -2534,7 +2587,7 @@ def send_installment_reminder(installment_id):
 
 
 @bp.route('/payments/installments/<int:installment_id>/mark-paid', methods=['POST'])
-@login_required
+@admin_required
 def mark_installment_paid(installment_id):
     """手动标记分期付款为已支付（用于线下支付）"""
     installment = InstallmentPayment.query.get_or_404(installment_id)
@@ -2584,7 +2637,7 @@ def mark_installment_paid(installment_id):
 
 
 @bp.route('/payments/export')
-@login_required
+@admin_required
 def export_payments():
     """导出Payments为Excel文件"""
     try:
@@ -2667,7 +2720,7 @@ def export_payments():
 
 
 @bp.route('/trips/<int:id>/bookings/export')
-@login_required
+@admin_required
 def export_bookings(id):
     """导出行程预订快照 Excel（静态预填；含退款与取消信息，风格参考 WeTravel）。"""
     import io
@@ -3931,7 +3984,7 @@ def get_trip_financials(id):
 
 
 @bp.route('/trips/<int:trip_id>/bookings/<int:booking_id>/refund', methods=['POST'])
-@login_required
+@admin_required
 def refund_booking(trip_id, booking_id):
     """
     处理预订退款：
@@ -4090,7 +4143,7 @@ def refund_booking(trip_id, booking_id):
 
 
 @bp.route('/trips/<int:trip_id>/bookings/<int:booking_id>/delete', methods=['POST'])
-@login_required
+@admin_required
 def delete_booking(trip_id, booking_id):
     """删除预订"""
     from app.models import BookingAddOn, BookingPackage, InstallmentPayment, Payment
@@ -4146,7 +4199,7 @@ def delete_booking(trip_id, booking_id):
 
 
 @bp.route('/trips/<int:trip_id>/bookings/<int:booking_id>/send-email', methods=['POST'])
-@login_required
+@admin_required
 def send_booking_email(trip_id, booking_id):
     """给预订客户发送邮件"""
     trip = Trip.query.get_or_404(trip_id)
@@ -4233,7 +4286,7 @@ Order number: {booking.order_number or ('#' + str(booking.id))}
 
 
 @bp.route('/trips/<int:id>/messages/create', methods=['POST'])
-@login_required
+@admin_required
 def create_message(id):
     """创建或更新消息（发送、保存草稿或定时发送）"""
     from app.messaging import (

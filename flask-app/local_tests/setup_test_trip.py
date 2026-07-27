@@ -82,7 +82,7 @@ def run():
                         "amount": 450,
                     },
                 ],
-                "auto_billing": False,
+                "auto_balance_enabled": True,
                 "allow_partial": False,
             }
             full_plan = {"enabled": False}
