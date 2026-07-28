@@ -12,7 +12,43 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/booking-modal.css') }}">
 <style>
     body.installment-modal-page #homePreviewNav { display: none !important; }
-    html.installment-modal-page, body.installment-modal-page { overflow: hidden !important; width: 100% !important; max-width: 100% !important; }
+    /* 锁住背后首页滚动；付款层自身可滚（短屏 / 公司笔记本必需要） */
+    html.installment-modal-page,
+    body.installment-modal-page {
+        overflow: hidden !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        height: 100% !important;
+    }
+    body.installment-modal-page #booking-modal {
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+        height: 100% !important;
+        max-height: 100vh !important;
+        max-height: 100dvh !important;
+    }
+    body.installment-modal-page #booking-modal #booking-modal-scroll-viewport {
+        min-height: 100% !important;
+        max-height: none !important;
+        overflow: visible !important;
+        pointer-events: auto !important;
+    }
+    /* 短屏从顶部排版，避免 items-center 把卡片裁切且无法滚到按钮 */
+    body.installment-modal-page #booking-modal #booking-modal-inner {
+        align-items: flex-start !important;
+        justify-content: flex-start !important;
+        min-height: min(100%, 100dvh) !important;
+        padding-top: max(48px, env(safe-area-inset-top, 0px)) !important;
+        padding-bottom: max(48px, env(safe-area-inset-bottom, 0px)) !important;
+        box-sizing: border-box !important;
+    }
+    body.installment-modal-page #booking-modal #booking-modal-card {
+        margin-top: 1.5rem !important;
+        margin-bottom: 2rem !important;
+        max-width: min(870px, 100%) !important;
+    }
     /* 与原版一致：圆图压住卡片上缘，一半在框外一半在框内（负边距上移，圆 103px 约一半露出） */
     body.installment-modal-page #booking-modal header .rounded-full.overflow-hidden.object-cover {
         position: relative !important;
@@ -137,14 +173,13 @@
         border-width: 1px !important;
         border-radius: 0.25rem !important;
     }
-    /* 移动端：viewport 可滚动，避免 PAYMENT 占满屏、Your Booking 被裁掉 */
     @media (max-width: 1023px) {
-        body.installment-modal-page #booking-modal #booking-modal-scroll-viewport {
-            max-height: 100vh !important;
-            overflow-y: auto !important;
-            overflow-x: hidden !important;
-            -webkit-overflow-scrolling: touch;
-            pointer-events: auto !important;
+        body.installment-modal-page #booking-modal .booking-modal-footer {
+            padding: 1rem !important;
+            padding-bottom: max(1rem, env(safe-area-inset-bottom, 0)) !important;
+        }
+        body.installment-modal-page #booking-modal #booking-modal-card {
+            margin-top: 0.75rem !important;
         }
     }
 </style>
@@ -201,14 +236,14 @@
 </div>
 
 {# ========== 分期付款弹窗（布局/字体/样式与报名页弹窗一致，默认打开、无关闭键、不可退出） ========== #}
-<div id="booking-modal" class="fixed inset-0" style="background-color: rgba(39, 43, 43, 0.88); z-index: 10001; height: 100vh; border: none; outline: none;">
+	<div id="booking-modal" class="fixed inset-0" style="background-color: rgba(39, 43, 43, 0.88); z-index: 10001; height: 100%; max-height: 100dvh; overflow-x: hidden; overflow-y: auto; border: none; outline: none; -webkit-overflow-scrolling: touch;">
 	<a href="{{ url_for('main.index') }}" id="booking-modal-screen-logo" class="fixed z-[10002] flex items-center pointer-events-auto" style="left: 1.5rem; top: 1rem;" aria-label="Nexus Horizons Home">
 		<img src="{{ url_for('static', filename='images/icons/logo-2-white.DyAUH4zT.svg') }}" alt="Nexus Horizons" style="width: 256px; height: 57.69px; object-fit: contain;">
 	</a>
 	<div class="fixed inset-0 z-0 pointer-events-none" id="booking-modal-backdrop" aria-hidden="true"></div>
-	<div id="booking-modal-scroll-viewport" class="z-10 w-full min-h-full" style="min-height: 100vh; border: none; outline: none; pointer-events: none;">
-		<div id="booking-modal-inner" class="flex justify-center items-center min-h-full px-4 relative" style="padding-top: 60px; padding-bottom: 60px; min-height: 100vh; box-sizing: border-box; pointer-events: auto;">
-			<div id="booking-modal-card" class="booking-modal-content relative w-full bg-white" style="max-width: 870px; margin-top: 5rem; margin-bottom: 0; border-radius: 0.5rem; overflow: visible; border: none; outline: none; display: block; pointer-events: auto;">
+	<div id="booking-modal-scroll-viewport" class="z-10 w-full" style="min-height: 100%; border: none; outline: none; pointer-events: auto;">
+		<div id="booking-modal-inner" class="flex justify-center items-start px-4 relative" style="padding-top: 60px; padding-bottom: 60px; box-sizing: border-box; pointer-events: auto;">
+			<div id="booking-modal-card" class="booking-modal-content relative w-full bg-white" style="max-width: 870px; margin-top: 1.5rem; margin-bottom: 2rem; border-radius: 0.5rem; overflow: visible; border: none; outline: none; display: block; pointer-events: auto;">
 				{# 无关闭键 #}
 				<header class="flex-shrink-0 relative flex flex-col justify-center items-center pt-0 pb-3 overflow-visible" style="background-color: #f4f4f5; border-radius: 0.5rem 0.5rem 0 0; height: 180px;">
 					<div class="absolute pointer-events-none overflow-hidden booking-modal-header-deco" style="right: 0; bottom: 0; width: 807px; max-width: 100%; height: 180px; z-index: 0; opacity: 1; border-top-right-radius: 0.5rem; isolation: isolate;">
