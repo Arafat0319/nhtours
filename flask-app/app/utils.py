@@ -98,7 +98,7 @@ def _email_brand_footer(from_email, reply_to):
     """
     事务邮件页脚（参考 Stripe / Postmark / MailerSend 常见写法）：
     - 不把「品牌 · 邮箱」挤成一行
-    - 先写如何联系（Reply / contact），再写公司名与官网
+    - From 为 noreply 时引导写 info@，不写 “Reply to this email”
     - 不展示 noreply@ 作为联系方式
     """
     brand = current_app.config.get('SENDER_DISPLAY_NAME', 'Nexus Horizons Tours')
@@ -108,28 +108,38 @@ def _email_brand_footer(from_email, reply_to):
         contact = (current_app.config.get('REPLY_TO_EMAIL') or '').strip()
     if contact.lower().startswith('noreply@'):
         contact = ''
+    if not contact:
+        contact = 'info@nhtours.com'
+
+    from_addr = (from_email or '').strip()
+    if '<' in from_addr and '>' in from_addr:
+        from_addr = from_addr.split('<', 1)[1].split('>', 1)[0].strip()
+    from_is_noreply = from_addr.lower().startswith('noreply@')
 
     lines = ['', '--']
-    if contact:
-        lines.append(f'Questions? Reply to this email or contact us at {contact}.')
+    if from_is_noreply:
+        lines.append(
+            f'Questions? Please email us at {contact} '
+            f'(this message was sent from a no-reply address).'
+        )
+        contact_html = (
+            f'<p style="margin:0 0 8px;font-size:12px;color:#6b7280;line-height:1.5;">'
+            f'Questions? Please email us at '
+            f'<a href="mailto:{contact}" style="color:#6b7280;">{contact}</a> '
+            f'(this message was sent from a no-reply address).'
+            f'</p>'
+        )
     else:
-        lines.append('Questions? Reply to this email.')
-    lines.extend(['', brand, site])
-    plain = '\n'.join(lines) + '\n'
-
-    if contact:
+        lines.append(f'Questions? Reply to this email or contact us at {contact}.')
         contact_html = (
             f'<p style="margin:0 0 8px;font-size:12px;color:#6b7280;line-height:1.5;">'
             f'Questions? Reply to this email or contact us at '
             f'<a href="mailto:{contact}" style="color:#6b7280;">{contact}</a>.'
             f'</p>'
         )
-    else:
-        contact_html = (
-            '<p style="margin:0 0 8px;font-size:12px;color:#6b7280;line-height:1.5;">'
-            'Questions? Reply to this email.'
-            '</p>'
-        )
+    lines.extend(['', brand, site])
+    plain = '\n'.join(lines) + '\n'
+
     site_label = site.replace('https://', '').replace('http://', '')
     html = (
         '<hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0 16px;">'

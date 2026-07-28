@@ -15,7 +15,7 @@ Pay here: {{ payment_link }}
 
 {{ footer_note }}
 
-Questions? Contact info@nhtours.com
+Questions? Please email us at info@nhtours.com (this message was sent from a no-reply address).
 
 Nexus Horizons Tours
 https://nhtours.com
