@@ -64,10 +64,23 @@ def send_security_alert(subject, body, *, alert_key=None, html_body=None):
         )
         return False, "ses_not_configured"
 
-    from app.utils import send_email_via_ses
+    from app.utils import send_email_via_ses, _email_brand_logo_url
+    from flask import render_template
 
     text = body or ""
-    html = html_body or f"<pre>{text}</pre>"
+    if html_body:
+        html = html_body
+    else:
+        html = render_template(
+            "emails/security_alert_notify.html",
+            subject_line=subject,
+            brand_subtitle="Security alert",
+            headline="Security alert",
+            intro="An automated security event was recorded. Details are below.",
+            alert_subject=subject,
+            alert_body=text,
+            email_logo_url=_email_brand_logo_url(),
+        )
     ok, msg = send_email_via_ses(sender, recipient, subject, html, text)
     if ok:
         with _lock:

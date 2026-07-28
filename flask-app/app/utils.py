@@ -12,11 +12,17 @@ from email.mime.application import MIMEApplication
 from email.header import Header
 from email.utils import formataddr, parseaddr, formatdate, make_msgid
 from datetime import datetime
-from flask import current_app, url_for
+from flask import current_app, url_for, render_template
 from app import db
 from app.models import Lead, Testimonial
 import json
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+
+
+def _email_brand_logo_url():
+    """收据 / 催款 / 线索通知等邮件页脚 logo。"""
+    base = (current_app.config.get('BASE_URL') or '').rstrip('/') or 'https://nhtours.com'
+    return f'{base}/static/images/icons/nexus-horizons-email.png'
 
 # 个人邮箱域名：经 SES 发出时无法配自家 SPF/DKIM，且 Reply-To 跨域易被判钓鱼
 _FREEMAIL_DOMAINS = frozenset({
@@ -261,28 +267,21 @@ def handle_newsletter_submission(data):
     # 获取配置
     recipient_email = current_app.config.get('RECIPIENT_EMAIL', 'info@nhtours.com')
     sender_email = current_app.config.get('SENDER_EMAIL', recipient_email)
-    
-    # 构建邮件内容
-    subject = 'Newsletter订阅 - Nexus Horizons Tours'
-    html_body = f"""
-    <html>
-    <head></head>
-    <body>
-        <h2>新的Newsletter订阅</h2>
-        <p><strong>订阅邮箱:</strong> {email}</p>
-        <p><strong>订阅时间:</strong> {get_current_timestamp()}</p>
-    </body>
-    </html>
-    """
-    
-    text_body = f"""
-新的Newsletter订阅
-
-订阅邮箱: {email}
-订阅时间: {get_current_timestamp()}
-    """
-    
-    # 发送邮件
+    submitted_at = get_current_timestamp()
+    subject = 'New newsletter subscriber — Nexus Horizons Tours'
+    html_body = render_template(
+        'emails/newsletter_notify.html',
+        subject_line=subject,
+        brand_subtitle='Newsletter signup',
+        email=email,
+        submitted_at=submitted_at,
+        email_logo_url=_email_brand_logo_url(),
+    )
+    text_body = render_template(
+        'emails/newsletter_notify.txt',
+        email=email,
+        submitted_at=submitted_at,
+    )
     return send_email_via_ses(sender_email, recipient_email, subject, html_body, text_body)
 
 
@@ -337,64 +336,44 @@ def handle_contact_submission(data):
     # 获取配置
     recipient_email = current_app.config.get('RECIPIENT_EMAIL', 'info@nhtours.com')
     sender_email = current_app.config.get('SENDER_EMAIL', recipient_email)
-    
-    # 构建邮件内容
-    subject = f'联系表单提交 - {first_name} {last_name}'
-    html_body = f"""
-    <html>
-    <head></head>
-    <body>
-        <h2>新的联系表单提交</h2>
-        <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
-            <tr>
-                <td style="padding: 8px; border: 1px solid #ddd;"><strong>姓名:</strong></td>
-                <td style="padding: 8px; border: 1px solid #ddd;">{first_name} {last_name}</td>
-            </tr>
-            <tr>
-                <td style="padding: 8px; border: 1px solid #ddd;"><strong>邮箱:</strong></td>
-                <td style="padding: 8px; border: 1px solid #ddd;"><a href="mailto:{email}">{email}</a></td>
-            </tr>
-            <tr>
-                <td style="padding: 8px; border: 1px solid #ddd;"><strong>电话:</strong></td>
-                <td style="padding: 8px; border: 1px solid #ddd;">{phone if phone else '未提供'}</td>
-            </tr>
-            <tr>
-                <td style="padding: 8px; border: 1px solid #ddd;"><strong>组织:</strong></td>
-                <td style="padding: 8px; border: 1px solid #ddd;">{organization if organization else '未提供'}</td>
-            </tr>
-            <tr>
-                <td style="padding: 8px; border: 1px solid #ddd;"><strong>兴趣:</strong></td>
-                <td style="padding: 8px; border: 1px solid #ddd;">{interests_str}</td>
-            </tr>
-            <tr>
-                <td style="padding: 8px; border: 1px solid #ddd; vertical-align: top;"><strong>消息:</strong></td>
-                <td style="padding: 8px; border: 1px solid #ddd; white-space: pre-wrap;">{message}</td>
-            </tr>
-            <tr>
-                <td style="padding: 8px; border: 1px solid #ddd;"><strong>提交时间:</strong></td>
-                <td style="padding: 8px; border: 1px solid #ddd;">{get_current_timestamp()}</td>
-            </tr>
-        </table>
-    </body>
-    </html>
-    """
-    
-    text_body = f"""
-新的联系表单提交
+    submitted_at = get_current_timestamp()
+    full_name = f'{first_name} {last_name}'.strip()
+    org_display = organization if organization else 'Not provided'
+    phone_display = phone if phone else ''
 
-姓名: {first_name} {last_name}
-邮箱: {email}
-电话: {phone if phone else '未提供'}
-组织: {organization if organization else '未提供'}
-兴趣: {interests_str}
+    try:
+        admin_leads_url = url_for('admin.leads', _external=True)
+    except Exception:
+        admin_leads_url = None
 
-消息:
-{message}
+    subject = f'New contact lead — {full_name}'
+    html_body = render_template(
+        'emails/contact_lead_notify.html',
+        subject_line=subject,
+        brand_subtitle='New contact form lead',
+        full_name=full_name,
+        email=email,
+        phone=phone_display,
+        organization=org_display,
+        interests=interests_str,
+        message=message,
+        submitted_at=submitted_at,
+        admin_leads_url=admin_leads_url,
+        email_logo_url=_email_brand_logo_url(),
+    )
+    text_body = render_template(
+        'emails/contact_lead_notify.txt',
+        full_name=full_name,
+        email=email,
+        phone=phone_display or 'Not provided',
+        organization=org_display,
+        interests=interests_str,
+        message=message,
+        submitted_at=submitted_at,
+        admin_leads_url=admin_leads_url or '',
+    )
 
-提交时间: {get_current_timestamp()}
-    """
-    
-    # 发送邮件
+    # 发送邮件（Reply-To = 提交者邮箱，方便直接回复）
     return send_email_via_ses(sender_email, recipient_email, subject, html_body, text_body, reply_to=email)
 
 
@@ -438,33 +417,33 @@ def handle_testimonial_submission(data):
 
     recipient_email = current_app.config.get("RECIPIENT_EMAIL", "info@nhtours.com")
     sender_email = current_app.config.get("SENDER_EMAIL", recipient_email)
-    admin_url = url_for("admin.testimonials", _external=True)
+    try:
+        admin_url = url_for("admin.testimonials", _external=True)
+    except Exception:
+        admin_url = None
+    org_line = organization or "Not provided"
+    submitted_at = get_current_timestamp()
 
     subject = f"New Testimonial pending review — {author_name}"
-    org_line = organization or "Not provided"
-    html_body = f"""
-    <html><body>
-        <h2>New homepage testimonial (pending review)</h2>
-        <p><strong>Name:</strong> {author_name}</p>
-        <p><strong>School / Organization:</strong> {org_line}</p>
-        <p><strong>Quote:</strong></p>
-        <p style="white-space: pre-wrap;">{quote}</p>
-        <p><strong>Submitted:</strong> {get_current_timestamp()}</p>
-        <p><a href="{admin_url}">Review in admin</a></p>
-    </body></html>
-    """
-    text_body = f"""
-New homepage testimonial (pending review)
-
-Name: {author_name}
-School / Organization: {org_line}
-
-Quote:
-{quote}
-
-Submitted: {get_current_timestamp()}
-Review: {admin_url}
-    """
+    html_body = render_template(
+        "emails/testimonial_pending_notify.html",
+        subject_line=subject,
+        brand_subtitle="Homepage testimonial",
+        author_name=author_name,
+        organization=org_line,
+        quote=quote,
+        submitted_at=submitted_at,
+        admin_url=admin_url,
+        email_logo_url=_email_brand_logo_url(),
+    )
+    text_body = render_template(
+        "emails/testimonial_pending_notify.txt",
+        author_name=author_name,
+        organization=org_line,
+        quote=quote,
+        submitted_at=submitted_at,
+        admin_url=admin_url or "",
+    )
     send_email_via_ses(sender_email, recipient_email, subject, html_body, text_body)
 
     return True, "Thank you! Your story will appear after review."
@@ -538,41 +517,41 @@ def handle_feedback_submission(data):
 
     recipient_email = current_app.config.get("RECIPIENT_EMAIL", "info@nhtours.com")
     sender_email = current_app.config.get("SENDER_EMAIL", recipient_email)
-    admin_url = url_for("admin.testimonials", _external=True)
+    try:
+        admin_url = url_for("admin.testimonials", _external=True)
+    except Exception:
+        admin_url = None
     rating_label = FEEDBACK_RATINGS.get(rating, rating)
     org_line = organization or "Not provided"
     phone_line = phone or "Not provided"
+    submitted_at = get_current_timestamp()
 
     subject = f"New post-trip feedback — {author_name} ({rating_label})"
-    html_body = f"""
-    <html><body>
-        <h2>New post-trip feedback (pending review)</h2>
-        <p><strong>Name:</strong> {author_name}</p>
-        <p><strong>Email:</strong> {email}</p>
-        <p><strong>Phone:</strong> {phone_line}</p>
-        <p><strong>School / Organization:</strong> {org_line}</p>
-        <p><strong>Overall rating:</strong> {rating_label}</p>
-        <p><strong>Comments:</strong></p>
-        <p style="white-space: pre-wrap;">{quote}</p>
-        <p><strong>Submitted:</strong> {get_current_timestamp()}</p>
-        <p><a href="{admin_url}">Review in admin</a></p>
-    </body></html>
-    """
-    text_body = f"""
-New post-trip feedback (pending review)
-
-Name: {author_name}
-Email: {email}
-Phone: {phone_line}
-School / Organization: {org_line}
-Overall rating: {rating_label}
-
-Comments:
-{quote}
-
-Submitted: {get_current_timestamp()}
-Review: {admin_url}
-    """
+    html_body = render_template(
+        "emails/feedback_pending_notify.html",
+        subject_line=subject,
+        brand_subtitle="Post-trip feedback",
+        author_name=author_name,
+        email=email,
+        phone=phone_line,
+        organization=org_line,
+        rating_label=rating_label,
+        quote=quote,
+        submitted_at=submitted_at,
+        admin_url=admin_url,
+        email_logo_url=_email_brand_logo_url(),
+    )
+    text_body = render_template(
+        "emails/feedback_pending_notify.txt",
+        author_name=author_name,
+        email=email,
+        phone=phone_line,
+        organization=org_line,
+        rating_label=rating_label,
+        quote=quote,
+        submitted_at=submitted_at,
+        admin_url=admin_url or "",
+    )
     send_email_via_ses(sender_email, recipient_email, subject, html_body, text_body, reply_to=email)
 
     return True, "Thank you for your feedback! We appreciate you taking the time to share your experience."

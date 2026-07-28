@@ -1,0 +1,10 @@
+New homepage testimonial (pending review)
+
+Name: {{ author_name }}
+School / Organization: {{ organization }}
+
+Quote:
+{{ quote }}
+
+Submitted: {{ submitted_at }}
+{% if admin_url %}Review: {{ admin_url }}{% endif %}

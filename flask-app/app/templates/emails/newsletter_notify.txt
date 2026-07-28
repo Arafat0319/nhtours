@@ -1,0 +1,4 @@
+New newsletter subscriber — Nexus Horizons Tours
+
+Email: {{ email }}
+Submitted: {{ submitted_at }}

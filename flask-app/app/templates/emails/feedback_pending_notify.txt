@@ -1,0 +1,13 @@
+New post-trip feedback (pending review)
+
+Name: {{ author_name }}
+Email: {{ email }}
+Phone: {{ phone }}
+School / Organization: {{ organization }}
+Overall rating: {{ rating_label }}
+
+Comments:
+{{ quote }}
+
+Submitted: {{ submitted_at }}
+{% if admin_url %}Review: {{ admin_url }}{% endif %}

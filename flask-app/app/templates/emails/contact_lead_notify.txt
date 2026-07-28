@@ -1,0 +1,15 @@
+New contact form lead — Nexus Horizons Tours
+
+From: {{ full_name }}
+Email: {{ email }}
+Phone: {{ phone }}
+Organization: {{ organization }}
+Interests: {{ interests }}
+Submitted: {{ submitted_at }}
+
+Message:
+{{ message }}
+{% if admin_leads_url %}
+
+Open in Leads: {{ admin_leads_url }}
+{% endif %}
