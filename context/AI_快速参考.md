@@ -132,8 +132,8 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 报名校验 | 前端 `booking.js` + 后端 `booking_validation.py`（email/phone/name/dob/zip）；Promo 未选套餐 → `#discount-message` 琥珀提示 |
 | 安全审计 | `/var/log/nhtours/audit.log`；`nh-audit` / `nh-audit --all` / `nh-audit -f` |
 | 安全加固 | ✅ **生产已完成**（2026-07-06）；凭据轮换、审计、限流；详见 `06` / [手册/安全手册.md](../手册/安全手册.md) |
-| 生产 DB | **现网** VM 本机 MySQL → **目标** Lightsail 托管 MySQL（**方案 B 待迁移**；见 `08`） |
-| 未完成速查 | 见 `08`：方案 B、Stripe Live（安全核对 2026-07-27 已齐） |
+| 生产 DB | ✅ Lightsail 托管 `nhtours-db`（私有+自动备份）；VM 本机 MySQL 已停用；见 `06`/`08` |
+| 未完成速查 | 见 `08`：Stripe Live |
 | 后台角色 | `User.role`：`admin`（默认）/ `staff`；敏感操作 `@admin_required` |
 | 测试 | `pytest tests/`（门禁等）；全量冒烟 `local_tests/run_all.py` |
 | 下载按钮 | `.nh-download-btn` → `static/css/nh-download-btn.css` |
