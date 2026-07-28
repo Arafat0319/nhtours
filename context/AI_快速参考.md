@@ -23,9 +23,9 @@
 
 ### 从生产复制数据到本地（按需）
 
-用于按客户测试数据改功能，避免反复 push 看效果：
+用于按客户测试数据改功能，避免反复 push 看效果。生产库已在 **Lightsail 托管 MySQL**（私有）；须 **SSH 到网站 VM** 再 dump（不要开 Public mode）：
 
-1. 线上：`mysqldump`（读 `/var/www/nhtours/flask-app/.env` 的 `DATABASE_URL`）→ `/tmp/nhtours_prod_dump.sql`
+1. `ssh nhtours` → 用生产 `.env` 的 `DATABASE_URL`（已指向托管 endpoint）做 `mysqldump` → `/tmp/nhtours_prod_dump.sql`
 2. 拉到本机：`flask-app/_prod_sync/`（已 gitignore）
 3. 本机：`DROP/CREATE` 本地库后导入（Windows：`MySQL Server 8.0\bin\mysql.exe`）
 4. 同步静态文件：`app/static/uploads/`、`app/static/trip_images/`（含护照等）
@@ -116,7 +116,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 |----|-----|
 | 正式站 | **https://nhtours.com** 、https://www.nhtours.com |
 | 后台 | https://nhtours.com/admin/login |
-| 服务器 IP | `54.69.40.218`（Lightsail 静态 IP，备用） |
+| 服务器 IP | `54.69.40.218`（Lightsail **StaticIp-1**，已附加 `NHtours`；勿删） |
 | 目录 | `/var/www/nhtours` |
 | 环境变量 | **`/var/www/nhtours/flask-app/.env`**（非仓库根 `.env`） |
 | **生产 venv** | **`/var/www/nhtours/flask-app/venv`**（与 systemd gunicorn 一致；Deploy 勿装到仓库根 `venv`） |
