@@ -14,7 +14,14 @@ from app.admin import bp
 from app.admin.forms import LoginForm, TripForm, CityForm, ClientForm, TripBasicsForm, TripDescriptionForm, TripPackagesForm, TripAddonsForm, TripParticipantForm, TripCouponForm, EditBookingForm, TestimonialForm
 from app.models import User, Trip, City, Client, Lead, Testimonial, TripPackage, TripAddOn, CustomQuestion, DiscountCode, Booking, BookingParticipant, BookingAddOn, BookingPackage, Payment, Message, InstallmentPayment, PendingBooking
 from app.payments import create_checkout_session
-from app.utils import save_image, send_email_via_ses, generate_installment_token, generate_export_token, verify_export_token
+from app.utils import (
+    save_image,
+    send_email_via_ses,
+    generate_installment_token,
+    generate_export_token,
+    verify_export_token,
+    render_branded_customer_message,
+)
 from app.testimonial_data import assign_carousel_sort_order
 from app.security_audit import (
     is_login_rate_limited,
@@ -4286,41 +4293,24 @@ def send_booking_email(trip_id, booking_id):
     
     # 获取发件人配置
     sender_email = current_app.config.get('SENDER_EMAIL', current_app.config.get('RECIPIENT_EMAIL', 'info@nhtours.com'))
-    
-    # 构建HTML邮件内容
-    html_body = f"""
-    <html>
-    <head>
-        <style>
-            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-            .header {{ background-color: #00D1C1; color: white; padding: 20px; text-align: center; }}
-            .content {{ padding: 20px; background-color: #f9f9f9; }}
-            .footer {{ padding: 20px; text-align: center; font-size: 12px; color: #666; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h2>Nexus Horizons Tours</h2>
-            </div>
-            <div class="content">
-                <p>Dear {booking.client.name},</p>
-                <div style="white-space: pre-wrap;">{email_body}</div>
-                <br>
-                <p>Best regards,<br>Nexus Horizons Tours Team</p>
-            </div>
-            <div class="footer">
-                <p>This email is regarding your booking for: <strong>{trip.title}</strong></p>
-                <p>Order number: {booking.order_number or ('#' + str(booking.id))}</p>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-    
+
+    order_label = booking.order_number or ('#' + str(booking.id))
+    client_name = (booking.client.name if booking.client else '') or 'Customer'
+    contact = (current_app.config.get('REPLY_TO_EMAIL') or 'info@nhtours.com').strip()
+    if contact.lower().startswith('noreply@'):
+        contact = 'info@nhtours.com'
+    html_body = render_branded_customer_message(
+        subject_line=subject,
+        brand_subtitle=trip.title or 'Booking message',
+        customer_name=client_name,
+        message_text=email_body,
+        footer_note=f'This email is regarding your booking for: {trip.title}. Order number: {order_label}',
+        show_default_signoff=True,
+        contact_email=contact,
+    )
+
     text_body = f"""
-Dear {booking.client.name},
+Dear {client_name},
 
 {email_body}
 
@@ -4329,7 +4319,8 @@ Nexus Horizons Tours Team
 
 ---
 This email is regarding your booking for: {trip.title}
-Order number: {booking.order_number or ('#' + str(booking.id))}
+Order number: {order_label}
+Questions? Reply to this email or contact us at {contact}.
     """
     
     # 发送邮件

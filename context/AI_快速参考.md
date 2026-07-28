@@ -155,6 +155,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 后台 | `/admin/customers/leads`；折叠 Show more；**批量删除** `POST .../bulk-delete`（admin） |
 | 新线索邮件 | `emails/contact_lead_notify.html` → `RECIPIENT_EMAIL`；主题 `New contact lead — …`；Reply-To=提交者 |
 | 管理员通知邮件 | 统一 `emails/admin_notify_base.html`：Contact / Newsletter / Testimonial pending / Feedback pending / Security alert |
+| 客户人工邮件 | `emails/branded_customer_message.html`：Booking 单发 + Messages 群发外壳 |
 
 ## 协作规则
 

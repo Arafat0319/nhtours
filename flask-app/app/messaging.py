@@ -8,7 +8,7 @@ from flask import current_app
 
 from app import db
 from app.models import InstallmentPayment, Message
-from app.utils import send_email_via_ses
+from app.utils import send_email_via_ses, render_branded_customer_message
 
 
 ALLOWED_RECIPIENT_TYPES = frozenset({
@@ -350,6 +350,22 @@ def send_message_emails(message, recipients):
     from_email = current_app.config.get('SENDER_EMAIL') or reply_to
     from_header = formataddr((message.sender_name or 'Nexus Horizons Tours', from_email))
     text_body = message.body_text or ''
+    trip_title = (message.trip.title if message.trip else '') or 'Nexus Horizons Tours'
+    contact = (current_app.config.get('REPLY_TO_EMAIL') or 'info@nhtours.com').strip()
+    if contact.lower().startswith('noreply@'):
+        contact = 'info@nhtours.com'
+    html_body = render_branded_customer_message(
+        subject_line=message.subject or trip_title,
+        brand_subtitle=trip_title,
+        message_html=message.body_html or '',
+        show_default_signoff=False,
+        contact_email=contact,
+    )
+    if text_body.strip():
+        text_body = (
+            f"{text_body.rstrip()}\n\n"
+            f"--\nQuestions? Reply to this email or contact us at {contact}.\n"
+        )
 
     sent_count = 0
     failed_count = 0
@@ -359,7 +375,7 @@ def send_message_emails(message, recipients):
             sender=from_header,
             recipient=recipient['email'],
             subject=message.subject,
-            html_body=message.body_html,
+            html_body=html_body,
             text_body=text_body,
             reply_to=reply_to,
         )

@@ -24,6 +24,43 @@ def _email_brand_logo_url():
     base = (current_app.config.get('BASE_URL') or '').rstrip('/') or 'https://nhtours.com'
     return f'{base}/static/images/icons/nexus-horizons-email.png'
 
+
+def render_branded_customer_message(
+    *,
+    subject_line,
+    brand_subtitle,
+    message_html=None,
+    message_text=None,
+    customer_name=None,
+    footer_note=None,
+    show_default_signoff=False,
+    contact_email=None,
+):
+    """
+    客户向邮件统一品牌壳（深蓝顶栏 + 页脚 logo）。
+    message_html：已信任的 HTML 片段（如 Messages Quill）；message_text：纯文本（自动转义）。
+    页脚默认提示回复至 REPLY_TO_EMAIL（通常 info@），与收据/催款一致。
+    """
+    from flask import render_template
+    from markupsafe import Markup
+
+    contact = (contact_email or current_app.config.get('REPLY_TO_EMAIL') or 'info@nhtours.com').strip()
+    if contact.lower().startswith('noreply@'):
+        contact = 'info@nhtours.com'
+
+    return render_template(
+        'emails/branded_customer_message.html',
+        subject_line=subject_line or 'Nexus Horizons Tours',
+        brand_subtitle=brand_subtitle or '',
+        message_html=Markup(message_html) if message_html else None,
+        message_text=message_text or '',
+        customer_name=(customer_name or '').strip() or None,
+        footer_note=footer_note or '',
+        show_default_signoff=bool(show_default_signoff),
+        contact_email=contact,
+        email_logo_url=_email_brand_logo_url(),
+    )
+
 # 个人邮箱域名：经 SES 发出时无法配自家 SPF/DKIM，且 Reply-To 跨域易被判钓鱼
 _FREEMAIL_DOMAINS = frozenset({
     'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.jp',
