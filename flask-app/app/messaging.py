@@ -364,7 +364,7 @@ def send_message_emails(message, recipients):
     if text_body.strip():
         text_body = (
             f"{text_body.rstrip()}\n\n"
-            f"--\nQuestions? Reply to this email or contact us at {contact}.\n"
+            f"--\nQuestions? Please email us at {contact} (this message was sent from a no-reply address).\n"
         )
 
     sent_count = 0

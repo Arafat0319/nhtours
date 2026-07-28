@@ -4320,7 +4320,7 @@ Nexus Horizons Tours Team
 ---
 This email is regarding your booking for: {trip.title}
 Order number: {order_label}
-Questions? Reply to this email or contact us at {contact}.
+Questions? Please email us at {contact} (this message was sent from a no-reply address).
     """
     
     # 发送邮件
