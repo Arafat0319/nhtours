@@ -286,11 +286,11 @@
 										<svg class="h-12 w-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
 									</div>
 									<h2 class="text-2xl font-bold text-gray-900 text-center mb-3">Payment Confirmed!</h2>
-									<p class="text-gray-600 text-center mb-6">Thank you. This installment has been paid successfully. A confirmation email has been sent.</p>
+									<p class="text-gray-600 text-center mb-6">Thank you for your payment. A confirmation email has been sent to your inbox.</p>
 									<div id="booking-result-receipt-wrap" class="flex justify-center mb-6">
-										<a id="booking-result-receipt-link" href="#" target="_blank" rel="noopener" class="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium">Download receipt</a>
+										<a id="booking-result-receipt-link" href="#" class="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium">Download receipt</a>
 									</div>
-									<a id="booking-result-close-btn" href="{{ url_for('main.booking_success', booking_id=booking.id) }}" class="w-full rounded border font-normal mt-auto inline-flex items-center justify-center text-center" style="height: 40px; min-height: 40px; font-size: 14px; text-decoration: none; color: inherit;">View booking</a>
+									<button type="button" id="booking-result-close-btn" class="w-full rounded border font-normal mt-auto inline-flex items-center justify-center" style="height: 40px; min-height: 40px; font-size: 14px;">Close</button>
 								</div>
 								<div id="booking-result-failure" class="booking-result-state hidden flex flex-col flex-1 py-10 px-6">
 									<div class="rounded-full bg-red-100 p-4 w-fit mx-auto mb-6">
@@ -328,7 +328,7 @@
 							</div>
 						</div>
 						{% if remaining_amount_cents and remaining_amount_cents > 0 %}
-						<div class="pt-4 border-t border-gray-200">
+						<div id="installment-payoff-section" class="pt-4 border-t border-gray-200">
 							<div class="flex justify-between items-center">
 								<div>
 									<div class="text-base text-gray-700 font-medium">Remaining Balance</div>
@@ -361,6 +361,7 @@
 		publishableKey: {{ publishable_key|tojson }},
 		paymentIntentId: {{ (payment_intent_id or '')|tojson }},
 		successUrl: {{ success_url|tojson }},
+		homeUrl: {{ url_for('main.index')|tojson }},
 		baseAmountCents: {{ base_amount_cents }},
 		remainingAmountCents: {{ remaining_amount_cents or 0 }},
 		paymentStep: "installment",

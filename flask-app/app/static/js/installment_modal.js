@@ -54,6 +54,8 @@
     const receiptLink = document.getElementById('booking-result-receipt-link');
     const receiptWrap = document.getElementById('booking-result-receipt-wrap');
     const tryAgainBtn = document.getElementById('booking-result-try-again-btn');
+    const closeBtn = document.getElementById('booking-result-close-btn');
+    const homeUrl = (config.homeUrl || '/');
 
     let stripe = null;
     let elements = null;
@@ -146,6 +148,8 @@
             } else if (receiptWrap) {
                 receiptWrap.classList.add('hidden');
             }
+            var payoffSec = document.getElementById('installment-payoff-section');
+            if (payoffSec) payoffSec.classList.add('hidden');
         } else if (state === 'failure') {
             if (failureEl) failureEl.classList.remove('hidden');
         }
@@ -399,6 +403,12 @@
 
     applyInstallmentModalLayout();
     window.addEventListener('resize', function() { applyInstallmentModalLayout(); });
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', function() {
+            window.location.href = homeUrl;
+        });
+    }
 
     if (previewOnly) {
         setPaymentElementLoading(false);
