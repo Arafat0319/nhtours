@@ -311,14 +311,214 @@ def payment_fee_amount(payment):
     return round(max(0.0, payment_charged_amount(payment) - payment_base_amount(payment)), 2)
 
 
+def clamp_refunded_amount(value, base):
+    """强制 0 ≤ refunded ≤ base（基础美元）。"""
+    try:
+        x = float(value or 0.0)
+    except (TypeError, ValueError):
+        x = 0.0
+    try:
+        base_f = float(base or 0.0)
+    except (TypeError, ValueError):
+        base_f = 0.0
+    return round(min(max(0.0, x), max(0.0, base_f)), 2)
+
+
+def payment_refunded_clamped(payment):
+    """该笔已退基础额（钳制到 [0, base]）。"""
+    return clamp_refunded_amount(payment.refunded_amount, payment_base_amount(payment))
+
+
 def payment_refundable_remaining(payment):
     """
     该笔剩余可退（基础金额口径，不含卡费）。
     refunded_amount 存的是已退的基础美元（与 Stripe 退款金额一致，因手续费不退）。
     """
     base = payment_base_amount(payment)
-    already = round(float(payment.refunded_amount or 0.0), 2)
+    already = payment_refunded_clamped(payment)
     return round(max(0.0, base - already), 2)
+
+
+def payment_step_label(payment):
+    """收据/Manage：Initial / Installment #n / Payoff。"""
+    meta = dict(payment.payment_metadata or {})
+    step = (meta.get('payment_step') or '').strip().lower()
+    if step == 'payoff':
+        return 'Payoff'
+    if step == 'installment':
+        inst = getattr(payment, 'installment_payment', None)
+        num = getattr(inst, 'installment_number', None) if inst else meta.get('installment_number')
+        if num is not None and str(num) != '':
+            return f'Installment #{num}'
+        return 'Installment'
+    if step in ('initial', '', 'booking'):
+        return 'Initial'
+    return step.replace('_', ' ').title() or 'Payment'
+
+
+def ledger_payments_for_booking(booking):
+    """计入账本的 Payment 行（成功/部分退/全退）。"""
+    from app.models import Payment
+
+    rows = (
+        Payment.query.filter(
+            Payment.booking_id == booking.id,
+            Payment.status.in_(('succeeded', 'partially_refunded', 'refunded')),
+        )
+        .order_by(Payment.paid_at.asc(), Payment.created_at.asc(), Payment.id.asc())
+        .all()
+    )
+    return rows
+
+
+def computed_booking_amount_paid(booking):
+    """Σ(payment 基础 − 已退基础)；与 Booking.amount_paid 应对齐。"""
+    total = 0.0
+    for payment in ledger_payments_for_booking(booking):
+        base = payment_base_amount(payment)
+        refunded = payment_refunded_clamped(payment)
+        total += max(0.0, base - refunded)
+    return round(total, 2)
+
+
+def reconcile_booking_ledger(booking):
+    """
+    只读核对：amount_paid 是否等于 Σ(base − refunded)。
+    同时报告异常 refunded_amount（超出 base）。
+    """
+    stored = round(float(booking.amount_paid or 0.0), 2)
+    computed = computed_booking_amount_paid(booking)
+    delta = round(stored - computed, 2)
+    anomalies = []
+    for payment in ledger_payments_for_booking(booking):
+        base = payment_base_amount(payment)
+        raw = round(float(payment.refunded_amount or 0.0), 2)
+        clamped = clamp_refunded_amount(raw, base)
+        meta = dict(payment.payment_metadata or {})
+        history = meta.get('refund_history') or []
+        if abs(raw - clamped) > 0.001:
+            anomalies.append({
+                'payment_id': payment.id,
+                'issue': 'refunded_amount_out_of_range',
+                'refunded_amount': raw,
+                'base': base,
+                'clamped': clamped,
+            })
+        if clamped > 0.001 and not history:
+            anomalies.append({
+                'payment_id': payment.id,
+                'issue': 'missing_refund_history',
+                'refunded_amount': clamped,
+            })
+    return {
+        'booking_id': booking.id,
+        'order_number': getattr(booking, 'order_number', None),
+        'stored_amount_paid': stored,
+        'computed_amount_paid': computed,
+        'delta': delta,
+        'ok': abs(delta) < 0.015 and not anomalies,
+        'anomalies': anomalies,
+    }
+
+
+def build_receipt_ledger_sections(booking):
+    """
+    收据用：Payment history / Installment schedule / Refunds。
+    金额均为基础美元（不含卡费），除非字段名标明 charged/fee。
+    """
+    from app.models import InstallmentPayment
+
+    payment_history = []
+    refunds = []
+    for payment in ledger_payments_for_booking(booking):
+        base = payment_base_amount(payment)
+        fee = payment_fee_amount(payment)
+        charged = payment_charged_amount(payment)
+        refunded = payment_refunded_clamped(payment)
+        raw_refunded = round(float(payment.refunded_amount or 0.0), 2)
+        net = round(max(0.0, base - refunded), 2)
+        paid_at = payment.paid_at or payment.created_at
+        payment_history.append({
+            'id': payment.id,
+            'date': paid_at,
+            'type_label': payment_step_label(payment),
+            'base': base,
+            'fee': fee,
+            'charged': charged,
+            'refunded': refunded,
+            'net': net,
+            'status': payment.status,
+        })
+        meta = dict(payment.payment_metadata or {})
+        history = list(meta.get('refund_history') or [])
+        if history:
+            for entry in history:
+                try:
+                    amt = float(entry.get('amount') or 0)
+                except (TypeError, ValueError):
+                    amt = 0.0
+                if amt <= 0:
+                    continue
+                refunds.append({
+                    'payment_id': payment.id,
+                    'amount': round(amt, 2),
+                    'reason': entry.get('reason') or '',
+                    'at': entry.get('at'),
+                    'stripe_refund_id': entry.get('stripe_refund_id'),
+                })
+        elif refunded > 0.001:
+            refunds.append({
+                'payment_id': payment.id,
+                'amount': refunded,
+                'reason': payment.refund_reason or (
+                    'Recorded refund' if abs(raw_refunded - refunded) < 0.001
+                    else f'Recorded refund (clamped from ${raw_refunded:,.2f})'
+                ),
+                'at': payment.refunded_at.isoformat() + 'Z' if payment.refunded_at else None,
+                'stripe_refund_id': None,
+            })
+
+    book_date = booking.created_at.date() if getattr(booking, 'created_at', None) else None
+    installment_schedule = []
+    rows = (
+        InstallmentPayment.query.filter_by(booking_id=booking.id)
+        .order_by(InstallmentPayment.installment_number.asc(), InstallmentPayment.id.asc())
+        .all()
+    )
+    for inst in rows:
+        note = None
+        status_label = (inst.status or 'pending').replace('_', ' ').title()
+        if (
+            inst.installment_number
+            and inst.installment_number > 0
+            and inst.status == 'paid'
+            and book_date
+            and inst.due_date
+            and inst.due_date < book_date
+        ):
+            note = 'Included in initial payment'
+            status_label = 'Paid (in initial)'
+        elif inst.installment_number == 0:
+            status_label = f'Deposit — {status_label}'
+        installment_schedule.append({
+            'number': inst.installment_number,
+            'label': (
+                'Deposit' if inst.installment_number == 0
+                else f'Installment #{inst.installment_number}'
+            ),
+            'amount': round(float(inst.amount or 0), 2),
+            'due_date': inst.due_date,
+            'status': inst.status,
+            'status_label': status_label,
+            'note': note,
+            'paid_at': inst.paid_at,
+        })
+
+    return {
+        'payment_history': payment_history,
+        'installment_schedule': installment_schedule,
+        'refunds': refunds,
+    }
 
 
 def booking_deposit_reserved(booking, deposit_hint=None):
@@ -451,8 +651,10 @@ def apply_refund_to_ledger(payment, booking, refund_amount, reason=None, stripe_
     if refund_amount > remaining + 0.001:
         raise ValueError(f'Refund amount ${refund_amount:.2f} exceeds remaining ${remaining:.2f}')
 
-    already = round(float(payment.refunded_amount or 0.0), 2)
-    payment.refunded_amount = round(already + refund_amount, 2)
+    base = payment_base_amount(payment)
+    already = payment_refunded_clamped(payment)
+    # 不变量：0 ≤ refunded_amount ≤ base，且必须有 refund_history
+    payment.refunded_amount = clamp_refunded_amount(already + refund_amount, base)
     payment.refunded_at = datetime.utcnow()
     if reason:
         payment.refund_reason = (reason or '')[:200]
@@ -472,7 +674,6 @@ def apply_refund_to_ledger(payment, booking, refund_amount, reason=None, stripe_
         meta['last_stripe_refund_id'] = stripe_refund_id
     payment.payment_metadata = meta
 
-    base = payment_base_amount(payment)
     if payment.refunded_amount >= base - 0.001:
         payment.status = 'refunded'
         payment.refunded_amount = base

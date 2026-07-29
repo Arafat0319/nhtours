@@ -111,73 +111,124 @@
         </div>
         {% endif %}
 
-        <!-- Payment Summary -->
+        <!-- Trip Total -->
         <div class="mb-6">
-            <h3 class="text-lg font-semibold text-gray-900 mb-3">Payment Summary</h3>
+            <h3 class="text-lg font-semibold text-gray-900 mb-3">Trip Total</h3>
             <div class="bg-gray-50 p-4 rounded space-y-2">
-                {% if booking.booking_packages.count() > 0 %}
+                {% if packages_subtotal is defined and packages_subtotal %}
+                <div class="flex justify-between">
+                    <span class="text-gray-600">Packages:</span>
+                    <span class="text-gray-900">${{ packages_subtotal|format_price }}</span>
+                </div>
+                {% elif booking.booking_packages.count() > 0 %}
                     {% for bp in booking.booking_packages %}
                     <div class="flex justify-between">
                         <span class="text-gray-600">{{ bp.package.name }} x{{ bp.quantity }}:</span>
                         <span class="text-gray-900">${{ (bp.package.price * bp.quantity)|format_price }}</span>
                     </div>
                     {% endfor %}
-                {% else %}
-                    <div class="flex justify-between">
-                        <span class="text-gray-600">Package Price:</span>
-                        <span class="text-gray-900">$0.00</span>
-                    </div>
                 {% endif %}
-                {% if due_at_booking is defined and due_at_booking is not none %}
-                <div class="flex justify-between">
-                    <span class="text-gray-600">Due at booking:</span>
-                    <span class="text-gray-900">${{ (due_at_booking)|format_price }}</span>
-                </div>
-                {% endif %}
-                {% set addons_total = namespace(value=0) %}
-                {% set seen_addon_ids = [] %}
-                {% for participant in booking.participants %}
-                    {% for booking_addon in participant.addons %}
-                        {% if booking_addon.id not in seen_addon_ids %}
-                            {% set addons_total.value = addons_total.value + (booking_addon.addon.price * booking_addon.quantity) %}
-                            {% set _ = seen_addon_ids.append(booking_addon.id) %}
-                        {% endif %}
-                    {% endfor %}
-                {% endfor %}
-                {% for booking_addon in booking.addons %}
-                    {% if booking_addon.id not in seen_addon_ids %}
-                        {% set addons_total.value = addons_total.value + (booking_addon.addon.price * booking_addon.quantity) %}
-                        {% set _ = seen_addon_ids.append(booking_addon.id) %}
-                    {% endif %}
-                {% endfor %}
-                {% if addons_total.value > 0 %}
+                {% if addons_total is defined and addons_total and addons_total > 0 %}
                 <div class="flex justify-between">
                     <span class="text-gray-600">Add-ons:</span>
-                    <span class="text-gray-900">${{ (addons_total.value)|format_price }}</span>
+                    <span class="text-gray-900">${{ addons_total|format_price }}</span>
                 </div>
                 {% endif %}
                 {% if discount_amount is defined and discount_amount and discount_amount > 0 %}
                 <div class="flex justify-between">
                     <span class="text-emerald-600">Discount{% if discount_code %} ({{ discount_code }}){% endif %}:</span>
-                    <span class="text-emerald-600">-${{ (discount_amount)|format_price }}</span>
+                    <span class="text-emerald-600">-${{ discount_amount|format_price }}</span>
                 </div>
                 {% endif %}
                 <div class="flex justify-between pt-2 border-t border-gray-300">
-                    <span class="font-semibold text-gray-900">Total Expected:</span>
-                    <span class="font-semibold text-gray-900">${{ (expected_amount)|format_price }}</span>
+                    <span class="font-semibold text-gray-900">Total Expected (base):</span>
+                    <span class="font-semibold text-gray-900">${{ expected_amount|format_price }}</span>
                 </div>
                 <div class="flex justify-between">
-                    <span class="text-gray-600">Amount Paid:</span>
-                    <span class="text-gray-900">${{ (booking.amount_paid or 0)|format_price }}</span>
+                    <span class="text-gray-600">Due this time (base):</span>
+                    <span class="text-gray-900">${{ (amount_due_this_time if amount_due_this_time is defined else 0)|format_price }}</span>
+                </div>
+                {% if due_this_time_breakdown %}
+                <p class="text-xs text-gray-500 italic pl-0 -mt-1 mb-1">{{ due_this_time_breakdown }}</p>
+                {% endif %}
+                <div class="flex justify-between">
+                    <span class="text-gray-600">Amount Paid (net base):</span>
+                    <span class="text-gray-900">${{ (amount_paid_net if amount_paid_net is defined else (booking.amount_paid or 0))|format_price }}</span>
                 </div>
                 <div class="flex justify-between pt-2 border-t border-gray-300">
-                    <span class="font-semibold text-gray-900">Amount Pending:</span>
-                    <span class="font-semibold {% if (expected_amount - (booking.amount_paid or 0)) > 0 %}text-red-600{% else %}text-green-600{% endif %}">
-                        ${{ (expected_amount - (booking.amount_paid or 0))|format_price }}
+                    {% set pending_amt = amount_pending if amount_pending is defined else (expected_amount - (booking.amount_paid or 0)) %}
+                    <span class="font-semibold text-gray-900">Amount Remaining (net base):</span>
+                    <span class="font-semibold {% if pending_amt > 0 %}text-red-600{% else %}text-green-600{% endif %}">
+                        ${{ pending_amt|format_price }}
                     </span>
                 </div>
             </div>
         </div>
+
+        {% if show_history_page %}
+        {% if payment_history %}
+        <div class="mb-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-3">Payment History</h3>
+            <div class="space-y-3">
+                {% for row in payment_history %}
+                <div class="bg-gray-50 p-4 rounded text-sm">
+                    <div class="flex justify-between font-medium text-gray-900">
+                        <span>{% if row.date %}{{ row.date.strftime('%b %d, %Y') }}{% endif %} · {{ row.type_label }}</span>
+                        <span>Net ${{ row.net|format_price }}</span>
+                    </div>
+                    <p class="text-gray-600 mt-1">
+                        Base ${{ row.base|format_price }}
+                        + fee ${{ row.fee|format_price }}
+                        = charged ${{ row.charged|format_price }}
+                        {% if row.refunded and row.refunded > 0 %}
+                        · refunded base ${{ row.refunded|format_price }}
+                        {% endif %}
+                    </p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if installment_schedule %}
+        <div class="mb-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-3">Installment Schedule</h3>
+            <div class="space-y-2">
+                {% for row in installment_schedule %}
+                <div class="flex justify-between py-2 border-b border-gray-200 text-sm">
+                    <div>
+                        <span class="font-medium text-gray-900">{{ row.label }}</span>
+                        <span class="text-gray-500"> · due {{ row.due_date.strftime('%b %d, %Y') if row.due_date else '—' }}</span>
+                        {% if row.note %}<p class="text-xs text-gray-500 mt-0.5">{{ row.note }}</p>{% endif %}
+                    </div>
+                    <div class="text-right">
+                        <span class="text-gray-900">${{ row.amount|format_price }}</span>
+                        <span class="block text-xs text-gray-500">{{ row.status_label or row.status }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if refunds %}
+        <div class="mb-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-3">Refunds (base)</h3>
+            <div class="space-y-2">
+                {% for row in refunds %}
+                <div class="flex justify-between py-2 border-b border-gray-200 text-sm">
+                    <div>
+                        <span class="text-gray-900">Payment #{{ row.payment_id }}</span>
+                        {% if row.at %}<span class="text-gray-500"> · {{ row.at[:10] }}</span>{% endif %}
+                        {% if row.reason %}<p class="text-xs text-gray-500 mt-0.5">{{ row.reason }}</p>{% endif %}
+                    </div>
+                    <span class="text-gray-900">${{ row.amount|format_price }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        {% endif %}
 
         <!-- Special Requests -->
         {% if booking.special_requests %}
@@ -189,8 +240,16 @@
         </div>
         {% endif %}
 
+        <!-- Footer notes (above brand footer, mirrors PDF) -->
+        <div class="border-t border-gray-200 pt-4 mt-2 mb-4 space-y-2">
+            <p class="text-xs text-gray-500 leading-relaxed italic">Paid / Remaining are trip base amounts (package + add-ons − discount). Card processing fees are not included. Due this time is the amount required for the booking charge (after discount); a line below may list what that charge includes.{% if show_history_page %} Payment history is listed above when available.{% endif %}</p>
+            {% if due_at_booking_note %}
+            <p class="text-xs text-gray-500 leading-relaxed italic">{{ due_at_booking_note }}</p>
+            {% endif %}
+        </div>
+
         <!-- Footer -->
-        <div class="border-t-2 border-gray-200 pt-6 mt-6">
+        <div class="border-t-2 border-gray-200 pt-6 mt-2">
             <div class="flex justify-between items-center no-print">
                 <button onclick="window.print()" class="px-4 py-2 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700 focus:outline-none">
                     Print Receipt

@@ -873,6 +873,9 @@
                     </svg>
                     Generate Receipt
                 </button>
+                <button type="button" id="reconcileLedgerBtn" class="px-4 py-2 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none">
+                    Reconcile
+                </button>
                 <button type="button" id="refundBookingBtn" class="px-4 py-2 border border-orange-300 rounded text-sm font-medium text-orange-700 hover:bg-orange-50 focus:outline-none flex items-center">
                     <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
@@ -3076,6 +3079,36 @@
                 if (!currentBookingId) return;
                 // Open receipt in new window
                 window.open(`/admin/trips/{{ trip.id }}/bookings/${currentBookingId}/receipt`, '_blank');
+            });
+        }
+
+        const reconcileLedgerBtn = document.getElementById('reconcileLedgerBtn');
+        if (reconcileLedgerBtn) {
+            reconcileLedgerBtn.addEventListener('click', async function() {
+                if (!currentBookingId) return;
+                try {
+                    const resp = await fetch(`/admin/trips/{{ trip.id }}/bookings/${currentBookingId}/reconcile-ledger`);
+                    const data = await resp.json();
+                    if (!resp.ok || !data.success) {
+                        alert((data && data.message) || 'Reconcile failed');
+                        return;
+                    }
+                    const r = data.reconcile || {};
+                    let msg = 'Ledger reconcile (read-only)\n\n'
+                        + 'Stored amount_paid: $' + Number(r.stored_amount_paid || 0).toFixed(2) + '\n'
+                        + 'Computed Σ(base−refunded): $' + Number(r.computed_amount_paid || 0).toFixed(2) + '\n'
+                        + 'Delta: $' + Number(r.delta || 0).toFixed(2) + '\n'
+                        + (r.ok ? 'OK: amounts align.' : 'MISMATCH or anomalies detected.');
+                    if (r.anomalies && r.anomalies.length) {
+                        msg += '\n\nAnomalies:\n' + r.anomalies.map(function(a) {
+                            return '- payment #' + a.payment_id + ': ' + a.issue
+                                + (a.refunded_amount != null ? ' (refunded=' + a.refunded_amount + ', base=' + a.base + ')' : '');
+                        }).join('\n');
+                    }
+                    alert(msg);
+                } catch (e) {
+                    alert('Reconcile request failed');
+                }
             });
         }
 

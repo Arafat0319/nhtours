@@ -1683,15 +1683,19 @@ def api_booking_summary(booking_id):
     })
 
 
-def _compute_due_at_booking_gross(booking):
+def _compute_due_at_booking_parts(booking):
     """
-    报名当时应付（折扣前）：定金×数量 + 报名日已逾期分期×数量 + 附加项。
-    与 calculate_initial_payment / 弹窗 Due at Booking 口径一致；逾期以 booking.created_at 为准。
+    报名当时应付拆分（折扣前）：
+    - deposit：仅 deposit_installment 套餐的定金×数量（一次付全款不记入此项）
+    - overdue：报名日已逾期分期×数量
+    - addons：附加项
+    - full_packages：一次付全款套餐价×数量
     """
     ref = booking.created_at.date() if getattr(booking, 'created_at', None) else date.today()
     deposit_amount = 0.0
     overdue_total = 0.0
     addons_total = 0.0
+    full_packages = 0.0
 
     for bp in booking.booking_packages:
         package = bp.package
@@ -1716,10 +1720,11 @@ def _compute_due_at_booking_gross(booking):
                     except (ValueError, TypeError):
                         continue
             elif package.price:
-                deposit_amount += float(package.price) * quantity
+                # 配置异常时退回整价，但不标为 deposit 行
+                full_packages += float(package.price) * quantity
         else:
             if package.price:
-                deposit_amount += float(package.price) * quantity
+                full_packages += float(package.price) * quantity
 
     seen = set()
     for participant in booking.participants:
@@ -1734,33 +1739,96 @@ def _compute_due_at_booking_gross(booking):
         seen.add(booking_addon.id)
         addons_total += float(booking_addon.addon.price or 0) * int(booking_addon.quantity or 0)
 
-    return round(deposit_amount + overdue_total + addons_total, 2)
+    deposit_amount = round(deposit_amount, 2)
+    overdue_total = round(overdue_total, 2)
+    addons_total = round(addons_total, 2)
+    full_packages = round(full_packages, 2)
+    return {
+        'deposit': deposit_amount,
+        'overdue': overdue_total,
+        'addons': addons_total,
+        'full_packages': full_packages,
+        'total': round(deposit_amount + overdue_total + addons_total + full_packages, 2),
+        'includes_deposit': deposit_amount > 0.001,
+    }
+
+
+def _format_due_this_time_breakdown(parts):
+    """
+    Due this time 下方说明：当次应付由哪些部分组成（定金 / 追缴分期 / 附加）。
+    一次付全款不返回说明。
+    """
+    if not parts:
+        return None
+    bits = []
+    deposit = float(parts.get('deposit') or 0)
+    overdue = float(parts.get('overdue') or 0)
+    addons = float(parts.get('addons') or 0)
+    if deposit > 0.001:
+        bits.append(f'Deposit ${deposit:,.2f}')
+    if overdue > 0.001:
+        bits.append(f'Catch-up installments ${overdue:,.2f}')
+    # 定金/追缴场景下附加也写进说明，避免「$600 从哪来」不清楚
+    if bits and addons > 0.001:
+        bits.append(f'Add-ons ${addons:,.2f}')
+    if not bits:
+        return None
+    return 'Includes: ' + ' + '.join(bits)
+
+
+def _compute_due_at_booking_gross(booking):
+    """
+    报名当时应付（折扣前）：定金×数量 + 报名日已逾期分期×数量 + 附加项（+ 全款套餐）。
+    与 calculate_initial_payment / 弹窗 Due at Booking 口径一致；逾期以 booking.created_at 为准。
+    """
+    return _compute_due_at_booking_parts(booking)['total']
 
 
 def _booking_receipt_context(booking):
-    """Shared receipt amounts + participants for HTML/PDF."""
+    """Shared receipt amounts + participants for HTML/PDF/email attachment."""
+    from app.payments import build_receipt_ledger_sections
+
     trip = Trip.query.get(booking.trip_id) if booking.trip_id else None
     if not trip:
         return None
 
-    expected_amount = 0.0
+    packages_subtotal = 0.0
     has_packages = False
     for bp in booking.booking_packages:
         if bp.package:
             package_price = float(bp.package.price) if bp.package.price is not None else 0.0
             quantity = int(bp.quantity) if bp.quantity is not None else 1
-            expected_amount += package_price * quantity
+            packages_subtotal += package_price * quantity
             has_packages = True
+
+    addons_total = 0.0
+    seen_addon_ids = set()
     for participant in booking.participants:
         for booking_addon in participant.addons:
-            if booking_addon.addon:
-                addon_price = float(booking_addon.addon.price) if booking_addon.addon.price is not None else 0.0
-                quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 0
-                expected_amount += addon_price * quantity
+            if booking_addon.id in seen_addon_ids or not booking_addon.addon:
+                continue
+            seen_addon_ids.add(booking_addon.id)
+            addons_total += float(booking_addon.addon.price or 0) * int(booking_addon.quantity or 0)
+    for booking_addon in booking.addons:
+        if booking_addon.id in seen_addon_ids or not booking_addon.addon:
+            continue
+        seen_addon_ids.add(booking_addon.id)
+        addons_total += float(booking_addon.addon.price or 0) * int(booking_addon.quantity or 0)
+
     discount_amount = float(booking.discount_amount) if booking.discount_amount else 0.0
-    expected_amount = max(0.0, expected_amount - discount_amount)
+    trip_total_before_discount = packages_subtotal + addons_total
+    expected_amount = max(0.0, trip_total_before_discount - discount_amount)
     if not has_packages:
         expected_amount = float(booking.amount_paid) if booking.amount_paid is not None else 0.0
+
+    # 净基础已付：收据展示以 Booking.amount_paid 为准（与 Manage 一致）。
+    # 脏 refunded_amount 钳制只影响 Payment History / Reconcile 行。
+    amount_paid_net = round(float(booking.amount_paid or 0.0), 2)
+    amount_pending = round(max(0.0, expected_amount - amount_paid_net), 2)
+
+    due_at_booking = _compute_due_at_booking_gross(booking)
+    due_parts = _compute_due_at_booking_parts(booking)
+    due_this_time_breakdown = _format_due_this_time_breakdown(due_parts)
 
     participants_info = []
     for participant in booking.participants:
@@ -1784,14 +1852,52 @@ def _booking_receipt_context(booking):
     if getattr(booking, 'discount_code', None) and getattr(booking.discount_code, 'code', None):
         discount_code = booking.discount_code.code
 
+    ledger = build_receipt_ledger_sections(booking)
+    total_refunded = round(
+        sum(float(r.get('amount') or 0) for r in ledger['refunds']),
+        2,
+    )
+
+    # 这次应付：首笔成功付款的基础额（含折扣后 $0）；无付款记录时回退到报名口径
+    if ledger['payment_history']:
+        amount_due_this_time = round(float(ledger['payment_history'][0].get('base') or 0), 2)
+    else:
+        amount_due_this_time = round(
+            min(expected_amount, max(0.0, float(due_at_booking or 0))),
+            2,
+        )
+
+    # Due this time 已在 Trip Total 展示，不再重复长脚注
+    due_at_booking_note = None
+
     return {
         'trip': trip,
         'booking': booking,
-        'expected_amount': expected_amount,
-        'due_at_booking': _compute_due_at_booking_gross(booking),
+        'expected_amount': round(expected_amount, 2),
+        'packages_subtotal': round(packages_subtotal, 2),
+        'addons_total': round(addons_total, 2),
+        'due_at_booking': due_at_booking,
+        'amount_due_this_time': amount_due_this_time,
+        'due_this_time_breakdown': due_this_time_breakdown,
+        'due_at_booking_note': due_at_booking_note,
         'discount_amount': discount_amount,
         'discount_code': discount_code,
         'participants_info': participants_info,
+        'amount_paid_net': amount_paid_net,
+        'amount_pending': amount_pending,
+        'total_refunded': total_refunded,
+        'payment_history': ledger['payment_history'],
+        'installment_schedule': ledger['installment_schedule'],
+        'refunds': ledger['refunds'],
+        # 仅「一次付全款」无 History；定金/分期（有分期计划）或已付 ≥2 笔 → 第 2 页
+        'show_history_page': (
+            bool(ledger['installment_schedule'])
+            or len(ledger['payment_history']) > 1
+            or any(
+                ((bp.payment_plan_type or '').strip() == 'deposit_installment')
+                for bp in booking.booking_packages
+            )
+        ),
     }
 
 
@@ -1833,15 +1939,7 @@ def booking_receipt(booking_id):
 
     try:
         from app.receipt_pdf import build_booking_receipt_pdf
-        pdf_bytes = build_booking_receipt_pdf(
-            booking=ctx['booking'],
-            trip=ctx['trip'],
-            expected_amount=ctx['expected_amount'],
-            participants_info=ctx['participants_info'],
-            due_at_booking=ctx.get('due_at_booking'),
-            discount_amount=ctx.get('discount_amount'),
-            discount_code=ctx.get('discount_code'),
-        )
+        pdf_bytes = build_booking_receipt_pdf(ctx)
     except ImportError as e:
         current_app.logger.exception(f'receipt PDF dependency missing: {e}')
         # 依赖缺失时回退 HTML，避免邮件按钮完全不可用
@@ -3742,58 +3840,89 @@ def handle_refund(charge_data):
         )
         return
 
-    # 本地高于 Stripe 映射（少见）：以 Stripe 基础值为准收敛 Payment，不回加 Booking
+    # 本地高于 Stripe 映射（脏数据如 cents 当美元）：以 Stripe 基础值为准收敛 Payment，不回加 Booking
+    prev = local_refunded
     _set_status_from_base(stripe_base)
+    meta = dict(payment.payment_metadata or {})
+    history = list(meta.get('refund_history') or [])
+    history.append({
+        'amount': 0.0,
+        'reason': 'clamped_to_stripe_base',
+        'stripe_refund_id': None,
+        'manual_only': True,
+        'excludes_fee': True,
+        'source': 'charge.refunded',
+        'previous_refunded_amount': prev,
+        'stripe_base': stripe_base,
+        'stripe_charged_refunded': stripe_refunded_charged,
+        'at': datetime.utcnow().isoformat() + 'Z',
+    })
+    meta['refund_history'] = history
+    payment.payment_metadata = meta
+    if stripe_base > 0 and not payment.refunded_at:
+        payment.refunded_at = datetime.utcnow()
     db.session.commit()
     current_app.logger.warning(
-        f"Refund webhook local base>${stripe_base:.2f} for payment {payment.id}; "
-        f"Payment.refunded_amount converged without increasing Booking.amount_paid"
+        f"Refund webhook local base ${prev:.2f}>${stripe_base:.2f} for payment {payment.id}; "
+        f"Payment.refunded_amount clamped without increasing Booking.amount_paid"
     )
 
 
 def create_installment_payments(booking, booking_package, payment_plan_config):
     """
-    创建分期付款记录（追缴模式：跳过过期分期，因为它们已合并到首付款中）
+    创建分期付款记录。
+
+    追缴：due_date < 报名日 的配置期仍落库，status=paid（已含在首付），
+    便于 Manage / 催款 / 收据进度一致；催款查询排除 paid/cancelled。
     """
-    today = date.today()
-    
+    ref = booking.created_at.date() if getattr(booking, 'created_at', None) else date.today()
+    paid_at_booking = booking.created_at or datetime.utcnow()
+
     deposit = payment_plan_config.get('deposit_amount', 0.0) or payment_plan_config.get('deposit', 0.0)
     installments = payment_plan_config.get('installments', [])
     quantity = int(booking_package.quantity) if booking_package.quantity else 1
-    
+
     # 创建定金记录（installment_number = 0）
     if deposit > 0:
         installment = InstallmentPayment(
             booking_id=booking.id,
             installment_number=0,
             amount=float(deposit) * quantity,
-            due_date=today,  # 定金立即到期
+            due_date=ref,
             status='paid' if booking.status in ['deposit_paid', 'fully_paid'] else 'pending',
-            paid_at=datetime.utcnow() if booking.status in ['deposit_paid', 'fully_paid'] else None
+            paid_at=paid_at_booking if booking.status in ['deposit_paid', 'fully_paid'] else None
         )
         db.session.add(installment)
-    
-    # 创建分期付款记录（跳过过期分期）
+
     installment_number = 1
     for inst_data in installments:
         due_date_str = inst_data.get('date')
         if not due_date_str:
             continue
-            
+
         try:
             due_date = datetime.strptime(due_date_str, '%Y-%m-%d').date()
             inst_amount = float(inst_data.get('amount', 0.0)) * quantity
-            
-            # 追缴模式：如果到期日期 < 今天，跳过创建（已合并到首付款）
-            if due_date < today:
-                current_app.logger.info(
-                    f"Skipping overdue installment for booking {booking.id}: "
-                    f"due_date={due_date_str}, amount={inst_amount} "
-                    f"(already included in initial payment)"
+
+            # 追缴期：仍创建，标为已付（含在首付），不进入催款
+            if due_date < ref:
+                installment = InstallmentPayment(
+                    booking_id=booking.id,
+                    installment_number=installment_number,
+                    amount=inst_amount,
+                    due_date=due_date,
+                    status='paid',
+                    paid_at=paid_at_booking,
                 )
+                db.session.add(installment)
+                current_app.logger.info(
+                    f"Catch-up installment #{installment_number} for booking {booking.id}: "
+                    f"due_date={due_date_str}, amount={inst_amount} "
+                    f"(included in initial payment → status=paid)"
+                )
+                installment_number += 1
                 continue
-            
-            # 只创建未过期的分期付款记录
+
             installment = InstallmentPayment(
                 booking_id=booking.id,
                 installment_number=installment_number,
@@ -3803,7 +3932,7 @@ def create_installment_payments(booking, booking_package, payment_plan_config):
             )
             db.session.add(installment)
             installment_number += 1
-            
+
         except (ValueError, TypeError) as e:
             current_app.logger.error(f"Invalid installment date or amount: {due_date_str}, {str(e)}")
             continue
@@ -3829,15 +3958,7 @@ def _receipt_pdf_attachment(booking):
         ctx = _booking_receipt_context(booking)
         if not ctx:
             return None
-        pdf_bytes = build_booking_receipt_pdf(
-            booking=ctx['booking'],
-            trip=ctx['trip'],
-            expected_amount=ctx['expected_amount'],
-            participants_info=ctx['participants_info'],
-            due_at_booking=ctx.get('due_at_booking'),
-            discount_amount=ctx.get('discount_amount'),
-            discount_code=ctx.get('discount_code'),
-        )
+        pdf_bytes = build_booking_receipt_pdf(ctx)
         order_label = getattr(booking, 'order_number', None) or booking.id
         safe_name = ''.join(c if c.isalnum() or c in '-_' else '-' for c in str(order_label))
         return {

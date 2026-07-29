@@ -127,7 +127,8 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 域名脚本 | `deploy/setup-domain.sh`；DNS 验证 `deploy/verify-dns.ps1` |
 | Stripe Webhook | `https://nhtours.com/webhooks/stripe`（**仅沙盒** Test mode；Live 延后） |
 | 邮件 SES | **生产已配置**（`nhtours.com` / `us-west-2`，已出沙箱）；详见 `06` / `08` |
-| 收据邮件 | HTML：**Download Receipt**（`?token=`）+ PDF 附件；页脚 logo `nexus-horizons-email.png`；PDF 含 **Due at booking** |
+| 收据邮件 | HTML：**Download Receipt**（`?token=`）+ PDF 附件；定稿规则 `.cursor/rules/receipt-pdf-layout.mdc`；**对照样例** `flask-app/docs/receipt-reference/` |
+| 退款 / 取消 | **不自动发客户邮件**；退款走 Stripe/账本；需通知请用 Messages |
 | 分期催款 | HTML+logo；含 overdue 续催；取消订单停催；生产 `BASE_URL` |
 | 报名校验 | 前端 `booking.js` + 后端 `booking_validation.py`（email/phone/name/dob/zip）；Promo 未选套餐 → `#discount-message` 琥珀提示 |
 | 安全审计 | `/var/log/nhtours/audit.log`；`nh-audit` / `nh-audit --all` / `nh-audit -f` |
@@ -171,4 +172,4 @@ push 前更新 context（至少 `07`）→ 用户确认 → 同一 commit push�
 | UI | `05` |
 | 部署 | `06` |
 
-**最后更新**: 2026-07-27（收据 logo + Due at booking；Promo 提示；字段校验；Deploy chown）
+**最后更新**: 2026-07-28（收据定稿：Due this time + Includes 说明；History 按付款方式；退款/取消不自动邮件）

@@ -1,0 +1,77 @@
+---
+description: 订单收据 PDF 版式已定稿，勿擅自改页头/页脚/结构
+alwaysApply: true
+---
+
+# 订单收据 PDF 定稿版式（2026-07-28 最终确认）
+
+**用户已最终确认**：所有订单收据统一此视觉风格与业务规则；仅订单内容不同。  
+实现：`flask-app/app/receipt_pdf.py` + `_booking_receipt_context`（`routes.py`）+ `booking/receipt.html`。  
+资源：页眉 `nexus-horizons-receipt-header.png` / 页脚 `nexus-horizons-email.png`。  
+**定稿 PDF 样例（打开对照）**：`flask-app/docs/receipt-reference/`（含一次付清 / 定金 / 多笔 History）。  
+未经用户明确要求，**不要**改页头、页脚、分页规则、Trip Total 行顺序、说明文字位置或主要区块。
+
+## 分页规则（务必按「付款方式」判断，不是按「已付笔数」）
+
+| 付款方式 | 页数 | 副标题 |
+|----------|------|--------|
+| **一次付全款**（`full`，无分期计划） | **1 页** | `Booking Receipt` |
+| **定金 / 分期**（有 `installment_schedule` 或 `deposit_installment`） | **2 页** | Summary + History |
+| 任意方式下已成功付款 **≥ 2 笔**（如 payoff） | **2 页** | Summary + History |
+
+- **只有选一次付全款**才不要 History  
+- 定金/分期：**哪怕目前只付了 1 笔定金**，也要第 2 页 History，把 **Payment History + Installment Schedule + Refunds** 都放第二页  
+- 折扣后实付 **$0** 的一次付全款 → 仍算一次付全款 → **1 页**  
+- `show_history_page` = 有分期计划 **或** 付款笔数 > 1 **或** 套餐 `payment_plan_type == deposit_installment`
+
+## Trip Total（金额口径）
+
+全部为**行程基础额**（套餐 + 附加 − 折扣），**不含**信用卡手续费。
+
+顺序（不可擅自调换）：
+
+1. Packages / Add-ons / Discount（有则显示）  
+2. **Total Expected (base)** — 行程应付总价  
+3. **Due this time (base)** — 这次应付（首笔；折扣后可 $0）  
+4. **说明行**（斜体灰字，可选）— 仅定金/追缴场景：`Includes: Deposit $… + Catch-up… + Add-ons $…`  
+   - **不要**再单独加 Deposit 金额行（易与 Expected / Due 混淆）  
+5. **Amount Paid (net base)** — 累计已付净额  
+6. **Amount Remaining (net base)** — `Expected − Paid`
+
+说明：
+
+- Due this time **固定指报名首笔应付**；下面说明行解释「这笔里都有什么」  
+- Due / Paid / Remaining **暂不含卡手续费**（与 Trip Total 基础口径一致；客户反馈后再决定是否加「含费实扣」行）  
+- 定金已含在套餐总价里，不是 Expected 之外再加一笔  
+- 一次付全款：无说明行  
+- Paid / Remaining 随累计付款更新  
+- 卡费只出现在 Payment History 明细  
+
+## 第 2 页 History（定金/分期/多笔）
+
+- Payment History（可只有 1 笔定金）  
+- Installment Schedule（分期明细 — **必须在此页，不要塞进第 1 页**）  
+- Refunds (base)（若有）
+
+## 页头（每页）
+
+- 左：竖版 **NHTOURS** logo（`nexus-horizons-receipt-header.png`，蓝 `rgb(0,54,112)`，与页脚同色）  
+- 旁：标题「Nexus Horizons Tours」+ 副标题（见上表）  
+- 右：Order number + 日期  
+- **下底边对齐**：logo、左侧文字块、右侧 Order meta  
+- 比例：logo 宽约 **17mm**，标题约 **18pt**（用户确认的 smaller logo / larger title 版）
+
+## 页脚（每页）
+
+- **第 1 页**横线**上方**：斜体说明 — Paid/Remaining 口径 + Due this time 含义；有 History 时加 “Payment history is on page 2.”  
+- 居中：**邮件品牌 logo** `nexus-horizons-email.png`（**不要**换成页眉竖版）  
+- Thank you + info@nhtours.com + 页码  
+
+## HTML
+
+`booking/receipt.html` 与 PDF **同源** `_booking_receipt_context`（含 `show_history_page`、`amount_due_this_time`）；admin 下载也走同一套。  
+HTML 上 History 区块（付款记录 / 分期 / 退款）仅在 `show_history_page` 时展示。
+
+## 改动时
+
+若用户要改收据外观或金额行：先说明将偏离定稿，征得同意后再改；并更新本规则、`context/07`、`flask-app/docs/receipt-reference/` 样例、必要时 `手册/用户手册.md`。

@@ -3953,32 +3953,29 @@ def generate_receipt(trip_id, booking_id):
         return redirect(url_for('admin.manage_trip', id=trip_id))
 
     if request.args.get('format') == 'html':
-        return render_template(
-            'admin/trips/receipt.html',
-            trip=ctx['trip'],
-            booking=ctx['booking'],
-            expected_amount=ctx['expected_amount'],
-            due_at_booking=ctx.get('due_at_booking'),
-            discount_amount=ctx.get('discount_amount'),
-            discount_code=ctx.get('discount_code'),
-            participants_info=ctx['participants_info'],
-        )
+        return render_template('booking/receipt.html', **ctx)
 
-    pdf_bytes = build_booking_receipt_pdf(
-        booking=ctx['booking'],
-        trip=ctx['trip'],
-        expected_amount=ctx['expected_amount'],
-        participants_info=ctx['participants_info'],
-        due_at_booking=ctx.get('due_at_booking'),
-        discount_amount=ctx.get('discount_amount'),
-        discount_code=ctx.get('discount_code'),
-    )
+    pdf_bytes = build_booking_receipt_pdf(ctx)
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = (
         f'attachment; filename="NHTours-Order-{getattr(booking, "order_number", None) or booking.id}.pdf"'
     )
     return response
+
+
+@bp.route('/trips/<int:trip_id>/bookings/<int:booking_id>/reconcile-ledger')
+@login_required
+def reconcile_booking_ledger_route(trip_id, booking_id):
+    """只读核对：Booking.amount_paid vs Σ(payment base − refunded)。"""
+    from app.payments import reconcile_booking_ledger
+
+    trip = Trip.query.get_or_404(trip_id)
+    booking = Booking.query.get_or_404(booking_id)
+    if booking.trip_id != trip.id:
+        return jsonify({'success': False, 'message': 'Booking does not belong to this trip'}), 400
+    result = reconcile_booking_ledger(booking)
+    return jsonify({'success': True, 'reconcile': result})
 
 
 @bp.route('/trips/<int:id>/financials')

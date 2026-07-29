@@ -1,0 +1,27 @@
+---
+description: 开发/调试时必须发现并处理账本与流程不一致（测试脏数据不可忽视）
+alwaysApply: true
+---
+
+# 账本与流程一致性（每次更新 / Debug 重中之重）
+
+开发中加功能、改流程，**测试数据与旧路径冲突在所难免**——这不是借口放过问题，而是要求每次更新与 debug **主动发现、写明、改进**。
+
+## 必须做的
+
+1. **注意到**：改支付 / 分期 / 退款 / 收据 / 催款 / 折扣后，对照 Manage、收据、Payment 行、`Booking.amount_paid`、分期 status 是否说同一件事。
+2. **说清楚**：不一致是「历史脏数据」「旧路径未迁移」还是「现行逻辑 bug」——写进回复或 `context/07`，勿 silently ignore。
+3. **加固**：能加不变量 / Reconcile / 钳制 / 测试的就加；不能自动修的（如须对照 Stripe）标出阻塞项与人工步骤。
+4. **测试单**：计划日期早于报名日、部分退、payoff、折扣叠追缴等边界，优先用 fixture 或本地冒烟覆盖。
+
+## 不要做的
+
+- 不要假设「反正是测试单」就可以长期脏着；生产若同源数据，客户会看到错收据/被误催。
+- 不要只修表象文案而不核对 `amount_paid` ↔ Σ(base−refunded)、分期行与催款条件。
+- 未经用户确认 **不要** 对生产账本写修复；先只读核对 + 快照约定。
+
+## 参考
+
+- 收据上下文：`_booking_receipt_context` / Manage **Reconcile**
+- 退款写库：`apply_refund_to_ledger` + `clamp_refunded_amount`
+- 订单修复脚本示例：`scripts/fix_booking_2603SH_001_ledger.py`（须 Stripe 确认后再 apply）

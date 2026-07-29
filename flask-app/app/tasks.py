@@ -207,12 +207,36 @@ def send_installment_reminders():
     - 3 天前：首次提醒
     - 1 天前：二次提醒
     - 到期当天：最后提醒
-    - 逾期后：催款邮件（每 3 天一次，最多 3 次；status 可为 pending 或 overdue）
+    - 逾期后：催款邮件（每 3 天一次；总提醒次数 reminder_count < 6）
+    若订单经济上已结清（amount_due <= 0），跳过催款并取消未付分期。
     """
     try:
+        from app.payments import calculate_booking_total, cancel_unpaid_installments
+
         today = date.today()
         sent_pre = 0
         sent_overdue = 0
+        # booking_id → True if economically settled (skip reminders this run)
+        settled_bookings = {}
+
+        def _booking_is_settled(booking):
+            if not booking:
+                return False
+            if booking.id in settled_bookings:
+                return settled_bookings[booking.id]
+            try:
+                due = float(calculate_booking_total(booking).get('amount_due') or 0)
+            except Exception:
+                due = 1.0
+            settled = due <= 0.001
+            settled_bookings[booking.id] = settled
+            if settled:
+                cancel_unpaid_installments(booking)
+                current_app.logger.info(
+                    f"Skipping reminders for booking {booking.id}: amount_due<=0; "
+                    f"cancelled unpaid installments"
+                )
+            return settled
 
         # 1. 3 天前提醒
         three_days_later = today + timedelta(days=3)
@@ -226,6 +250,8 @@ def send_installment_reminders():
         )
 
         for installment in installments_3days:
+            if _booking_is_settled(installment.booking):
+                continue
             if send_installment_reminder_email(installment, days_until_due=3):
                 installment.reminder_sent = True
                 installment.reminder_sent_at = datetime.utcnow()
@@ -241,6 +267,8 @@ def send_installment_reminders():
         )
 
         for installment in installments_1day:
+            if _booking_is_settled(installment.booking):
+                continue
             if installment.reminder_sent_at and installment.reminder_sent_at.date() >= today:
                 continue
             if send_installment_reminder_email(installment, days_until_due=1):
@@ -257,6 +285,8 @@ def send_installment_reminders():
         )
 
         for installment in installments_today:
+            if _booking_is_settled(installment.booking):
+                continue
             if installment.reminder_sent_at and installment.reminder_sent_at.date() >= today:
                 continue
             if send_installment_reminder_email(installment, days_until_due=0):
@@ -276,6 +306,8 @@ def send_installment_reminders():
         )
 
         for installment in overdue_installments:
+            if _booking_is_settled(installment.booking):
+                continue
             days_overdue = (today - installment.due_date).days
             should_send = False
 
