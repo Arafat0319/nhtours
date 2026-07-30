@@ -3,7 +3,7 @@ from html import unescape
 import json
 import os
 import re
-from flask import render_template, redirect, url_for, flash, request, jsonify, current_app, send_file
+from flask import render_template, redirect, url_for, flash, request, jsonify, current_app, send_file, abort
 from flask_login import login_user, logout_user, current_user, login_required
 from app.admin.decorators import admin_required
 from sqlalchemy.orm import joinedload
@@ -1216,10 +1216,15 @@ def trip_builder(id, step):
         return render_template('admin/trips/builder/step_coupons.html', title='Coupons', trip=trip, form=form, current_step='coupons', trip_counts=trip_counts)
 
     elif step == 'settings':
-         # Placeholder for Step 8
-         return render_template('admin/trips/builder/step_settings.html', title='Settings', trip=trip, current_step='settings', trip_counts=trip_counts)
-         
-    return abort(404)
+        return render_template(
+            'admin/trips/builder/step_settings.html',
+            title='Settings',
+            trip=trip,
+            current_step='settings',
+            trip_counts=trip_counts,
+        )
+
+    abort(404)
 
 
 @bp.route('/trips/<int:id>/delete', methods=['POST'])

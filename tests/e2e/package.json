@@ -1,0 +1,29 @@
+{
+  "name": "nhtours-e2e",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Playwright E2E — QA adversarial suites for NH Tours",
+  "scripts": {
+    "pretest": "node scripts/gen-installment-fixture.mjs",
+    "test": "playwright test",
+    "test:checkout": "playwright test checkout",
+    "test:stripe": "playwright test stripe",
+    "test:booking": "playwright test booking",
+    "test:coupon": "playwright test coupon",
+    "test:admin": "playwright test admin",
+    "test:installment": "node scripts/gen-installment-fixture.mjs && playwright test installment",
+    "test:upload": "playwright test upload",
+    "test:public": "playwright test public",
+    "test:messaging": "playwright test messaging",
+    "test:builder": "playwright test builder",
+    "test:crm": "playwright test crm",
+    "test:export": "playwright test export",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report",
+    "install:browsers": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.1",
+    "dotenv": "^16.4.5"
+  }
+}

@@ -2201,7 +2201,10 @@ def api_validate_discount():
     
     code = data.get('code', '').strip().upper()
     trip_id = data.get('trip_id')
-    order_amount = float(data.get('order_amount', 0) or 0)
+    try:
+        order_amount = float(data.get('order_amount', 0) or 0)
+    except (TypeError, ValueError):
+        order_amount = 0.0
     
     if not code:
         return jsonify({

@@ -100,6 +100,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 |----|-----|
 | 冒烟编排 | `cd flask-app && python local_tests/run_all.py` |
 | 金钱 E2E | `python local_tests/e2e_full_suite.py`（Stripe Test 真扣/真退 + SES） |
+| Playwright 对抗 | `cd tests/e2e && npm test`（约 180 条：门禁+细节；需 8080 + QA trip + `E2E_STRIPE_*` / `E2E_ADMIN_*`） |
 | Messaging | `python local_tests/test_messaging.py` |
 
 

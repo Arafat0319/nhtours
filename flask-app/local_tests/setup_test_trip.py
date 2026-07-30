@@ -92,7 +92,7 @@ def run():
                 name="Standard Room (Installment)",
                 description="QA package with deposit + installments",
                 price=1200,
-                capacity=10,
+                capacity=500,
                 status="available",
                 payment_plan_config=installment_plan,
             )
@@ -101,7 +101,7 @@ def run():
                 name="Single Room (Full Pay)",
                 description="QA package full payment",
                 price=1500,
-                capacity=10,
+                capacity=500,
                 status="available",
                 payment_plan_config=full_plan,
             )
