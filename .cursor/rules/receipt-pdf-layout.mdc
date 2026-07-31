@@ -36,16 +36,18 @@ alwaysApply: true
 4. **说明行**（斜体灰字，可选）— 仅定金/追缴场景：`Includes: Deposit $… + Catch-up… + Add-ons $…`  
    - **不要**再单独加 Deposit 金额行（易与 Expected / Due 混淆）  
 5. **Amount Paid (net base)** — 累计已付净额  
-6. **Amount Remaining (net base)** — `Expected − Paid`
+6. **Amount Remaining (net base)** — `Expected − Paid`  
+7. **实扣明细行**（仅一次付全款、无 History 页、且有付款记录时）— 与 History 同文案：  
+   `Base $… + fee $… = charged $… | net $…`（有退款时含 refunded base）
 
 说明：
 
 - Due this time **固定指报名首笔应付**；下面说明行解释「这笔里都有什么」  
-- Due / Paid / Remaining **暂不含卡手续费**（与 Trip Total 基础口径一致；客户反馈后再决定是否加「含费实扣」行）  
+- Due / Paid / Remaining **不含**卡手续费（Trip Total 基础口径）  
 - 定金已含在套餐总价里，不是 Expected 之外再加一笔  
-- 一次付全款：无说明行  
+- 一次付全款：无 History 页；用第 7 行展示卡费/实扣（无付款记录如 $0 则省略）  
 - Paid / Remaining 随累计付款更新  
-- 卡费只出现在 Payment History 明细  
+- 卡费明细：全款在第 1 页；定金/分期在 Payment History  
 
 ## 第 2 页 History（定金/分期/多笔）
 
@@ -57,9 +59,15 @@ alwaysApply: true
 
 - 左：竖版 **NHTOURS** logo（`nexus-horizons-receipt-header.png`，蓝 `rgb(0,54,112)`，与页脚同色）  
 - 旁：标题「Nexus Horizons Tours」+ 副标题（见上表）  
-- 右：Order number + 日期  
+- 右：Order number + **日期（美西 `America/Los_Angeles`）** — 库内仍存 UTC，展示用 `format_pacific_date`  
 - **下底边对齐**：logo、左侧文字块、右侧 Order meta  
 - 比例：logo 宽约 **17mm**，标题约 **18pt**（用户确认的 smaller logo / larger title 版）
+
+## 日期时区
+
+- 收据上的 **订单日 / Issued / Payment History 付款时间 / 退款时间**：按美西展示  
+- **行程 Dates、分期 due date**（纯日历日）：不换时区  
+- 实现：`app.utils.format_pacific_date`；Jinja `|format_pacific`；PDF `_fmt_ts`
 
 ## 页脚（每页）
 

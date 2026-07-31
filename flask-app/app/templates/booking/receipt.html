@@ -28,7 +28,7 @@
                 </div>
                 <div class="text-right">
                     <p class="text-sm text-gray-500">Order number: {{ booking.order_number or booking.id }}</p>
-                    <p class="text-sm text-gray-500">{{ booking.created_at.strftime('%B %d, %Y') }}</p>
+                    <p class="text-sm text-gray-500">{{ receipt_issued_at or (booking.created_at|format_pacific) }}</p>
                 </div>
             </div>
         </div>
@@ -162,6 +162,21 @@
                         ${{ pending_amt|format_price }}
                     </span>
                 </div>
+                {% if not show_history_page and payment_history %}
+                <div class="pt-2 space-y-1">
+                    {% for row in payment_history %}
+                    <p class="text-sm text-gray-600">
+                        Base ${{ row.base|format_price }}
+                        + fee ${{ row.fee|format_price }}
+                        = charged ${{ row.charged|format_price }}
+                        {% if row.refunded and row.refunded > 0 %}
+                        · refunded base ${{ row.refunded|format_price }}
+                        {% endif %}
+                        · net ${{ row.net|format_price }}
+                    </p>
+                    {% endfor %}
+                </div>
+                {% endif %}
             </div>
         </div>
 
@@ -173,7 +188,7 @@
                 {% for row in payment_history %}
                 <div class="bg-gray-50 p-4 rounded text-sm">
                     <div class="flex justify-between font-medium text-gray-900">
-                        <span>{% if row.date %}{{ row.date.strftime('%b %d, %Y') }}{% endif %} · {{ row.type_label }}</span>
+                        <span>{% if row.date %}{{ row.date|format_pacific('%b %d, %Y') }}{% endif %} · {{ row.type_label }}</span>
                         <span>Net ${{ row.net|format_price }}</span>
                     </div>
                     <p class="text-gray-600 mt-1">
@@ -219,7 +234,7 @@
                 <div class="flex justify-between py-2 border-b border-gray-200 text-sm">
                     <div>
                         <span class="text-gray-900">Payment #{{ row.payment_id }}</span>
-                        {% if row.at %}<span class="text-gray-500"> · {{ row.at[:10] }}</span>{% endif %}
+                        {% if row.at %}<span class="text-gray-500"> · {{ row.at|format_pacific('%b %d, %Y') }}</span>{% endif %}
                         {% if row.reason %}<p class="text-xs text-gray-500 mt-0.5">{{ row.reason }}</p>{% endif %}
                     </div>
                     <span class="text-gray-900">${{ row.amount|format_price }}</span>

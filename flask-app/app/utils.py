@@ -11,7 +11,8 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from email.header import Header
 from email.utils import formataddr, parseaddr, formatdate, make_msgid
-from datetime import datetime
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 from flask import current_app, url_for, render_template
 from app import db
 from app.models import Lead, Testimonial
@@ -612,6 +613,46 @@ def get_current_timestamp():
         str: 格式化的时间字符串
     """
     return datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+
+
+# 收据等客户可见日期：按美西（America/Los_Angeles）展示；库内仍存 UTC。
+RECEIPT_TZ = ZoneInfo('America/Los_Angeles')
+
+
+def format_pacific_date(value, fmt='%B %d, %Y'):
+    """
+    将 UTC（naive 或 aware）时间格式化为美西日期字符串。
+    纯 date（行程出发日、分期 due_date 等日历日）不做时区换算。
+    """
+    if value is None or value == '':
+        return ''
+
+    if isinstance(value, datetime):
+        dt = value
+    elif isinstance(value, date):
+        return value.strftime(fmt)
+    elif isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return ''
+        try:
+            if s.endswith('Z'):
+                s = s[:-1] + '+00:00'
+            dt = datetime.fromisoformat(s)
+        except ValueError:
+            # 已是展示串或仅日期前缀
+            if len(value) >= 10 and value[4] == '-' and value[7] == '-':
+                try:
+                    return datetime.strptime(value[:10], '%Y-%m-%d').strftime(fmt)
+                except ValueError:
+                    pass
+            return value
+    else:
+        return str(value)
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(RECEIPT_TZ).strftime(fmt)
 
 
 def _installment_token_serializer():

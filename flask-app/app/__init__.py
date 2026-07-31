@@ -190,10 +190,13 @@ def create_app(config_name=None):
             app.logger.error(f"Error initializing scheduler: {str(e)}")
 
     # 模板过滤器：分期日期显示
+    from app.utils import format_pacific_date
+
     app.jinja_env.filters['format_iso_date'] = format_iso_date
     app.jinja_env.filters['format_price'] = format_price
     app.jinja_env.filters['format_currency'] = format_currency
     app.jinja_env.filters['strip_empty_paragraphs'] = strip_empty_paragraphs
+    app.jinja_env.filters['format_pacific'] = format_pacific_date
 
     # 注册错误处理器
     @app.errorhandler(404)

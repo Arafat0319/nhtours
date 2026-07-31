@@ -20,6 +20,7 @@ from app.utils import (
     generate_receipt_token,
     verify_receipt_token,
     save_booking_upload,
+    format_pacific_date,
 )
 from app.models import (
     Trip, Client, Payment, Booking, db,
@@ -1873,6 +1874,7 @@ def _booking_receipt_context(booking):
     return {
         'trip': trip,
         'booking': booking,
+        'receipt_issued_at': format_pacific_date(booking.created_at) if booking.created_at else '',
         'expected_amount': round(expected_amount, 2),
         'packages_subtotal': round(packages_subtotal, 2),
         'addons_total': round(addons_total, 2),
@@ -4007,11 +4009,11 @@ def send_booking_confirmation_email(booking, is_full_payment):
         total_cents = 0
 
     payment_status = payment.status if payment else ('fully_paid' if is_full_payment else 'deposit_paid')
-    # 处理 $0 订单：没有 Payment 记录时使用当前时间
+    # 处理 $0 订单：没有 Payment 记录时使用当前时间；展示美西日期
     if payment and payment.paid_at:
-        issued_at = payment.paid_at.strftime('%B %d, %Y')
+        issued_at = format_pacific_date(payment.paid_at)
     else:
-        issued_at = datetime.utcnow().strftime('%B %d, %Y')
+        issued_at = format_pacific_date(datetime.utcnow())
 
     line_items = []
     for bp in booking.booking_packages.all():
@@ -4118,7 +4120,7 @@ def send_installment_confirmation_email(installment):
     fee_cents = payment.fee_cents if payment and payment.fee_cents is not None else 0
     total_cents = payment.final_amount_cents if payment and payment.final_amount_cents is not None else base_amount_cents + fee_cents
     payment_status = payment.status if payment else 'succeeded'
-    issued_at = (payment.paid_at or datetime.utcnow()).strftime('%B %d, %Y')
+    issued_at = format_pacific_date(payment.paid_at or datetime.utcnow())
 
     payment_method_summary = None
     if payment and (payment.brand or payment.funding):

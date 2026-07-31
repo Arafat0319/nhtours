@@ -58,11 +58,35 @@ def _safe(text):
 
 
 def _fmt_date(value):
+    """Calendar dates (trip / installment due) — no timezone shift."""
     if not value:
         return ""
     if hasattr(value, "strftime"):
         return value.strftime("%b %d, %Y")
     return str(value)[:10]
+
+
+def _fmt_ts(value):
+    """UTC timestamps on the receipt → US Pacific calendar date."""
+    from app.utils import format_pacific_date
+
+    return format_pacific_date(value, fmt="%b %d, %Y")
+
+
+def _payment_charge_detail(row):
+    """History / 全款单共用：Base + fee = charged | net（含退款时）。"""
+    detail = (
+        f"Base {_money(row.get('base'))}  + fee {_money(row.get('fee'))}  "
+        f"= charged {_money(row.get('charged'))}"
+    )
+    if float(row.get("refunded") or 0) > 0:
+        detail += (
+            f"  |  refunded base {_money(row.get('refunded'))}  "
+            f"|  net {_money(row.get('net'))}"
+        )
+    else:
+        detail += f"  |  net {_money(row.get('net'))}"
+    return detail
 
 
 def _logo_rgb_bytes(logo_path, max_height_px=None):
@@ -317,7 +341,9 @@ def build_booking_receipt_pdf(ctx_or_booking=None, trip=None, expected_amount=No
             addons_total += float(booking_addon.addon.price or 0) * int(booking_addon.quantity or 0)
 
     order_no = getattr(booking, "order_number", None) or booking.id
-    order_date = booking.created_at.strftime("%B %d, %Y") if booking.created_at else ""
+    from app.utils import format_pacific_date
+
+    order_date = format_pacific_date(booking.created_at) if booking.created_at else ""
     order_label = f"Order number: {order_no}\n{order_date}"
 
     pdf = ReceiptPDF(format="Letter")
@@ -439,6 +465,15 @@ def build_booking_receipt_pdf(ctx_or_booking=None, trip=None, expected_amount=No
         pdf.ln(1)
     _kv_row(pdf, "Amount Paid (net base):", _money(amount_paid_net))
     _kv_row(pdf, "Amount Remaining (net base):", _money(amount_pending), bold_value=True)
+    # 一次付全款无 History 页：在 Trip Total 下展示与 History 相同的实扣明细
+    if (not show_history_page) and payment_history:
+        pdf.ln(1)
+        for row in payment_history:
+            pdf.set_font("Helvetica", size=9)
+            pdf.set_text_color(55, 65, 81)
+            pdf.multi_cell(0, 5, _safe(_payment_charge_detail(row)))
+            pdf.set_x(pdf.l_margin)
+        pdf.set_text_color(55, 65, 81)
     # Paid/Remaining notes → page 1 footer (above the rule)
 
     def _draw_installment_schedule():
@@ -465,9 +500,7 @@ def build_booking_receipt_pdf(ctx_or_booking=None, trip=None, expected_amount=No
             return
         _section_title(pdf, "Refunds (base)")
         for row in refunds:
-            at = row.get("at") or ""
-            if isinstance(at, str) and "T" in at:
-                at = at[:10]
+            at = _fmt_ts(row.get("at")) if row.get("at") else ""
             reason = row.get("reason") or ""
             line = f"{at}  payment #{row.get('payment_id')}  {_money(row.get('amount'))}"
             if reason:
@@ -497,25 +530,14 @@ def build_booking_receipt_pdf(ctx_or_booking=None, trip=None, expected_amount=No
         _section_title(pdf, "Payment History")
         if payment_history:
             for row in payment_history:
-                date_s = _fmt_date(row.get("date"))
+                date_s = _fmt_ts(row.get("date"))
                 label = row.get("type_label") or "Payment"
                 pdf.set_font("Helvetica", "B", 10)
                 pdf.set_text_color(17, 24, 39)
                 pdf.cell(0, 6, _safe(f"{date_s}  -  {label}"), new_x="LMARGIN", new_y="NEXT")
                 pdf.set_font("Helvetica", size=9)
                 pdf.set_text_color(55, 65, 81)
-                detail = (
-                    f"Base {_money(row.get('base'))}  + fee {_money(row.get('fee'))}  "
-                    f"= charged {_money(row.get('charged'))}"
-                )
-                if float(row.get("refunded") or 0) > 0:
-                    detail += (
-                        f"  |  refunded base {_money(row.get('refunded'))}  "
-                        f"|  net {_money(row.get('net'))}"
-                    )
-                else:
-                    detail += f"  |  net {_money(row.get('net'))}"
-                pdf.multi_cell(0, 5, _safe(detail))
+                pdf.multi_cell(0, 5, _safe(_payment_charge_detail(row)))
                 pdf.set_x(pdf.l_margin)
                 pdf.ln(2)
             pdf.ln(2)
