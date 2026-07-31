@@ -28,26 +28,31 @@ alwaysApply: true
 
 全部为**行程基础额**（套餐 + 附加 − 折扣），**不含**信用卡手续费。
 
-顺序（不可擅自调换）：
+### 定金 / 分期（有 History 页）
 
 1. Packages / Add-ons / Discount（有则显示）  
-2. **Total Expected (base)** — 行程应付总价  
-3. **Due this time (base)** — 这次应付（首笔；折扣后可 $0）  
-4. **说明行**（斜体灰字，可选）— 仅定金/追缴场景：`Includes: Deposit $… + Catch-up… + Add-ons $…`  
-   - **不要**再单独加 Deposit 金额行（易与 Expected / Due 混淆）  
-5. **Amount Paid (net base)** — 累计已付净额  
-6. **Amount Remaining (net base)** — `Expected − Paid`  
-7. **实扣明细行**（仅一次付全款、无 History 页、且有付款记录时）— 与 History 同文案：  
-   `Base $… + fee $… = charged $… | net $…`（有退款时含 refunded base）
+2. **Total Expected (base)**  
+3. **Due this time (base)**  
+4. **说明行**（斜体灰字 8pt，可选）— `Includes: Deposit $… + …`  
+5. **Amount Paid (net base)**  
+6. **Amount Remaining (net base)**
+
+### 一次付全款（无 History 页）
+
+1. Packages / Add-ons / Discount（有则显示）  
+2. **Total Expected (base)**  
+3. **实扣说明行**（斜体灰字 8pt，有付款记录时）— 与 History 同文案：  
+   `Base $… + fee $… = charged $… | net $…`（样式同 Includes）  
+4. **Amount Paid (net base)**  
+- **不要**显示 Due this time / Amount Remaining  
 
 说明：
 
-- Due this time **固定指报名首笔应付**；下面说明行解释「这笔里都有什么」  
+- Due this time **固定指报名首笔应付**；下面 Includes 解释「这笔里都有什么」  
 - Due / Paid / Remaining **不含**卡手续费（Trip Total 基础口径）  
 - 定金已含在套餐总价里，不是 Expected 之外再加一笔  
-- 一次付全款：无 History 页；用第 7 行展示卡费/实扣（无付款记录如 $0 则省略）  
-- Paid / Remaining 随累计付款更新  
-- 卡费明细：全款在第 1 页；定金/分期在 Payment History  
+- 一次付全款：$0 无付款记录则省略实扣说明行  
+- 卡费明细：全款在第 1 页斜体行；定金/分期在 Payment History  
 
 ## 第 2 页 History（定金/分期/多笔）
 

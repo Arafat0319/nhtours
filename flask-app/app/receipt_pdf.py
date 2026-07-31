@@ -358,12 +358,17 @@ def build_booking_receipt_pdf(ctx_or_booking=None, trip=None, expected_amount=No
     if ctx.get("show_history_page") is not None:
         show_history_page = bool(ctx.get("show_history_page"))
 
-    footer_notes = [
-        "Paid / Remaining are trip base amounts (package + add-ons - discount). "
-        "Card processing fees are not included. Due this time is the amount required "
-        "for the booking charge (after discount)."
-        + (" Payment history is on page 2." if show_history_page else ""),
-    ]
+    if show_history_page:
+        footer_notes = [
+            "Paid / Remaining are trip base amounts (package + add-ons - discount). "
+            "Card processing fees are not included. Due this time is the amount required "
+            "for the booking charge (after discount). Payment history is on page 2.",
+        ]
+    else:
+        footer_notes = [
+            "Amount Paid is the trip base amount (package + add-ons - discount). "
+            "Card processing fees are shown in the italic charge detail above when applicable.",
+        ]
     if due_at_booking_note:
         footer_notes.append(due_at_booking_note)
     pdf._footer_notes = footer_notes
@@ -455,25 +460,29 @@ def build_booking_receipt_pdf(ctx_or_booking=None, trip=None, expected_amount=No
     pdf.line(pdf.l_margin, pdf.get_y() + 1, pdf.w - pdf.r_margin, pdf.get_y() + 1)
     pdf.ln(3)
     _kv_row(pdf, "Total Expected (base):", _money(expected_amount), bold_value=True)
-    _kv_row(pdf, "Due this time (base):", _money(amount_due_this_time))
-    if due_this_time_breakdown:
-        pdf.set_font("Helvetica", "I", 8)
-        pdf.set_text_color(107, 114, 128)
-        pdf.multi_cell(0, 4, _safe(due_this_time_breakdown))
-        pdf.set_x(pdf.l_margin)
-        pdf.set_text_color(55, 65, 81)
-        pdf.ln(1)
-    _kv_row(pdf, "Amount Paid (net base):", _money(amount_paid_net))
-    _kv_row(pdf, "Amount Remaining (net base):", _money(amount_pending), bold_value=True)
-    # 一次付全款无 History 页：在 Trip Total 下展示与 History 相同的实扣明细
-    if (not show_history_page) and payment_history:
-        pdf.ln(1)
-        for row in payment_history:
-            pdf.set_font("Helvetica", size=9)
-            pdf.set_text_color(55, 65, 81)
-            pdf.multi_cell(0, 5, _safe(_payment_charge_detail(row)))
+    if show_history_page:
+        # 定金/分期：Due + Includes 说明 + Paid + Remaining
+        _kv_row(pdf, "Due this time (base):", _money(amount_due_this_time))
+        if due_this_time_breakdown:
+            pdf.set_font("Helvetica", "I", 8)
+            pdf.set_text_color(107, 114, 128)
+            pdf.multi_cell(0, 4, _safe(due_this_time_breakdown))
             pdf.set_x(pdf.l_margin)
-        pdf.set_text_color(55, 65, 81)
+            pdf.set_text_color(55, 65, 81)
+            pdf.ln(1)
+        _kv_row(pdf, "Amount Paid (net base):", _money(amount_paid_net))
+        _kv_row(pdf, "Amount Remaining (net base):", _money(amount_pending), bold_value=True)
+    else:
+        # 一次付全款：Expected → 实扣说明（同 Includes 斜体灰字）→ Paid；无 Due / Remaining
+        if payment_history:
+            pdf.set_font("Helvetica", "I", 8)
+            pdf.set_text_color(107, 114, 128)
+            for row in payment_history:
+                pdf.multi_cell(0, 4, _safe(_payment_charge_detail(row)))
+                pdf.set_x(pdf.l_margin)
+            pdf.set_text_color(55, 65, 81)
+            pdf.ln(1)
+        _kv_row(pdf, "Amount Paid (net base):", _money(amount_paid_net))
     # Paid/Remaining notes → page 1 footer (above the rule)
 
     def _draw_installment_schedule():

@@ -3073,12 +3073,38 @@
             });
         }
 
-        // Generate Receipt Function
+        // Generate Receipt：blob 下载（避免 window.open 被拦截 / 附件无感）
         if (generateReceiptBtn) {
-            generateReceiptBtn.addEventListener('click', function() {
+            generateReceiptBtn.addEventListener('click', async function() {
                 if (!currentBookingId) return;
-                // Open receipt in new window
-                window.open(`/admin/trips/{{ trip.id }}/bookings/${currentBookingId}/receipt`, '_blank');
+                const url = `/admin/trips/{{ trip.id }}/bookings/${currentBookingId}/receipt`;
+                const prevHtml = generateReceiptBtn.innerHTML;
+                generateReceiptBtn.disabled = true;
+                generateReceiptBtn.innerHTML = 'Generating…';
+                try {
+                    const resp = await fetch(url, { credentials: 'same-origin' });
+                    if (!resp.ok) {
+                        throw new Error('HTTP ' + resp.status);
+                    }
+                    const blob = await resp.blob();
+                    let filename = 'NHTours-Order-' + currentBookingId + '.pdf';
+                    const cd = resp.headers.get('Content-Disposition') || '';
+                    const m = /filename=\"?([^\";]+)\"?/i.exec(cd);
+                    if (m && m[1]) filename = m[1];
+                    const objectUrl = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = objectUrl;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    setTimeout(function() { URL.revokeObjectURL(objectUrl); }, 1000);
+                } catch (e) {
+                    alert('Failed to generate receipt. Please try again.');
+                } finally {
+                    generateReceiptBtn.disabled = false;
+                    generateReceiptBtn.innerHTML = prevHtml;
+                }
             });
         }
 

@@ -144,6 +144,7 @@
                     <span class="font-semibold text-gray-900">Total Expected (base):</span>
                     <span class="font-semibold text-gray-900">${{ expected_amount|format_price }}</span>
                 </div>
+                {% if show_history_page %}
                 <div class="flex justify-between">
                     <span class="text-gray-600">Due this time (base):</span>
                     <span class="text-gray-900">${{ (amount_due_this_time if amount_due_this_time is defined else 0)|format_price }}</span>
@@ -162,10 +163,11 @@
                         ${{ pending_amt|format_price }}
                     </span>
                 </div>
-                {% if not show_history_page and payment_history %}
-                <div class="pt-2 space-y-1">
+                {% else %}
+                {% if payment_history %}
+                <div class="space-y-0.5 -mt-1 mb-1">
                     {% for row in payment_history %}
-                    <p class="text-sm text-gray-600">
+                    <p class="text-xs text-gray-500 italic">
                         Base ${{ row.base|format_price }}
                         + fee ${{ row.fee|format_price }}
                         = charged ${{ row.charged|format_price }}
@@ -175,6 +177,11 @@
                         · net ${{ row.net|format_price }}
                     </p>
                     {% endfor %}
+                </div>
+                {% endif %}
+                <div class="flex justify-between">
+                    <span class="text-gray-600">Amount Paid (net base):</span>
+                    <span class="text-gray-900">${{ (amount_paid_net if amount_paid_net is defined else (booking.amount_paid or 0))|format_price }}</span>
                 </div>
                 {% endif %}
             </div>
@@ -257,7 +264,11 @@
 
         <!-- Footer notes (above brand footer, mirrors PDF) -->
         <div class="border-t border-gray-200 pt-4 mt-2 mb-4 space-y-2">
-            <p class="text-xs text-gray-500 leading-relaxed italic">Paid / Remaining are trip base amounts (package + add-ons − discount). Card processing fees are not included. Due this time is the amount required for the booking charge (after discount); a line below may list what that charge includes.{% if show_history_page %} Payment history is listed above when available.{% endif %}</p>
+            {% if show_history_page %}
+            <p class="text-xs text-gray-500 leading-relaxed italic">Paid / Remaining are trip base amounts (package + add-ons − discount). Card processing fees are not included. Due this time is the amount required for the booking charge (after discount); a line below may list what that charge includes. Payment history is listed above when available.</p>
+            {% else %}
+            <p class="text-xs text-gray-500 leading-relaxed italic">Amount Paid is the trip base amount (package + add-ons − discount). Card processing fees are shown in the italic charge detail above when applicable.</p>
+            {% endif %}
             {% if due_at_booking_note %}
             <p class="text-xs text-gray-500 leading-relaxed italic">{{ due_at_booking_note }}</p>
             {% endif %}
