@@ -4,10 +4,6 @@
     {% if payment_status == 'succeeded' %}Booking Confirmed | Nexus Horizons{% else %}Payment Status | Nexus Horizons{% endif %}
 {% endblock %}
 
-{% block extra_head %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/nh-download-btn.css') }}">
-{% endblock %}
-
 {% block content %}
 <style>
     :root {
@@ -36,12 +32,8 @@
         <div class="flex justify-center" style="margin-bottom: calc(var(--spacing) * 38);">
             <a href="{{ receipt_url }}"
                 download="NHTours-Order-{{ booking_id }}.pdf"
-                class="nh-download-btn">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" height="24" width="24" aria-hidden="true">
-                    <path stroke-linejoin="round" stroke-linecap="round" stroke-width="2" stroke="#f1f1f1" d="M6 21H18M12 3V17M12 17L17 12M12 17L7 12"></path>
-                </svg>
+                class="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium">
                 Download receipt
-                <span class="nh-download-btn__tip">Download receipt</span>
             </a>
         </div>
         {% endif %}
