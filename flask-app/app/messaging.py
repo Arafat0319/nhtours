@@ -110,7 +110,9 @@ def collect_message_buyers(trip):
 
 
 def _booking_has_overdue_installment(booking):
-    today = date.today()
+    from app.utils import pacific_today
+
+    today = pacific_today()
     for inst in InstallmentPayment.query.filter_by(booking_id=booking.id).all():
         if inst.status in ('cancelled', 'paid'):
             continue

@@ -130,7 +130,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 邮件 SES | **生产已配置**（`nhtours.com` / `us-west-2`，已出沙箱）；详见 `06` / `08` |
 | 收据邮件 | HTML+PDF；日期美西；全款：Expected→实扣斜体→Paid（无 Due/Remaining）；定稿 `.cursor/rules/receipt-pdf-layout.mdc` |
 | 退款 / 取消 | **不自动发客户邮件**；退款走 Stripe/账本；需通知请用 Messages |
-| 分期催款 | HTML+logo；含 overdue 续催；取消订单停催；生产 `BASE_URL` |
+| 分期催款 | 美西日历匹配 due；每天美西 9:00；HTML+logo；overdue 续催；取消停催 |
 | 报名校验 | 前端 `booking.js` + 后端 `booking_validation.py`（email/phone/name/dob/zip）；Promo 未选套餐 → `#discount-message` 琥珀提示 |
 | 安全审计 | `/var/log/nhtours/audit.log`；`nh-audit` / `nh-audit --all` / `nh-audit -f` |
 | 安全加固 | ✅ **生产已完成**（2026-07-06）；凭据轮换、审计、限流；详见 `06` / [手册/安全手册.md](../手册/安全手册.md) |

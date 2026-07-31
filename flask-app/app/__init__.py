@@ -148,21 +148,23 @@ def create_app(config_name=None):
                 with app.app_context():
                     send_scheduled_messages()
 
-            # 每天上午 9 点：分期提醒
+            # 每天美西上午 9 点：分期提醒（日历日亦按美西）
             scheduler.add_job(
                 _run_installment_reminders,
                 'cron',
                 hour=9,
                 minute=0,
+                timezone='America/Los_Angeles',
                 id='send_installment_reminders',
                 replace_existing=True,
             )
-            # 每天凌晨 3 点：过期 PendingBooking → expired + 取消 Stripe PI
+            # 每天美西凌晨 3 点：过期 PendingBooking → expired + 取消 Stripe PI
             scheduler.add_job(
                 _run_pending_booking_cleanup,
                 'cron',
                 hour=3,
                 minute=0,
+                timezone='America/Los_Angeles',
                 id='cleanup_expired_pending_bookings',
                 replace_existing=True,
             )

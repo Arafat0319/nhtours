@@ -615,8 +615,44 @@ def get_current_timestamp():
     return datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
 
 
-# 收据等客户可见日期：按美西（America/Los_Angeles）展示；库内仍存 UTC。
-RECEIPT_TZ = ZoneInfo('America/Los_Angeles')
+# 客户可见日期 / 邮件调度日历：美西（America/Los_Angeles）；库内时间戳仍存 UTC。
+PACIFIC_TZ = ZoneInfo('America/Los_Angeles')
+RECEIPT_TZ = PACIFIC_TZ  # 兼容旧名
+
+
+def pacific_today():
+    """当前美西日历日（催款 D-3/D-1/到期日匹配用）。"""
+    return datetime.now(PACIFIC_TZ).date()
+
+
+def to_pacific_date(value):
+    """
+    UTC naive/aware datetime → 美西日历日。
+    纯 date 原样返回；无法解析则 None。
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        dt = value
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(PACIFIC_TZ).date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return None
+        try:
+            if s.endswith('Z'):
+                s = s[:-1] + '+00:00'
+            return to_pacific_date(datetime.fromisoformat(s))
+        except ValueError:
+            try:
+                return datetime.strptime(s[:10], '%Y-%m-%d').date()
+            except ValueError:
+                return None
+    return None
 
 
 def format_pacific_date(value, fmt='%B %d, %Y'):
@@ -652,7 +688,7 @@ def format_pacific_date(value, fmt='%B %d, %Y'):
 
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(RECEIPT_TZ).strftime(fmt)
+    return dt.astimezone(PACIFIC_TZ).strftime(fmt)
 
 
 def _installment_token_serializer():

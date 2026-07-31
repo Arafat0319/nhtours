@@ -8,7 +8,7 @@ from flask import current_app, render_template, url_for
 from sqlalchemy import or_, and_
 from app import db
 from app.models import Booking, InstallmentPayment, PendingBooking
-from app.utils import send_email_via_ses, generate_installment_token
+from app.utils import send_email_via_ses, generate_installment_token, pacific_today, to_pacific_date
 
 # 未付分期：含 pending / overdue（逾期催款后会标 overdue，须继续可催）
 _UNPAID_INSTALLMENT_STATUSES = ('pending', 'overdue')
@@ -203,6 +203,7 @@ def send_installment_reminders():
     """
     发送分期付款提醒邮件
     每天运行，检查即将到期的分期付款
+    日历日按美西（America/Los_Angeles），与客户 due_date 口径一致。
     提醒时机：
     - 3 天前：首次提醒
     - 1 天前：二次提醒
@@ -213,7 +214,7 @@ def send_installment_reminders():
     try:
         from app.payments import calculate_booking_total, cancel_unpaid_installments
 
-        today = date.today()
+        today = pacific_today()
         sent_pre = 0
         sent_overdue = 0
         # booking_id → True if economically settled (skip reminders this run)
@@ -237,6 +238,10 @@ def send_installment_reminders():
                     f"cancelled unpaid installments"
                 )
             return settled
+
+        def _already_reminded_pacific_today(installment):
+            last = to_pacific_date(installment.reminder_sent_at)
+            return bool(last and last >= today)
 
         # 1. 3 天前提醒
         three_days_later = today + timedelta(days=3)
@@ -269,7 +274,7 @@ def send_installment_reminders():
         for installment in installments_1day:
             if _booking_is_settled(installment.booking):
                 continue
-            if installment.reminder_sent_at and installment.reminder_sent_at.date() >= today:
+            if _already_reminded_pacific_today(installment):
                 continue
             if send_installment_reminder_email(installment, days_until_due=1):
                 installment.reminder_sent = True
@@ -287,7 +292,7 @@ def send_installment_reminders():
         for installment in installments_today:
             if _booking_is_settled(installment.booking):
                 continue
-            if installment.reminder_sent_at and installment.reminder_sent_at.date() >= today:
+            if _already_reminded_pacific_today(installment):
                 continue
             if send_installment_reminder_email(installment, days_until_due=0):
                 installment.reminder_sent = True
@@ -311,10 +316,11 @@ def send_installment_reminders():
             days_overdue = (today - installment.due_date).days
             should_send = False
 
-            if not installment.reminder_sent_at:
+            last_pacific = to_pacific_date(installment.reminder_sent_at)
+            if not last_pacific:
                 should_send = True
             else:
-                days_since_last = (today - installment.reminder_sent_at.date()).days
+                days_since_last = (today - last_pacific).days
                 if days_since_last >= 3:
                     should_send = True
 
@@ -327,7 +333,8 @@ def send_installment_reminders():
 
         db.session.commit()
         current_app.logger.info(
-            f"Installment reminders processed: pre_due={sent_pre} overdue={sent_overdue}"
+            f"Installment reminders processed: pacific_today={today} "
+            f"pre_due={sent_pre} overdue={sent_overdue}"
         )
 
     except Exception as e:
