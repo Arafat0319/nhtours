@@ -125,71 +125,110 @@ def create_app(config_name=None):
     app.register_blueprint(admin_bp)
 
     # 初始化定时任务调度器（仅在生产环境或开发环境启用）
+    # Gunicorn 多 worker 时每个进程都会 create_app；必须只让一个进程跑 APScheduler，
+    # 否则催款/群发会按 worker 数重复发送（例：3 期 × 3 worker = 9 封）。
     if config_name != 'testing':
         try:
-            from apscheduler.schedulers.background import BackgroundScheduler
-            from app.tasks import (
-                send_installment_reminders,
-                cleanup_expired_pending_bookings,
-                send_scheduled_messages,
-            )
+            import fcntl
+            import os as _os
 
-            scheduler = BackgroundScheduler()
+            def _try_acquire_scheduler_lock():
+                """非阻塞文件锁；持锁进程退出后锁自动释放。"""
+                force = (_os.environ.get('SCHEDULER_ENABLED') or '').strip().lower()
+                if force in ('0', 'false', 'no', 'off'):
+                    return False
+                if force in ('1', 'true', 'yes', 'on'):
+                    return True
+                lock_dir = app.instance_path
+                _os.makedirs(lock_dir, exist_ok=True)
+                lock_path = _os.path.join(lock_dir, 'apscheduler.lock')
+                lock_file = open(lock_path, 'a+', encoding='utf-8')
+                try:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    lock_file.close()
+                    return False
+                lock_file.seek(0)
+                lock_file.truncate()
+                lock_file.write(str(_os.getpid()))
+                lock_file.flush()
+                app._scheduler_lock_file = lock_file  # keep FD open
+                return True
 
-            def _run_installment_reminders():
-                with app.app_context():
-                    send_installment_reminders()
-
-            def _run_pending_booking_cleanup():
-                with app.app_context():
-                    cleanup_expired_pending_bookings()
-
-            def _run_scheduled_messages():
-                with app.app_context():
-                    send_scheduled_messages()
-
-            # 每天美西上午 9 点：分期提醒（日历日亦按美西）
-            scheduler.add_job(
-                _run_installment_reminders,
-                'cron',
-                hour=9,
-                minute=0,
-                timezone='America/Los_Angeles',
-                id='send_installment_reminders',
-                replace_existing=True,
-            )
-            # 每天美西凌晨 3 点：过期 PendingBooking → expired + 取消 Stripe PI
-            scheduler.add_job(
-                _run_pending_booking_cleanup,
-                'cron',
-                hour=3,
-                minute=0,
-                timezone='America/Los_Angeles',
-                id='cleanup_expired_pending_bookings',
-                replace_existing=True,
-            )
-            # 每分钟：到期 Trip Message 群发
-            scheduler.add_job(
-                _run_scheduled_messages,
-                'interval',
-                minutes=1,
-                id='send_scheduled_messages',
-                replace_existing=True,
-            )
-
-            try:
-                scheduler.start()
-                app.logger.info("APScheduler started successfully")
-            except Exception as e:
-                app.logger.error(f"Failed to start APScheduler: {str(e)}")
-
-            # 保存调度器到 app 实例（用于关闭时停止）
-            app.scheduler = scheduler
+            start_scheduler = _try_acquire_scheduler_lock()
         except ImportError:
-            app.logger.warning("APScheduler not installed. Install it with: pip install APScheduler")
-            app.logger.warning("Installment reminder / PendingBooking cleanup / scheduled messages will not be available.")
+            # Windows 本地无 fcntl：允许启动（单进程 flask run）
+            start_scheduler = True
         except Exception as e:
-            app.logger.error(f"Error initializing scheduler: {str(e)}")
+            app.logger.error(f"Scheduler lock error: {e}")
+            start_scheduler = False
+
+        if start_scheduler:
+            try:
+                from apscheduler.schedulers.background import BackgroundScheduler
+                from app.tasks import (
+                    send_installment_reminders,
+                    cleanup_expired_pending_bookings,
+                    send_scheduled_messages,
+                )
+
+                scheduler = BackgroundScheduler()
+
+                def _run_installment_reminders():
+                    with app.app_context():
+                        send_installment_reminders()
+
+                def _run_pending_booking_cleanup():
+                    with app.app_context():
+                        cleanup_expired_pending_bookings()
+
+                def _run_scheduled_messages():
+                    with app.app_context():
+                        send_scheduled_messages()
+
+                # 每天美西上午 9 点：分期提醒（日历日亦按美西）
+                scheduler.add_job(
+                    _run_installment_reminders,
+                    'cron',
+                    hour=9,
+                    minute=0,
+                    timezone='America/Los_Angeles',
+                    id='send_installment_reminders',
+                    replace_existing=True,
+                )
+                # 每天美西凌晨 3 点：过期 PendingBooking → expired + 取消 Stripe PI
+                scheduler.add_job(
+                    _run_pending_booking_cleanup,
+                    'cron',
+                    hour=3,
+                    minute=0,
+                    timezone='America/Los_Angeles',
+                    id='cleanup_expired_pending_bookings',
+                    replace_existing=True,
+                )
+                # 每分钟：到期 Trip Message 群发
+                scheduler.add_job(
+                    _run_scheduled_messages,
+                    'interval',
+                    minutes=1,
+                    id='send_scheduled_messages',
+                    replace_existing=True,
+                )
+
+                try:
+                    scheduler.start()
+                    app.logger.info("APScheduler started successfully (this worker holds the lock)")
+                except Exception as e:
+                    app.logger.error(f"Failed to start APScheduler: {str(e)}")
+
+                app.scheduler = scheduler
+            except ImportError:
+                app.logger.warning("APScheduler not installed. Install it with: pip install APScheduler")
+                app.logger.warning("Installment reminder / PendingBooking cleanup / scheduled messages will not be available.")
+            except Exception as e:
+                app.logger.error(f"Error initializing scheduler: {str(e)}")
+        else:
+            app.logger.info("APScheduler skipped on this worker (another process holds the lock)")
 
     # 模板过滤器：分期日期显示
     from app.utils import format_pacific_date
