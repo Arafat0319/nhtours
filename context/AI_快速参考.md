@@ -75,7 +75,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 |----|-----|
 | 格式 | `{YYMM}{ABBR}-{SEQ}` → `2612MT-001` |
 | YYMM | Trip `start_date` 出发年月（写入后改期不改旧号） |
-| ABBR | `Trip.trip_abbr`（标题前两实词首字母；Basics 可改） |
+| ABBR | `Trip.trip_abbr`（库内 2–4 字母；Basics 输入框可显示 `YYMM`+字母，保存时剥年月） |
 | SEQ | 每 trip `001…`；取消不回收 |
 | 时机 | 正式 Booking 创建时；PendingBooking 不生成 |
 | 代码 | `app/order_numbers.py` → `assign_order_number` |

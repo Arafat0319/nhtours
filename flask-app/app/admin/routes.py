@@ -648,10 +648,10 @@ def trip_builder(id, step):
             trip.title = request.form.get('title') or trip.title or ''
             trip.slug = request.form.get('slug') or trip.slug or ''
             trip.destination_text = request.form.get('destination_text') or trip.destination_text or ''
-            from app.order_numbers import ensure_unique_trip_abbr, normalize_trip_abbr, suggest_trip_abbr
+            from app.order_numbers import ensure_unique_trip_abbr, parse_trip_abbr_input, suggest_trip_abbr
             abbr_raw = request.form.get('trip_abbr')
             if abbr_raw is not None and str(abbr_raw).strip():
-                cleaned = normalize_trip_abbr(abbr_raw)
+                cleaned = parse_trip_abbr_input(abbr_raw)
                 if 2 <= len(cleaned) <= 4:
                     trip.trip_abbr = ensure_unique_trip_abbr(cleaned, exclude_trip_id=trip.id)
             elif not trip.trip_abbr and trip.title:
@@ -723,9 +723,11 @@ def trip_builder(id, step):
             trip.min_capacity = form.min_capacity.data
             trip.color = form.color.data
 
-            from app.order_numbers import ensure_unique_trip_abbr, suggest_trip_abbr
+            from app.order_numbers import ensure_unique_trip_abbr, parse_trip_abbr_input, suggest_trip_abbr
             if form.trip_abbr.data:
-                trip.trip_abbr = ensure_unique_trip_abbr(form.trip_abbr.data, exclude_trip_id=trip.id)
+                trip.trip_abbr = ensure_unique_trip_abbr(
+                    parse_trip_abbr_input(form.trip_abbr.data), exclude_trip_id=trip.id
+                )
             elif not trip.trip_abbr:
                 trip.trip_abbr = suggest_trip_abbr(trip.title or '', exclude_trip_id=trip.id)
             
@@ -737,10 +739,14 @@ def trip_builder(id, step):
                 flash('Cover photo removed.', 'success')
                 return redirect(url_for('admin.trip_builder', id=trip.id, step='basics'))
             return redirect(url_for('admin.trip_builder', id=trip.id, step='description'))
-        # Prefill abbr suggestion when empty
-        if request.method == 'GET' and not form.trip_abbr.data:
+        # Prefill abbr: show YYMM+code in the input when start_date is set
+        if request.method == 'GET':
             from app.order_numbers import suggest_trip_abbr
-            form.trip_abbr.data = trip.trip_abbr or suggest_trip_abbr(trip.title or '', exclude_trip_id=trip.id)
+            letters = trip.trip_abbr or suggest_trip_abbr(trip.title or '', exclude_trip_id=trip.id)
+            if trip.start_date and letters:
+                form.trip_abbr.data = trip.start_date.strftime('%y%m') + letters
+            else:
+                form.trip_abbr.data = letters
         return render_template('admin/trips/builder/step_basics.html', title='Trip Basics', trip=trip, form=form, current_step='basics', min_date=date.today().isoformat(), trip_counts=trip_counts)
     
     elif step == 'description':

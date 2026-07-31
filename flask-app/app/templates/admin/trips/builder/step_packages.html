@@ -86,18 +86,15 @@
                             <div>
                                 <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Package Name</label>
                                 <input type="text" id="pkg_name" placeholder="e.g. Shared Room"
-                                    class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
+                                    class="block w-full rounded-md border-0 h-9 px-3 leading-9 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm">
                             </div>
 
                             <div>
                                 <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Description <span
                                         class="text-gray-400 font-normal">(optional)</span></label>
-                                <div class="mt-1">
-                                    <!-- Standard Textarea Style -->
                                     <textarea id="pkg_description" rows="3"
-                                        class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6"
+                                        class="block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6"
                                         placeholder="Enter package description..."></textarea>
-                                </div>
                             </div>
                         </div>
 
@@ -107,13 +104,13 @@
                                 <div>
                                     <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Full price per
                                         person</label>
-                                    <div class="relative mt-1 rounded-md shadow-sm">
+                                    <div class="relative rounded-md shadow-sm">
                                         <div
                                             class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                                             <span class="text-gray-500 sm:text-sm currency-symbol">$</span>
                                         </div>
-                                        <input type="text" id="pkg_price" inputmode="numeric" pattern="[0-9]*\.?[0-9]*" oninput="recalculatePlan()"
-                                            class="block w-full rounded-md border-0 h-9 pl-7 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6"
+                                        <input type="text" id="pkg_price" inputmode="numeric" pattern="[0-9]*\.?[0-9]*" oninput="onPackagePriceChange()"
+                                            class="block w-full rounded-md border-0 h-9 pl-7 leading-9 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm"
                                             placeholder="0.00">
                                     </div>
                                 </div>
@@ -122,7 +119,7 @@
                                     <label
                                         class="block text-sm font-medium leading-6 text-gray-900 mb-2">Currency</label>
                                     <select id="pkg_currency" onchange="updateCurrencySymbol()"
-                                        class="admin-select mt-1 block w-full rounded-md border-0 h-9 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
+                                        class="admin-select block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm">
                                         <option value="USD">USD ($)</option>
                                         <option value="CNY">CNY (¥)</option>
                                         <option value="CAD">CAD (C$)</option>
@@ -206,7 +203,7 @@
 
                                     <!-- Payment Options (Hidden per request) -->
                                     <div class="space-y-2 pt-2 hidden">
-                                        <div class="relative flex items-start">
+                                        <div class="relative flex items-center">
                                             <div class="flex h-6 items-center">
                                                 <input id="allow_partial" type="checkbox"
                                                     class="h-4 w-4 rounded border-gray-300 text-wetravel-cyan focus:ring-wetravel-cyan">
@@ -230,16 +227,16 @@
                                 <!-- Availability -->
                                 <div>
                                     <label
-                                        class="block text-sm font-medium leading-6 text-gray-900">Availability</label>
-                                    <div class="grid grid-cols-2 gap-4">
+                                        class="block text-sm font-medium leading-6 text-gray-900 mb-2">Availability</label>
+                                    <div class="grid grid-cols-2 gap-4 items-center">
                                         <select id="pkg_availability_type" onchange="toggleCapacityInput()"
-                                            class="admin-select block w-full rounded-md border-0 h-9 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
+                                            class="admin-select block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm">
                                             <option value="unlimited">Unlimited</option>
                                             <option value="limited">Limited</option>
                                         </select>
                                         <div id="capacity-input-container" class="hidden">
                                             <input type="text" id="pkg_capacity" inputmode="numeric" pattern="[0-9]*" placeholder="Total spots"
-                                                class="block w-full rounded-md border-0 h-9 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6">
+                                                class="block w-full rounded-md border-0 h-9 px-3 leading-9 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm">
                                         </div>
                                     </div>
                                 </div>
@@ -264,7 +261,7 @@
                                     </div>
                                     <div id="deadline-input-container" class="hidden flex-1">
                                         <input type="text" id="pkg_deadline"
-                                            class="fp-date block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-black ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm sm:leading-6"
+                                            class="fp-date block w-full rounded-md border-0 h-9 px-3 leading-9 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm"
                                             placeholder="YYYY-MM-DD">
                                     </div>
                                 </div>
@@ -551,8 +548,8 @@
                 btnYes.classList.add('bg-wetravel-cyan', 'text-white');
                 btnNo.classList.remove('bg-wetravel-cyan', 'text-white');
                 btnNo.classList.add('bg-white', 'text-gray-700');
-                recalculatePlan(); // Ensure numbers are fresh
-                // Initialize auto-balance mode when payment plan is enabled
+                // 打开时金额留空，不预填 20% 定金；用户输入后再由 Auto-balance 分摊
+                setInstallments(numberOfInstallments || 1, false);
                 toggleAutoBalance(true);
             } else {
                 container.classList.add('hidden');
@@ -603,7 +600,7 @@
             document.querySelectorAll('.currency-symbol').forEach(el => el.innerText = symbol);
         }
 
-        function setInstallments(num, recalc = true) {
+        function setInstallments(num, recalc = false) {
             numberOfInstallments = num;
 
             // UI State for Grid Buttons
@@ -617,11 +614,15 @@
                 activeBtn.classList.add('bg-wetravel-cyan', 'text-white', 'border-wetravel-cyan');
             }
 
-            // Render Rows
+            // Render Rows（金额默认空；仅在显式要求且已有定金时才重算）
             renderScheduleRows();
 
-            if (recalc) {
-                recalculatePlan();
+            if (recalc && autoBalanceEnabled) {
+                const depInput = document.querySelector('.schedule-row .amount-input');
+                const depVal = depInput && String(depInput.value || '').trim();
+                if (depVal !== '') {
+                    autoBalanceAmounts(0);
+                }
             }
         }
 
@@ -633,10 +634,10 @@
             const depRow = document.createElement('div');
             depRow.className = 'grid grid-cols-12 gap-0 text-sm py-2 px-2 items-center bg-gray-50 bg-opacity-50 schedule-row';
             depRow.innerHTML = `
-            <div class="col-span-4 font-medium text-gray-900">Deposit</div>
-            <div class="col-span-4 text-gray-500 text-xs">Due at booking</div>
-            <div class="col-span-4 pl-4">
-                    <input type="text" inputmode="numeric" pattern="[0-9]*\.?[0-9]*" class="amount-input block w-full rounded-md border-0 py-1 text-gray-900 text-right ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-xs" placeholder="0.00">
+            <div class="col-span-4 font-medium text-gray-900 flex items-center">Deposit</div>
+            <div class="col-span-4 text-gray-500 text-xs flex items-center">Due at booking</div>
+            <div class="col-span-4 pl-4 flex items-center">
+                    <input type="text" inputmode="numeric" pattern="[0-9]*\\.?[0-9]*" class="amount-input block w-full rounded-md border-0 h-8 px-2 leading-8 text-gray-900 text-right ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-xs" placeholder="">
             </div>
         `;
             rowsContainer.appendChild(depRow);
@@ -698,12 +699,12 @@
                 if (i === numberOfInstallments) label = `Final Payment`;
 
                 row.innerHTML = `
-                <div class="col-span-4 font-medium text-gray-900">${label}</div>
-                <div class="col-span-4 pr-2">
-                    <input type="text" class="fp-date date-input block w-full rounded-md border-0 h-8 py-0 text-gray-900 ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-xs" placeholder="YYYY-MM-DD">
+                <div class="col-span-4 font-medium text-gray-900 flex items-center">${label}</div>
+                <div class="col-span-4 pr-2 flex items-center">
+                    <input type="text" class="fp-date date-input block w-full rounded-md border-0 h-8 px-2 leading-8 text-gray-900 ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-xs" placeholder="YYYY-MM-DD">
                 </div>
-                <div class="col-span-4 pl-4">
-                        <input type="text" inputmode="numeric" pattern="[0-9]*\.?[0-9]*" class="amount-input block w-full rounded-md border-0 h-8 py-0 text-gray-900 text-right ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-xs" placeholder="0.00">
+                <div class="col-span-4 pl-4 flex items-center">
+                        <input type="text" inputmode="numeric" pattern="[0-9]*\\.?[0-9]*" class="amount-input block w-full rounded-md border-0 h-8 px-2 leading-8 text-gray-900 text-right ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-xs" placeholder="">
                 </div>
              `;
                 rowsContainer.appendChild(row);
@@ -754,48 +755,34 @@
             initFlatpickrOnDates();
         }
 
-        function recalculatePlan() {
-            if (!hasPaymentPlan) return;
+        function onPackagePriceChange() {
+            // 改全价时：仅当已填定金且开启 Auto-balance，才重分后续期款；不自动预填定金
+            if (!hasPaymentPlan || !autoBalanceEnabled) return;
+            const depInput = document.querySelector('.schedule-row .amount-input');
+            if (!depInput || String(depInput.value || '').trim() === '') return;
+            autoBalanceAmounts(0);
+        }
 
-            const fullPrice = parseFloat(document.getElementById('pkg_price').value) || 0;
-            if (fullPrice === 0) return;
-
-            // Simple default logic: 
-            // 1. Suggest 20% Deposit
-            // 2. Split rest equally among installments
-
-            const depositAmount = parseFloat((fullPrice * 0.20).toFixed(2));
-            const remaining = fullPrice - depositAmount;
-            const installmentAmount = parseFloat((remaining / numberOfInstallments).toFixed(2));
-
-            // Adjust last installment to handle rounding
-            const totalCalculated = depositAmount + (installmentAmount * numberOfInstallments);
-            const diff = parseFloat((fullPrice - totalCalculated).toFixed(2));
-            const finalInstallmentAmount = installmentAmount + diff;
-
-            // Update Inputs
-            isAutoBalancing = true; // Prevent triggering auto-balance during recalculation
-            const rows = document.querySelectorAll('.schedule-row');
-
-            // Deposit
-            if (rows[0]) rows[0].querySelector('.amount-input').value = depositAmount;
-
-            // Installments
-            for (let i = 1; i <= numberOfInstallments; i++) {
-                if (rows[i]) {
-                    // Set amount
-                    if (i === numberOfInstallments) {
-                        rows[i].querySelector('.amount-input').value = finalInstallmentAmount.toFixed(2);
-                    } else {
-                        rows[i].querySelector('.amount-input').value = installmentAmount.toFixed(2);
-                    }
-
-                    // Set default dates if empty? 
-                    // Maybe set 1 month apart starting 1 month from now?
-                    // Let's leave dates empty for user to pick to avoid annoyance
-                }
+        /**
+         * 将总额拆成 n 个非负整数，之和恰好等于 round(total)；余数从后往前 +1（如 10÷3 → 3,3,4）。
+         */
+        function splitIntoWholeDollars(total, n) {
+            if (n <= 0) return [];
+            let whole = Math.round(Number(total) || 0);
+            if (whole < 0) whole = 0;
+            const base = Math.floor(whole / n);
+            let rem = whole - base * n;
+            const parts = Array(n).fill(base);
+            for (let i = n - rem; i < n; i++) {
+                parts[i] += 1;
             }
-            isAutoBalancing = false;
+            return parts;
+        }
+
+        function setAmountInput(input, value) {
+            if (!input) return;
+            const n = Math.round(Number(value) || 0);
+            input.value = String(n);
         }
 
         /**
@@ -804,8 +791,8 @@
          */
         function autoBalanceAmounts(modifiedRowIndex) {
             if (!hasPaymentPlan || isAutoBalancing) return;
-            
-            const fullPrice = parseFloat(document.getElementById('pkg_price').value) || 0;
+
+            const fullPrice = Math.round(parseFloat(document.getElementById('pkg_price').value) || 0);
             if (fullPrice === 0) return;
 
             const rows = document.querySelectorAll('.schedule-row');
@@ -813,72 +800,39 @@
 
             isAutoBalancing = true;
 
-            // Get the modified amount (the new value that user just entered)
-            const modifiedAmount = parseFloat(rows[modifiedRowIndex].querySelector('.amount-input').value) || 0;
+            // 用户改动的金额也取整，便于后续整数分摊
+            const modifiedInput = rows[modifiedRowIndex].querySelector('.amount-input');
+            let modifiedAmount = Math.round(parseFloat(modifiedInput.value) || 0);
+            if (modifiedAmount < 0) modifiedAmount = 0;
+            setAmountInput(modifiedInput, modifiedAmount);
 
-            // If the modified row is deposit (index 0)
             if (modifiedRowIndex === 0) {
-                // Calculate remaining amount after deposit
                 const remaining = fullPrice - modifiedAmount;
-                
-                // Distribute remaining amount equally among all installments
                 const installmentCount = numberOfInstallments;
                 if (installmentCount > 0 && remaining >= 0) {
-                    const perInstallment = parseFloat((remaining / installmentCount).toFixed(2));
-                    const totalDistributed = perInstallment * installmentCount;
-                    const diff = parseFloat((remaining - totalDistributed).toFixed(2));
-                    
-                    // Update all installment amounts
+                    const parts = splitIntoWholeDollars(remaining, installmentCount);
                     for (let i = 1; i <= installmentCount; i++) {
-                        if (rows[i]) {
-                            if (i === installmentCount) {
-                                // Last installment gets the remainder to handle rounding
-                                rows[i].querySelector('.amount-input').value = (perInstallment + diff).toFixed(2);
-                            } else {
-                                rows[i].querySelector('.amount-input').value = perInstallment.toFixed(2);
-                            }
-                        }
+                        if (rows[i]) setAmountInput(rows[i].querySelector('.amount-input'), parts[i - 1]);
                     }
                 }
             } else {
-                // If an installment was modified
-                // Get deposit amount
-                const depositAmount = parseFloat(rows[0].querySelector('.amount-input').value) || 0;
-                
-                // Calculate remaining amount: total - deposit - modified installment
-                // We ignore other installments' current values and recalculate them
+                const depositAmount = Math.round(parseFloat(rows[0].querySelector('.amount-input').value) || 0);
                 const remaining = fullPrice - depositAmount - modifiedAmount;
-                
-                // Get list of other installments (excluding the modified one)
+
                 const otherInstallments = [];
                 for (let i = 1; i < rows.length; i++) {
-                    if (i !== modifiedRowIndex) {
-                        otherInstallments.push(i);
-                    }
+                    if (i !== modifiedRowIndex) otherInstallments.push(i);
                 }
 
                 if (otherInstallments.length > 0 && remaining >= 0) {
-                    // Distribute remaining amount equally among other installments
-                    const perInstallment = parseFloat((remaining / otherInstallments.length).toFixed(2));
-                    const totalDistributed = perInstallment * otherInstallments.length;
-                    const diff = parseFloat((remaining - totalDistributed).toFixed(2));
-                    
-                    // Update other installment amounts
+                    const parts = splitIntoWholeDollars(remaining, otherInstallments.length);
                     otherInstallments.forEach((rowIndex, idx) => {
-                        if (rows[rowIndex]) {
-                            if (idx === otherInstallments.length - 1) {
-                                // Last installment gets the remainder to handle rounding
-                                rows[rowIndex].querySelector('.amount-input').value = (perInstallment + diff).toFixed(2);
-                            } else {
-                                rows[rowIndex].querySelector('.amount-input').value = perInstallment.toFixed(2);
-                            }
-                        }
+                        if (rows[rowIndex]) setAmountInput(rows[rowIndex].querySelector('.amount-input'), parts[idx]);
                     });
                 } else if (otherInstallments.length === 0) {
-                    // If only one installment exists and it was modified, adjust deposit
                     const newDeposit = fullPrice - modifiedAmount;
                     if (rows[0] && newDeposit >= 0) {
-                        rows[0].querySelector('.amount-input').value = newDeposit.toFixed(2);
+                        setAmountInput(rows[0].querySelector('.amount-input'), newDeposit);
                     }
                 }
             }
@@ -1083,7 +1037,7 @@
                 emptyState.classList.add('hidden');
                 packages.forEach((pkg, index) => {
                     const el = document.createElement('div');
-                    el.className = "bg-white border border-gray-200 rounded-lg shadow-sm p-4 flex justify-between items-start transition-shadow hover:shadow-md";
+                    el.className = "bg-white border border-gray-200 rounded-lg shadow-sm p-4 flex justify-between items-center transition-shadow hover:shadow-md";
 
                     let detailTags = [];
                     if (pkg.capacity) detailTags.push(`${pkg.capacity} spots`);

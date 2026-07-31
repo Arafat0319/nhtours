@@ -31,11 +31,11 @@
             <label for="trip_abbr" class="block text-sm font-semibold text-gray-700 md:col-span-1">Trip abbreviation</label>
             <div class="md:col-span-3">
                 <div
-                    class="border border-gray-200 rounded-md px-3 bg-white shadow-sm focus-within:ring-1 focus-within:ring-wetravel-cyan focus-within:border-wetravel-cyan max-w-[8rem]">
+                    class="border border-gray-200 rounded-md px-3 bg-white shadow-sm focus-within:ring-1 focus-within:ring-wetravel-cyan focus-within:border-wetravel-cyan max-w-[11rem]">
                     {{ form.trip_abbr(class="block w-full border-0 focus:ring-0 focus:outline-none sm:text-sm py-2
-                    bg-transparent placeholder-gray-400 uppercase tracking-wider", maxlength="4", autocomplete="off") }}
+                    bg-transparent placeholder-gray-400 uppercase tracking-wider", maxlength="8", autocomplete="off") }}
                 </div>
-                <p class="mt-2 text-xs text-gray-500">Used in order numbers (e.g. <span class="font-mono">2607<span id="abbr-preview">{{ form.trip_abbr.data or 'MT' }}</span>-001</span>). Auto from title; edit affects new bookings only.</p>
+                <p class="mt-2 text-xs text-gray-500">Used in order numbers (e.g. <span class="font-mono">2609SS-001</span>). Auto from title + start month; edit affects new bookings only.</p>
                 {% for error in form.trip_abbr.errors %}
                 <p class="mt-1 text-sm text-red-600">{{ error }}</p>
                 {% endfor %}
@@ -228,27 +228,17 @@
         <label class="block text-sm font-semibold text-gray-700 mb-4">Photos</label>
 
         <div id="photo-upload-container"
-            class="bg-gray-50 rounded-lg p-6 border-2 border-dashed border-gray-200 text-center hover:border-wetravel-cyan transition-colors relative group">
+            class="bg-gray-50 rounded-lg p-6 border-2 border-dashed border-gray-200 text-center hover:border-wetravel-cyan transition-colors relative group"
+            data-has-saved-hero="{{ '1' if trip.hero_image else '0' }}">
+            {# 单一 file input：用按钮 JS 触发，避免 Windows 上 sr-only+label 点不开 #}
+            {{ form.hero_image(class="absolute w-px h-px opacity-0 overflow-hidden", id="hero_image", tabindex="-1", accept=".jpg,.jpeg,.png,image/jpeg,image/png") }}
+            <input type="hidden" name="remove_hero_image" id="remove_hero_image" value="">
+
             {% if trip.hero_image %}
             <div id="existing-image-container" class="aspect-w-16 aspect-h-5 mb-4 rounded-lg overflow-hidden bg-gray-200 shadow-sm">
                 <img id="existing-hero-image" src="{{ url_for('static', filename=trip.hero_image) }}" alt="Hero"
                     class="object-cover w-full h-full">
             </div>
-            <p class="text-xs text-gray-500 mb-2">建议尺寸：1920×600 或更大；高分辨率屏 3840×1200。</p>
-            <div class="flex justify-center gap-3">
-                <label for="hero_image"
-                    class="cursor-pointer bg-white py-2 px-4 border border-gray-200 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-wetravel-cyan">
-                    <span>Change Cover Photo</span>
-                    {{ form.hero_image(class="sr-only", id="hero_image", onchange="handleImagePreview(event)") }}
-                </label>
-                <input type="hidden" name="remove_hero_image" id="remove_hero_image" value="">
-                <button type="button"
-                    class="py-2 px-4 border border-red-200 rounded-md shadow-sm text-sm font-medium text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                    onclick="customConfirm('Remove the current cover photo?', 'Remove Cover Photo', 'danger').then(ok => { if(ok) { document.getElementById('remove_hero_image').value='1'; document.getElementById('tripBasicsForm').requestSubmit(); } });">
-                    Remove Cover Photo
-                </button>
-            </div>
-            <div id="preview-container" class="hidden"></div>
             {% else %}
             <div id="upload-placeholder" class="space-y-2 py-8">
                 <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
@@ -256,20 +246,36 @@
                         d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
-                <div class="flex text-sm text-gray-600 justify-center">
-                    <label for="hero_image"
-                        class="relative cursor-pointer bg-white rounded-md font-medium text-wetravel-cyan hover:text-cyan-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-wetravel-cyan">
-                        <span>Upload a file</span>
-                        {{ form.hero_image(class="sr-only", id="hero_image", onchange="handleImagePreview(event)") }}
-                    </label>
+                <div class="flex text-sm text-gray-600 justify-center items-center">
+                    <button type="button" data-hero-upload-trigger
+                        class="cursor-pointer bg-white rounded-md font-medium text-wetravel-cyan hover:text-cyan-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-wetravel-cyan px-1">
+                        Upload a file
+                    </button>
                     <p class="pl-1">or drag and drop</p>
                 </div>
-                <p class="text-xs text-gray-500">
-                    PNG, JPG up to 10MB. 为保持顶部大图清晰，建议上传至少 1920×600 像素（宽×高）；高分辨率屏建议 3840×1200。
-                </p>
             </div>
-            <div id="preview-container" class="hidden"></div>
             {% endif %}
+
+            <div id="preview-container" class="hidden"></div>
+
+            {# 尺寸说明 + 操作按钮：始终保留，预览时不拆掉 #}
+            <p id="hero-size-hint" class="text-xs text-gray-500 mb-2 {% if not trip.hero_image %}mt-2{% endif %}">
+                {% if trip.hero_image %}
+                Recommended size: 1920×600 or larger; for high-DPI screens, 3840×1200.
+                {% else %}
+                PNG, JPG up to 10MB. For a sharp hero image, use at least 1920×600 (W×H); for high-DPI screens, 3840×1200.
+                {% endif %}
+            </p>
+            <div id="hero-actions" class="flex justify-center gap-3 {% if not trip.hero_image %}hidden{% endif %}">
+                <button type="button" id="hero-upload-btn"
+                    class="cursor-pointer bg-white py-2 px-4 border border-gray-200 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-wetravel-cyan">
+                    Change Cover Photo
+                </button>
+                <button type="button" id="hero-remove-btn"
+                    class="py-2 px-4 border border-red-200 rounded-md shadow-sm text-sm font-medium text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                    Remove Cover Photo
+                </button>
+            </div>
         </div>
     </div>
 
@@ -320,37 +326,46 @@
     // Validate image file
     function validateImageFile(file) {
         if (!file) return { valid: true }; // No file is OK (optional)
-        
-        // Check file type by MIME type
-        if (!VALID_IMAGE_TYPES.includes(file.type)) {
-            return { 
-                valid: false, 
-                message: 'Please upload a valid image file (JPG or PNG)',
-                title: 'Invalid File Type'
-            };
-        }
-        
-        // Check file extension as backup
-        const fileName = file.name.toLowerCase();
+
+        const fileName = (file.name || '').toLowerCase();
         const hasValidExtension = VALID_IMAGE_EXTENSIONS.some(ext => fileName.endsWith(ext));
-        if (!hasValidExtension) {
-            return { 
-                valid: false, 
+        // Windows 上部分文件 MIME 为空；有合法扩展名时放行
+        const mime = (file.type || '').toLowerCase();
+        if (mime && !VALID_IMAGE_TYPES.includes(mime) && !hasValidExtension) {
+            return {
+                valid: false,
                 message: 'Please upload a valid image file (JPG or PNG)',
                 title: 'Invalid File Type'
             };
         }
-        
+        if (!mime && !hasValidExtension) {
+            return {
+                valid: false,
+                message: 'Please upload a valid image file (JPG or PNG)',
+                title: 'Invalid File Type'
+            };
+        }
+        if (mime && !VALID_IMAGE_TYPES.includes(mime) && hasValidExtension) {
+            // e.g. image/webp renamed — still reject non-jpeg/png MIME when known
+            if (mime.startsWith('image/') && mime !== 'image/jpeg' && mime !== 'image/jpg' && mime !== 'image/png') {
+                return {
+                    valid: false,
+                    message: 'Please upload a valid image file (JPG or PNG)',
+                    title: 'Invalid File Type'
+                };
+            }
+        }
+
         // Check file size
         if (file.size > MAX_IMAGE_SIZE) {
             const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-            return { 
-                valid: false, 
+            return {
+                valid: false,
                 message: `File size (${sizeMB}MB) exceeds the maximum limit of 10MB. Please choose a smaller image.`,
                 title: 'File Too Large'
             };
         }
-        
+
         return { valid: true };
     }
 
@@ -401,34 +416,25 @@
             const uploadPlaceholder = document.getElementById('upload-placeholder');
             const existingImageContainer = document.getElementById('existing-image-container');
             const existingHeroImage = document.getElementById('existing-hero-image');
+            const heroActions = document.getElementById('hero-actions');
+            const sizeHint = document.getElementById('hero-size-hint');
 
-            // Create preview HTML
-            const previewHTML = `
+            // 预览区只放图；尺寸说明和 Change/Remove 用页面上固定的区块
+            previewContainer.innerHTML = `
                 <div class="aspect-w-16 aspect-h-5 mb-4 rounded-lg overflow-hidden bg-gray-200 shadow-sm">
                     <img src="${e.target.result}" alt="Preview" class="object-cover w-full h-full" id="preview-image">
                 </div>
-                <div class="flex justify-center">
-                    <label for="hero_image"
-                        class="cursor-pointer bg-white py-2 px-4 border border-gray-200 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-wetravel-cyan">
-                        <span>Change Cover Photo</span>
-                    </label>
-                </div>
             `;
-
-            // Hide existing elements and show preview
-            if (uploadPlaceholder) {
-                uploadPlaceholder.classList.add('hidden');
-            }
-            if (existingImageContainer) {
-                existingImageContainer.classList.add('hidden');
-            }
-            if (existingHeroImage) {
-                existingHeroImage.classList.add('hidden');
-            }
-
-            // Show preview
-            previewContainer.innerHTML = previewHTML;
             previewContainer.classList.remove('hidden');
+
+            if (uploadPlaceholder) uploadPlaceholder.classList.add('hidden');
+            if (existingImageContainer) existingImageContainer.classList.add('hidden');
+            if (existingHeroImage) existingHeroImage.classList.add('hidden');
+            if (heroActions) heroActions.classList.remove('hidden');
+            if (sizeHint) {
+                sizeHint.textContent = 'Recommended size: 1920×600 or larger; for high-DPI screens, 3840×1200.';
+                sizeHint.classList.remove('hidden');
+            }
         };
 
         reader.onerror = function() {
@@ -437,6 +443,64 @@
 
         // Read the file as data URL
         reader.readAsDataURL(file);
+    }
+
+    function clearHeroSelection() {
+        const input = document.getElementById('hero_image');
+        if (input) clearFileInput(input);
+
+        const previewContainer = document.getElementById('preview-container');
+        if (previewContainer) {
+            previewContainer.innerHTML = '';
+            previewContainer.classList.add('hidden');
+        }
+
+        const uploadPlaceholder = document.getElementById('upload-placeholder');
+        const existingImageContainer = document.getElementById('existing-image-container');
+        const existingHeroImage = document.getElementById('existing-hero-image');
+        const heroActions = document.getElementById('hero-actions');
+        const sizeHint = document.getElementById('hero-size-hint');
+        const container = document.getElementById('photo-upload-container');
+        const hasSaved = container && container.getAttribute('data-has-saved-hero') === '1';
+
+        if (hasSaved) {
+            if (existingImageContainer) existingImageContainer.classList.remove('hidden');
+            if (existingHeroImage) existingHeroImage.classList.remove('hidden');
+            if (heroActions) heroActions.classList.remove('hidden');
+            if (sizeHint) {
+                sizeHint.textContent = 'Recommended size: 1920×600 or larger; for high-DPI screens, 3840×1200.';
+            }
+        } else {
+            if (uploadPlaceholder) uploadPlaceholder.classList.remove('hidden');
+            if (heroActions) heroActions.classList.add('hidden');
+            if (sizeHint) {
+                sizeHint.textContent = 'PNG, JPG up to 10MB. For a sharp hero image, use at least 1920×600 (W×H); for high-DPI screens, 3840×1200.';
+            }
+        }
+    }
+
+    function removeHeroCover() {
+        customConfirm('Remove the current cover photo?', 'Remove Cover Photo', 'danger').then(ok => {
+            if (!ok) return;
+            const container = document.getElementById('photo-upload-container');
+            const hasSaved = container && container.getAttribute('data-has-saved-hero') === '1';
+            const input = document.getElementById('hero_image');
+            const hasNewFile = input && input.files && input.files.length > 0;
+
+            // 已有保存封面且当前不是「只清掉新选文件」→ 提交删除
+            if (hasSaved && !hasNewFile) {
+                document.getElementById('remove_hero_image').value = '1';
+                document.getElementById('tripBasicsForm').requestSubmit();
+                return;
+            }
+            // 新选了文件但还没保存：清预览；若底下还有已保存图则恢复显示
+            if (hasNewFile) {
+                clearHeroSelection();
+                return;
+            }
+            // 无保存封面
+            clearHeroSelection();
+        });
     }
 
     document.addEventListener('DOMContentLoaded', function () {
@@ -457,6 +521,7 @@
                     if (endInput.value && dateStr && endInput.value < dateStr) {
                         fpEnd.setDate(dateStr);
                     }
+                    if (typeof syncAbbrField === 'function') syncAbbrField();
                 }
             });
             const fpEnd = flatpickr(endInput, {
@@ -514,12 +579,10 @@
                     basicsAutosavePending = false;
                     const el = document.getElementById('basics-autosave-indicator');
                     if (el && d.success) { el.textContent = 'Saved'; el.className = 'text-xs text-green-600 mr-auto'; }
-                    if (d.success && d.trip_abbr && !abbrManuallyEdited) {
-                        const abbrInput = document.getElementById('trip_abbr');
-                        if (abbrInput && abbrInput.value !== d.trip_abbr) {
-                            abbrInput.value = d.trip_abbr;
-                            updateAbbrPreview();
-                        }
+                    if (d.success && d.trip_abbr) {
+                        letterAbbr = d.trip_abbr;
+                        if (!abbrManuallyEdited) syncAbbrField();
+                        else syncAbbrField({ keepLetters: true });
                     }
                 })
                 .catch(() => { basicsAutosavePending = false; });
@@ -539,7 +602,7 @@
             if (el) el.addEventListener('change', scheduleBasicsAutosave);
         });
 
-        // Trip abbreviation: auto from title until user edits
+        // Trip abbreviation field shows YYMM+letters (e.g. 2609SS); DB stores letters only
         const STOP_WORDS = new Set(['a','an','the','of','for','to','in','on','at','by','and','or','with','from','into','onto','over','under','vs','via','our','your','its','this','that','these','those']);
         function suggestAbbrFromTitle(title) {
             const words = (title || '').match(/[A-Za-z0-9\u4e00-\u9fff]+/g) || [];
@@ -549,36 +612,70 @@
                 if (STOP_WORDS.has(w.toLowerCase())) continue;
                 const ch = w[0];
                 if (/[A-Za-z]/.test(ch)) initials.push(ch.toUpperCase());
-                else if (/[\u4e00-\u9fff]/.test(ch)) continue; // server fills pinyin on save
+                else if (/[\u4e00-\u9fff]/.test(ch)) continue;
                 if (initials.length >= 2) break;
             }
             if (initials.length >= 2) return initials.slice(0, 2).join('');
             if (initials.length === 1) return (initials[0] + 'X').slice(0, 2);
             return 'XX';
         }
+        function yymmFromStartDate(val) {
+            const m = (val || '').match(/^(\d{4})-(\d{2})/);
+            if (!m) return '';
+            return m[1].slice(2) + m[2];
+        }
+        function lettersFromAbbrInput(val) {
+            const cleaned = (val || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+            const withYymm = cleaned.match(/^\d{4}([A-Z0-9]*)$/);
+            if (withYymm) return (withYymm[1] || '').slice(0, 4);
+            return cleaned.slice(0, 4);
+        }
         let abbrManuallyEdited = {{ 'true' if trip.trip_abbr else 'false' }};
         const abbrInput = document.getElementById('trip_abbr');
         const titleInput = document.getElementById('title');
-        function updateAbbrPreview() {
-            const preview = document.getElementById('abbr-preview');
-            if (preview && abbrInput) preview.textContent = (abbrInput.value || 'MT').toUpperCase();
+        let letterAbbr = lettersFromAbbrInput(abbrInput && abbrInput.value) || '{{ trip.trip_abbr or "" }}';
+        function syncAbbrField(opts) {
+            if (!abbrInput) return;
+            const keepLetters = opts && opts.keepLetters;
+            if (!keepLetters && !abbrManuallyEdited && titleInput) {
+                letterAbbr = suggestAbbrFromTitle(titleInput.value) || letterAbbr;
+            } else {
+                letterAbbr = lettersFromAbbrInput(abbrInput.value) || letterAbbr;
+            }
+            letterAbbr = (letterAbbr || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 4);
+            const yymm = yymmFromStartDate(startInput && startInput.value);
+            abbrInput.value = (yymm && letterAbbr) ? (yymm + letterAbbr) : letterAbbr;
         }
         if (abbrInput) {
             abbrInput.addEventListener('input', function () {
                 abbrManuallyEdited = true;
-                this.value = this.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 4);
-                updateAbbrPreview();
+                const yymm = yymmFromStartDate(startInput && startInput.value);
+                let cleaned = this.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 8);
+                if (yymm) {
+                    if (cleaned.startsWith(yymm)) {
+                        letterAbbr = cleaned.slice(4).slice(0, 4);
+                    } else if (/^[A-Z]/.test(cleaned)) {
+                        letterAbbr = cleaned.slice(0, 4);
+                    } else {
+                        letterAbbr = lettersFromAbbrInput(cleaned);
+                    }
+                    this.value = yymm + letterAbbr;
+                } else {
+                    letterAbbr = cleaned.slice(0, 4);
+                    this.value = letterAbbr;
+                }
             });
         }
         if (titleInput && abbrInput) {
             titleInput.addEventListener('input', function () {
-                if (!abbrManuallyEdited) {
-                    abbrInput.value = suggestAbbrFromTitle(this.value);
-                    updateAbbrPreview();
-                }
+                if (!abbrManuallyEdited) syncAbbrField();
             });
         }
-        updateAbbrPreview();
+        if (startInput) {
+            startInput.addEventListener('change', function () { syncAbbrField({ keepLetters: true }); });
+            startInput.addEventListener('input', function () { syncAbbrField({ keepLetters: true }); });
+        }
+        syncAbbrField({ keepLetters: true });
 
         // Disable mouse wheel and middle button for capacity input
         const capacityInput = document.getElementById('capacity');
@@ -622,11 +719,33 @@
         const photoContainer = document.getElementById('photo-upload-container');
         const heroImageInput = document.getElementById('hero_image');
 
+        function openHeroFilePicker(e) {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            const input = document.getElementById('hero_image');
+            if (input) input.click();
+        }
+
+        // 点击 Upload / Change Cover：显式打开文件框（兼容 Windows）
+        document.addEventListener('click', function (e) {
+            const trigger = e.target.closest('#hero-upload-btn, [data-hero-upload-trigger]');
+            if (trigger) openHeroFilePicker(e);
+            if (e.target.closest('#hero-remove-btn')) {
+                e.preventDefault();
+                removeHeroCover();
+            }
+        });
+
+        if (heroImageInput) {
+            heroImageInput.addEventListener('change', handleImagePreview);
+        }
+
         if (photoContainer && heroImageInput) {
-            // Prevent default drag behaviors
+            // Prevent default drag behaviors（勿绑到 document.body，以免干扰点击）
             ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
                 photoContainer.addEventListener(eventName, preventDefaults, false);
-                document.body.addEventListener(eventName, preventDefaults, false);
             });
 
             function preventDefaults(e) {
@@ -659,8 +778,15 @@
                 const files = dt.files;
 
                 if (files.length > 0) {
-                    heroImageInput.files = files;
-                    // Trigger change event to show preview
+                    // FileList 只读：用 DataTransfer 写入 input
+                    try {
+                        const transfer = new DataTransfer();
+                        transfer.items.add(files[0]);
+                        heroImageInput.files = transfer.files;
+                    } catch (err) {
+                        console.warn('drag-drop assign failed', err);
+                        return;
+                    }
                     const event = new Event('change', { bubbles: true });
                     heroImageInput.dispatchEvent(event);
                 }

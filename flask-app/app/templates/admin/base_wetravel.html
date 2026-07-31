@@ -47,6 +47,26 @@
             background-position: right 0.5rem center;
             background-size: 1.25rem 1.25rem;
             padding-right: 2rem;
+            /* Windows/Chrome：固定高度时文字易贴顶，用行高=高度 + 清掉上下 padding */
+            line-height: normal;
+            vertical-align: middle;
+        }
+        select.admin-select.h-9 {
+            height: 2.25rem !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            /* 覆盖 Tailwind，避免文字贴顶 */
+            line-height: 2.25rem !important;
+        }
+        select.admin-select.h-8 {
+            height: 2rem !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            line-height: 2rem !important;
+        }
+        /* 未写 px 时给默认左内边距（右内边距留给箭头） */
+        select.admin-select.h-9:not([class*="px-"]):not([class*="pl-"]) {
+            padding-left: 0.75rem;
         }
     </style>
     {% block head_extra %}{% endblock %}

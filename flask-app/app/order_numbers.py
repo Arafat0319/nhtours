@@ -88,6 +88,25 @@ def normalize_trip_abbr(raw: str | None) -> str:
     return cleaned[:4]
 
 
+def parse_trip_abbr_input(raw: str | None) -> str:
+    """
+    Accept letter-only abbr (SS) or display form with start YYMM (2609SS).
+    Returns the 2–4 char letter/digit code stored on Trip.trip_abbr.
+    """
+    if not raw:
+        return ''
+    cleaned = re.sub(r'[^A-Za-z0-9]', '', str(raw)).upper()
+    # YYMM + abbr (e.g. 2609SS / 2609SS2)
+    m = re.match(r'^(\d{4})([A-Z0-9]{2,4})$', cleaned)
+    if m:
+        return m.group(2)
+    # Digits prefix then letters (partial typing)
+    m2 = re.match(r'^\d{4}([A-Z0-9]+)$', cleaned)
+    if m2:
+        return m2.group(1)[:4]
+    return cleaned[:4]
+
+
 def ensure_unique_trip_abbr(base: str, exclude_trip_id: int | None = None) -> str:
     """
     Make abbr unique across trips: MT → MT2 → MT3 …
