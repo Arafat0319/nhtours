@@ -79,7 +79,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | SEQ | 每 trip `001…`；取消不回收 |
 | 时机 | 正式 Booking 创建时；PendingBooking 不生成 |
 | 代码 | `app/order_numbers.py` → `assign_order_number` |
-| 展示 | 对外只显示 Order number；后台 + 小字内部 `id` |
+| 展示 | 界面只显示 Order number（不再附内部数据库 id） |
 | 路由 | URL/API 仍用 `booking.id` |
 
 ## 后台 Excel 导出

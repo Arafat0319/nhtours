@@ -113,10 +113,6 @@
                     class="{% if request.endpoint and 'trips' in request.endpoint %}border-b-4 border-wetravel-cyan text-white{% else %}text-gray-300 hover:text-white{% endif %} h-full flex items-center px-1">
                     MY TRIPS
                 </a>
-                <a href="#"
-                    class="{% if request.endpoint and 'itineraries' in request.endpoint %}border-b-4 border-wetravel-cyan text-white{% else %}text-gray-300 hover:text-white{% endif %} h-full flex items-center px-1">
-                    ITINERARIES
-                </a>
                 <a href="{{ url_for('admin.customers') }}"
                     class="{% if request.endpoint and ('customers' in request.endpoint or 'leads' in request.endpoint or 'testimonials' in request.endpoint) %}border-b-4 border-wetravel-cyan text-white{% else %}text-gray-300 hover:text-white{% endif %} h-full flex items-center px-1">
                     CUSTOMERS
@@ -129,7 +125,7 @@
                     class="{% if request.endpoint and 'reports' in request.endpoint %}border-b-4 border-wetravel-cyan text-white{% else %}text-gray-300 hover:text-white{% endif %} h-full flex items-center px-1">
                     REPORTS
                 </a>
-                <!-- Items removed: INVENTORY, NETWORK, ACCOUNT -->
+                <!-- Items removed: ITINERARIES, INVENTORY, NETWORK, ACCOUNT -->
             </div>
         </div>
     </div>

@@ -507,23 +507,10 @@ def manage_trip(id):
     all_participants = []
     total_participants_count = 0
     for booking in bookings:
-        # Get package names for this booking (包含付款计划类型)
-        package_names = []
-        for bp in booking.booking_packages:
-            if bp.package:
-                pkg_display = bp.package.name
-                if bp.payment_plan_type == 'deposit_installment':
-                    pkg_display += ' (Installment)'
-                else:
-                    pkg_display += ' (Full)'
-                package_names.append(pkg_display)
-        
         for participant in booking.participants:
-            # Get add-ons for this participant (从两个来源获取，避免重复)
+            # Participants Tab：仅本人 Add-ons（订单级见 Bookings）
             participant_addons = []
             seen_addon_ids = set()
-            
-            # 方法1：通过 participant.addons 获取
             for booking_addon in participant.addons:
                 if booking_addon.addon and booking_addon.id not in seen_addon_ids:
                     participant_addons.append({
@@ -532,30 +519,26 @@ def manage_trip(id):
                         'price': float(booking_addon.addon.price) if booking_addon.addon.price else 0.0
                     })
                     seen_addon_ids.add(booking_addon.id)
-            
-            # 方法2：通过 booking.addons 获取（如果 participant_id 为空或匹配当前参与者）
             for booking_addon in booking.addons:
-                if booking_addon.addon and booking_addon.id not in seen_addon_ids:
-                    # 只添加没有关联到参与者的 addon，或者关联到当前参与者的 addon
-                    if booking_addon.participant_id is None or booking_addon.participant_id == participant.id:
-                        participant_addons.append({
-                            'name': booking_addon.addon.name,
-                            'quantity': booking_addon.quantity,
-                            'price': float(booking_addon.addon.price) if booking_addon.addon.price else 0.0
-                        })
-                        seen_addon_ids.add(booking_addon.id)
-            
-            # Parse name into first_name and last_name
-            name_parts = (participant.name or '').strip().split(None, 1)  # Split on whitespace, max 1 split
-            first_name = name_parts[0] if len(name_parts) > 0 else ''
-            last_name = name_parts[1] if len(name_parts) > 1 else ''
-            
-            # 获取 buyer 名称（优先使用 booking 上的 buyer 字段，兼容旧数据使用 client）
-            buyer_name = f"{booking.buyer_first_name or ''} {booking.buyer_last_name or ''}".strip()
-            if not buyer_name and booking.client:
-                buyer_name = booking.client.name or ''
-            buyer_email = booking.buyer_email or (booking.client.email if booking.client else '')
-            
+                if (
+                    booking_addon.addon
+                    and booking_addon.participant_id == participant.id
+                    and booking_addon.id not in seen_addon_ids
+                ):
+                    participant_addons.append({
+                        'name': booking_addon.addon.name,
+                        'quantity': booking_addon.quantity,
+                        'price': float(booking_addon.addon.price) if booking_addon.addon.price else 0.0
+                    })
+                    seen_addon_ids.add(booking_addon.id)
+
+            first_name = (getattr(participant, 'first_name', None) or '').strip()
+            last_name = (getattr(participant, 'last_name', None) or '').strip()
+            if not first_name and not last_name:
+                name_parts = (participant.name or '').strip().split(None, 1)
+                first_name = name_parts[0] if name_parts else ''
+                last_name = name_parts[1] if len(name_parts) > 1 else ''
+
             all_participants.append({
                 'id': participant.id,
                 'name': participant.name,
@@ -563,12 +546,11 @@ def manage_trip(id):
                 'last_name': last_name,
                 'email': participant.email,
                 'phone': participant.phone,
+                'gender': getattr(participant, 'gender', None) or '',
+                'dob': participant.dob.strftime('%Y-%m-%d') if getattr(participant, 'dob', None) else '',
+                'registration_type': getattr(participant, 'registration_type', None) or '',
                 'booking_id': booking.id,
-                'booking_date': booking.created_at,
-                'buyer_name': buyer_name or '-',
-                'buyer_email': buyer_email or '-',
-                'payment_status': booking_payment_statuses.get(booking.id, booking.status),
-                'packages': package_names,
+                'order_number': booking.order_number or f'#{booking.id}',
                 'addons': participant_addons,
                 'question_answers': participant.question_answers or {},
             })

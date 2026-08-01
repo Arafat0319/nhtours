@@ -252,7 +252,6 @@
                             data-order-number="{{ (booking.order_number or '')|lower }}">
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                 <div class="font-medium">{{ booking.order_number or ('#' ~ booking.id) }}</div>
-                                <div class="text-xs text-gray-400">id: {{ booking.id }}</div>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <div class="text-sm font-medium text-gray-900">{{ booking.client.name }}</div>
@@ -340,31 +339,18 @@
                 <h2 class="text-xl text-gray-500 font-normal">Participants</h2>
             </div>
 
-            <!-- Controls -->
+            <!-- Controls: roster search (payment filters live on Bookings) -->
             <div class="flex justify-between items-center mb-6">
-                <div class="relative flex space-x-4">
-                    <div class="relative">
-                        <input type="text" id="participantSearchInput" placeholder="Search by name or email"
-                            class="pl-8 pr-4 py-2 border border-gray-300 rounded text-sm w-64 focus:outline-none focus:border-wetravel-cyan text-gray-700 placeholder-gray-400">
-                        <svg class="w-4 h-4 text-gray-400 absolute left-2.5 top-3" fill="none" stroke="currentColor"
-                            viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                        </svg>
-                    </div>
-
-                    <select id="participantStatusFilter"
-                        class="admin-select border border-gray-300 rounded text-sm px-3 py-2 focus:outline-none focus:border-wetravel-cyan text-gray-600">
-                        <option value="all">All Statuses</option>
-                        <option value="pending">Pending</option>
-                        <option value="deposit_paid">Deposit Paid</option>
-                        <option value="fully_paid">Fully Paid</option>
-                        <option value="overdue">Overdue</option>
-                        <option value="partially_refunded">Partially Refunded</option>
-                        <option value="fully_refunded">Fully Refunded</option>
-                        <option value="cancelled">Cancelled</option>
-                    </select>
+                <div class="relative">
+                    <input type="text" id="participantSearchInput" placeholder="Search by name, email, or order number"
+                        class="pl-8 pr-4 py-2 border border-gray-300 rounded text-sm w-80 focus:outline-none focus:border-wetravel-cyan text-gray-700 placeholder-gray-400">
+                    <svg class="w-4 h-4 text-gray-400 absolute left-2.5 top-3" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
                 </div>
+                <p class="text-xs text-gray-400 hidden sm:block">People roster — payment info is on Bookings</p>
             </div>
 
             <!-- Participants Table -->
@@ -373,32 +359,28 @@
                     <thead>
                         <tr
                             class="border-b border-gray-100 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">
-                            {# Default mandatory fields (always shown) #}
                             <th class="px-6 py-3 whitespace-nowrap">First Name</th>
                             <th class="px-6 py-3 whitespace-nowrap">Last Name</th>
                             <th class="px-6 py-3 whitespace-nowrap">Email</th>
-                            {# All custom questions from trip builder (in order) #}
+                            <th class="px-6 py-3 whitespace-nowrap">Gender</th>
+                            <th class="px-6 py-3 whitespace-nowrap">Date of Birth</th>
+                            <th class="px-6 py-3 whitespace-nowrap">Registration Type</th>
                             {% for question in custom_questions %}
                             <th class="px-6 py-3 whitespace-nowrap">{{ question.label }}{% if question.required %} <span class="required-asterisk">*</span>{% endif %}</th>
                             {% endfor %}
-                            {# Other system fields #}
-                            <th class="px-6 py-3 whitespace-nowrap">Buyer</th>
-                            <th class="px-6 py-3 whitespace-nowrap">Package</th>
                             <th class="px-6 py-3 whitespace-nowrap">Add-Ons</th>
-                            <th class="px-6 py-3 whitespace-nowrap">Payment Status</th>
-                            <th class="px-6 py-3 whitespace-nowrap">Booking Date</th>
+                            <th class="px-6 py-3 whitespace-nowrap">Order number</th>
                         </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-100" id="participantsTableBody">
                         {% if all_participants %}
                         {% for participant in all_participants %}
                         <tr class="participant-row" data-name="{{ participant.name|lower }}"
-                            data-first-name="{{ participant.first_name|lower if participant.first_name else '' }}"
-                            data-last-name="{{ participant.last_name|lower if participant.last_name else '' }}"
-                            data-email="{{ participant.email|lower if participant.email else '' }}" 
-                            data-status="{{ participant.payment_status }}" 
+                            data-first-name="{{ (participant.first_name or '')|lower }}"
+                            data-last-name="{{ (participant.last_name or '')|lower }}"
+                            data-email="{{ (participant.email or '')|lower }}"
+                            data-order-number="{{ (participant.order_number or '')|lower }}"
                             data-participant-id="{{ participant.id }}">
-                            {# Default mandatory fields #}
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <div class="text-sm font-semibold text-gray-800">{{ participant.first_name or '-' }}</div>
                             </td>
@@ -408,7 +390,9 @@
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <div class="text-sm text-gray-500">{{ participant.email or '-' }}</div>
                             </td>
-                            {# Custom questions from trip builder #}
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ participant.gender or '-' }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ participant.dob or '-' }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ participant.registration_type or '-' }}</td>
                             {% for question in custom_questions %}
                             {% set qa = participant.question_answers or {} %}
                             {% set ans = qa.get(question.id) if qa.get(question.id) is not none else qa.get(question.id|string) %}
@@ -428,19 +412,6 @@
                                 {% endif %}
                             </td>
                             {% endfor %}
-                            {# Other fields #}
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <div class="text-sm font-medium text-gray-900">{{ participant.buyer_name }}</div>
-                            </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {% if participant.packages %}
-                                    {% for pkg_name in participant.packages %}
-                                        <span class="inline-block text-xs bg-gray-100 px-2 py-0.5 rounded mr-1 mb-1">{{ pkg_name }}</span>
-                                    {% endfor %}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                 {% if participant.addons %}
                                     {% for addon in participant.addons %}
@@ -450,28 +421,18 @@
                                     -
                                 {% endif %}
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                                    {% if participant.payment_status == 'fully_paid' %}bg-green-100 text-green-800
-                                    {% elif participant.payment_status == 'deposit_paid' %}bg-blue-100 text-blue-800
-                                    {% elif participant.payment_status == 'overdue' %}bg-orange-100 text-orange-800
-                                    {% elif participant.payment_status == 'partially_refunded' %}bg-orange-100 text-orange-800
-                                    {% elif participant.payment_status == 'fully_refunded' or participant.payment_status == 'refunded' %}bg-purple-100 text-purple-800
-                                    {% elif participant.payment_status == 'cancelled' %}bg-red-100 text-red-800
-                                    {% else %}bg-yellow-100 text-yellow-800{% endif %}">
-                                    {% if participant.payment_status == 'partially_refunded' %}Partially Refunded
-                                    {% elif participant.payment_status == 'fully_refunded' or participant.payment_status == 'refunded' %}Fully Refunded
-                                    {% else %}{{ participant.payment_status|replace('_', ' ')|title }}{% endif %}
-                                </span>
-                            </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {{ participant.booking_date.strftime('%Y-%m-%d') }}
+                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                <button type="button"
+                                    onclick="openManageBookingModal({{ participant.booking_id }})"
+                                    class="text-wetravel-cyan hover:underline font-medium">
+                                    {{ participant.order_number }}
+                                </button>
                             </td>
                         </tr>
                         {% endfor %}
                         {% else %}
                         <tr>
-                            {% set total_cols = 3 + (custom_questions|length) + 5 %}
+                            {% set total_cols = 7 + (custom_questions|length) + 2 %}
                             <td colspan="{{ total_cols }}" class="px-6 py-10 text-center text-sm text-wetravel-cyan font-light">
                                 No participants yet
                             </td>
@@ -819,7 +780,7 @@
         <div class="p-5 border-b flex justify-between items-center bg-gray-50 rounded-t-md">
             <div>
                 <h3 class="text-lg font-medium text-gray-900">Manage Booking</h3>
-                <p class="text-sm text-gray-500" id="bookingIdDisplay"><span id="bookingOrderNumber"></span> <span class="text-xs text-gray-400">id: <span id="bookingId"></span></span></p>
+                <p class="text-sm text-gray-500" id="bookingIdDisplay"><span id="bookingOrderNumber"></span></p>
             </div>
             <button type="button" id="closeManageBookingModalBtn" class="text-gray-400 hover:text-gray-500 focus:outline-none">
                 <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -998,7 +959,7 @@
             <div class="text-center">
                 <h3 class="text-lg font-medium text-gray-900 mb-2">Delete Booking</h3>
                 <p class="text-sm text-gray-500 mb-4">
-                    Are you sure you want to delete booking #<span id="deleteBookingId"></span>? This action cannot be undone.
+                    Are you sure you want to delete order <span id="deleteBookingLabel" class="font-medium"></span>? This action cannot be undone.
                 </p>
             </div>
             
@@ -1238,16 +1199,14 @@
         
         console.log('Tab switching initialized successfully');
         
-        // --- Participants Search and Filter Logic ---
+        // --- Participants roster search (no payment-status filter; use Bookings for that) ---
         const participantSearchInput = document.getElementById('participantSearchInput');
-        const participantStatusFilter = document.getElementById('participantStatusFilter');
         const participantsTableBody = document.getElementById('participantsTableBody');
         
         function filterParticipants() {
             if (!participantsTableBody) return;
             
-            const searchTerm = (participantSearchInput?.value || '').toLowerCase();
-            const statusFilter = participantStatusFilter?.value || 'all';
+            const searchTerm = (participantSearchInput?.value || '').toLowerCase().trim();
             const rows = participantsTableBody.querySelectorAll('.participant-row');
             
             rows.forEach(row => {
@@ -1255,30 +1214,21 @@
                 const firstName = (row.getAttribute('data-first-name') || '').toLowerCase();
                 const lastName = (row.getAttribute('data-last-name') || '').toLowerCase();
                 const email = (row.getAttribute('data-email') || '').toLowerCase();
-                const status = row.getAttribute('data-status') || '';
+                const orderNo = (row.getAttribute('data-order-number') || '').toLowerCase();
                 
                 const matchesSearch = !searchTerm || 
                     name.includes(searchTerm) || 
                     firstName.includes(searchTerm) || 
                     lastName.includes(searchTerm) || 
-                    email.includes(searchTerm);
-                const matchesStatus = statusFilter === 'all'
-                    || status === statusFilter
-                    || (statusFilter === 'refunded' && (status === 'partially_refunded' || status === 'fully_refunded' || status === 'refunded'));
+                    email.includes(searchTerm) ||
+                    orderNo.includes(searchTerm);
                 
-                if (matchesSearch && matchesStatus) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
+                row.style.display = matchesSearch ? '' : 'none';
             });
         }
         
         if (participantSearchInput) {
             participantSearchInput.addEventListener('input', filterParticipants);
-        }
-        if (participantStatusFilter) {
-            participantStatusFilter.addEventListener('change', filterParticipants);
         }
         
         // --- Bookings Search and Filter Logic (existing, keep it) ---
@@ -2709,9 +2659,6 @@
                 </div>
             `;
 
-            // Update booking ID display
-            const bookingIdEl = document.getElementById('bookingId');
-            if (bookingIdEl) bookingIdEl.textContent = booking.id;
             const orderNumEl = document.getElementById('bookingOrderNumber');
             if (orderNumEl) orderNumEl.textContent = booking.order_number || ('#' + booking.id);
             
@@ -3348,7 +3295,7 @@
 
                     const paidForRefund = (currentBookingData.amount_paid_display != null ? currentBookingData.amount_paid_display : currentBookingData.amount_paid) || 0;
                     const label = currentBookingData.order_number
-                        ? (currentBookingData.order_number + ' (id ' + currentBookingId + ')')
+                        ? currentBookingData.order_number
                         : ('#' + currentBookingId);
                     const labelEl = document.getElementById('refundBookingLabel');
                     const paidEl = document.getElementById('refundAmountPaid');
@@ -3489,7 +3436,11 @@
         if (deleteBookingBtn) {
             deleteBookingBtn.addEventListener('click', function() {
                 if (!currentBookingId) return;
-                document.getElementById('deleteBookingId').textContent = currentBookingId;
+                const delLabel = (currentBookingData && currentBookingData.order_number)
+                    ? currentBookingData.order_number
+                    : ('#' + currentBookingId);
+                const delLabelEl = document.getElementById('deleteBookingLabel');
+                if (delLabelEl) delLabelEl.textContent = delLabel;
                 deleteModal.classList.remove('hidden');
             });
         }

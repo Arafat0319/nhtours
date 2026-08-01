@@ -140,7 +140,6 @@
                                class="text-wetravel-cyan hover:underline">
                                 {{ payment.booking.order_number or ('#' ~ payment.booking_id) }}
                             </a>
-                            <span class="text-xs text-gray-400 ml-1">id: {{ payment.booking_id }}</span>
                         </p>
                     </div>
                     {% if (payment.booking.discount_amount and payment.booking.discount_amount > 0) or payment.booking.discount_code %}

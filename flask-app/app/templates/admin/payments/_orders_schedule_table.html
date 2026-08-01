@@ -30,9 +30,6 @@
                         class="text-wetravel-cyan hover:underline">
                         {{ booking.order_number or ('#' ~ booking.id) }}
                     </a>
-                    {% if booking.order_number %}
-                    <span class="block text-xs text-gray-400">id: {{ booking.id }}</span>
-                    {% endif %}
                     {% else %}
                     <span class="text-gray-400">-</span>
                     {% endif %}
@@ -100,9 +97,6 @@
                                 class="text-wetravel-cyan hover:underline" onclick="event.stopPropagation();">
                                 {{ booking.order_number or ('#' ~ booking.id) }}
                             </a>
-                            {% if booking.order_number %}
-                            <span class="block text-xs text-gray-400">id: {{ booking.id }}</span>
-                            {% endif %}
                             {% else %}
                             <span class="text-gray-400">-</span>
                             {% endif %}
