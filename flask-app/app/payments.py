@@ -433,6 +433,36 @@ def booking_has_refund(booking):
     return False
 
 
+def booking_refundable_remaining_total(booking):
+    """订单剩余可退基础金额合计。"""
+    total = 0.0
+    for payment in ledger_payments_for_booking(booking):
+        if (payment.status or '') not in ('succeeded', 'partially_refunded', 'refunded'):
+            continue
+        total += payment_refundable_remaining(payment)
+    return round(total, 2)
+
+
+def booking_refund_display_kind(booking):
+    """
+    退款展示分类（相对已收款，非行程全价）：
+    - None：无退款
+    - 'fully_refunded'：已收基础额已全部退完（无可退余额）
+    - 'partially_refunded'：退过款但仍有可退余额
+    """
+    refunded = booking_refunded_total(booking)
+    if refunded <= 0.001 and not booking_has_refund(booking):
+        return None
+    if refunded <= 0.001:
+        # 状态标了退款但金额异常时，仍按有退款处理
+        remaining = booking_refundable_remaining_total(booking)
+        return 'fully_refunded' if remaining <= 0.001 else 'partially_refunded'
+    remaining = booking_refundable_remaining_total(booking)
+    if remaining <= 0.001:
+        return 'fully_refunded'
+    return 'partially_refunded'
+
+
 def booking_balance_due(booking, expected=None):
     """
     客户仍应付金额（Balance due）。
@@ -484,13 +514,14 @@ def booking_has_overdue_amount(booking, today=None):
 def booking_payment_display_status(booking, today=None):
     """
     后台 Payment Status 展示态（不改库内 booking.status）。
-    优先级：cancelled > refunded > overdue > 库内 status
+    优先级：cancelled > fully_refunded / partially_refunded > overdue > 库内 status
     """
     stored = (getattr(booking, 'status', None) or 'pending').strip() or 'pending'
     if stored == 'cancelled':
         return 'cancelled'
-    if booking_has_refund(booking):
-        return 'refunded'
+    kind = booking_refund_display_kind(booking)
+    if kind:
+        return kind
     if booking_has_overdue_amount(booking, today=today):
         return 'overdue'
     return stored

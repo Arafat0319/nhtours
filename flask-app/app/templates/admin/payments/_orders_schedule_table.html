@@ -62,11 +62,12 @@
                         {% if st == 'succeeded' %}bg-green-100 text-green-800
                         {% elif st == 'pending' %}bg-yellow-100 text-yellow-800
                         {% elif st == 'failed' %}bg-red-100 text-red-800
-                        {% elif st == 'refunded' %}bg-gray-100 text-gray-800
+                        {% elif st == 'refunded' %}bg-purple-100 text-purple-800
                         {% elif st == 'partially_refunded' %}bg-orange-100 text-orange-800
                         {% else %}bg-gray-100 text-gray-800{% endif %}">
                         {% if st == 'succeeded' %}paid
                         {% elif st == 'partially_refunded' %}partially refunded
+                        {% elif st == 'refunded' %}fully refunded
                         {% else %}{{ st }}{% endif %}
                     </span>
                 </td>
@@ -81,7 +82,7 @@
             </tr>
             {% else %}
             {% set row_status = group.deposit_display_status or deposit.status or 'pending' %}
-            {% set is_future = deposit.due_date and deposit.due_date > today and row_status not in ('paid', 'refunded', 'partially refunded') %}
+            {% set is_future = deposit.due_date and deposit.due_date > today and row_status not in ('paid', 'refunded', 'fully refunded', 'partially refunded') %}
             {% set is_due = deposit.due_date and deposit.due_date <= today and row_status in ('pending', 'overdue') %}
             <tr class="hover:bg-gray-50 {% if can_expand %}cursor-pointer{% endif %}"
                 {% if group.has_unpaid %}data-auto-expand="{{ group.booking_id }}"{% endif %}
@@ -133,7 +134,8 @@
                     <span class="px-2 py-1 text-xs font-medium rounded-full
                         {% if row_status == 'paid' %}bg-green-100 text-green-800
                         {% elif row_status == 'overdue' %}bg-red-100 text-red-800
-                        {% elif row_status == 'refunded' or row_status == 'partially refunded' %}bg-gray-100 text-gray-800
+                        {% elif row_status == 'partially refunded' %}bg-orange-100 text-orange-800
+                        {% elif row_status in ('refunded', 'fully refunded') %}bg-purple-100 text-purple-800
                         {% else %}bg-yellow-100 text-yellow-800{% endif %}">
                         {{ row_status }}
                     </span>
@@ -204,7 +206,7 @@
             {% set installment = item.installment %}
             {% set inst_payment = item.payment %}
             {% set inst_status = item.display_status or installment.status or 'pending' %}
-            {% set inst_is_future = installment.due_date and installment.due_date > today and inst_status not in ('paid', 'refunded', 'partially refunded') %}
+            {% set inst_is_future = installment.due_date and installment.due_date > today and inst_status not in ('paid', 'refunded', 'fully refunded', 'partially refunded') %}
             {% set inst_is_due = installment.due_date and installment.due_date <= today and inst_status in ('pending', 'overdue') %}
             <tr class="installment-row-{{ group.booking_id }} hidden border-l-4 border-indigo-400 bg-gray-100">
                 <td class="pl-8 pr-4 py-2.5 text-sm text-gray-400" colspan="3">-</td>
@@ -230,7 +232,8 @@
                         {% if inst_status == 'paid' %}bg-green-100 text-green-800
                         {% elif inst_status == 'overdue' %}bg-red-100 text-red-800
                         {% elif inst_status == 'cancelled' %}bg-gray-100 text-gray-600
-                        {% elif inst_status == 'refunded' or inst_status == 'partially refunded' %}bg-gray-100 text-gray-800
+                        {% elif inst_status == 'partially refunded' %}bg-orange-100 text-orange-800
+                        {% elif inst_status in ('refunded', 'fully refunded') %}bg-purple-100 text-purple-800
                         {% else %}bg-yellow-100 text-yellow-800{% endif %}">
                         {{ inst_status }}
                     </span>

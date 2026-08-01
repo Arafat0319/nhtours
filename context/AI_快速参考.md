@@ -110,6 +110,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 口径 | **基础金额**退款；**卡手续费永不退** |
 | 退款 | 手填金额（上限=订单可退总额；系统自动分摊到各 Payment；卡费不退） |
 | Balance due | `expected − paid − refunded`（退款不产生新欠款）；`booking_balance_due` |
+| 退款状态 | 展示 `partially_refunded` / `fully_refunded`（`booking_refund_display_kind`）；Refund 弹窗可勾 Full refund 填满可退额 |
 | 取消订单 | Manage → **Cancel order** → `POST .../bookings/<id>/cancel`（不退款）；Payment Status 下拉无 Cancelled |
 | $0 / 退款同时取消 | Refund 弹窗勾选 Cancel booking；或仅 Cancel order |
 | 代码 | `payments.py`（`payment_max_refund` / `stripe_refunded_as_base`）、`refund_booking`、`cancel_booking_order`、`handle_refund` |

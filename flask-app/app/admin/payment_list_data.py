@@ -41,7 +41,7 @@ def _line_display_status(inst, payment=None):
         if pst == 'partially_refunded':
             return 'partially refunded'
         if pst == 'refunded':
-            return 'refunded'
+            return 'fully refunded'
         if pst == 'pending':
             return 'pending'
     return (getattr(inst, 'status', None) or 'pending') if inst is not None else 'pending'
