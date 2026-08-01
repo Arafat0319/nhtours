@@ -136,7 +136,7 @@
                 </div>
                 <div id="refundedRow" class="flex justify-between w-64 {% if (total_refunded or 0) <= 0 %}hidden{% endif %}">
                     <span class="text-gray-500">Refunded</span>
-                    <span id="financialRefunded" class="font-medium text-purple-600 font-mono">-${{ (total_refunded or 0)|format_price }}</span>
+                    <span id="financialRefunded" class="font-medium text-red-600 font-mono">-${{ (total_refunded or 0)|format_price }}</span>
                 </div>
                 <div class="flex justify-between w-64">
                     <span class="text-gray-500">Balance due</span>
