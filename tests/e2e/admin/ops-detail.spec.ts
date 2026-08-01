@@ -63,11 +63,11 @@ test.describe('Admin ops detail @admin @detail @p1', () => {
     test.skip(!paid, 'Need Stripe');
 
     expect(await adminLogin(request, admin!)).toBe(true);
-    const loc = await resolveTripBooking(request, paid!.bookingId);
-    test.skip(!loc, 'trip not found');
+    const tripId = await extractTripId(request, cfg.tripSlug);
+    test.skip(!tripId, 'QA trip missing');
 
     const res = await request.get(
-      `/admin/trips/${loc!.tripId}/bookings/${paid!.bookingId}/reconcile-ledger`,
+      `/admin/trips/${tripId}/bookings/${paid!.bookingId}/reconcile-ledger`,
     );
     expect(res.status()).toBe(200);
     const json = await res.json();
@@ -84,7 +84,10 @@ test.describe('Admin ops detail @admin @detail @p1', () => {
     const res = await request.get(`/admin/trips/${tripId}/financials`);
     expect(res.status()).toBe(200);
     const json = await res.json();
-    expect(json).toBeTruthy();
+    expect(json.success).toBe(true);
+    expect(json.financials).toBeTruthy();
+    expect(json.financials).toHaveProperty('total_refunded');
+    expect(typeof json.financials.total_refunded).toBe('number');
   });
 
   test('admin mark-paid then reject double mark-paid', async ({

@@ -28,9 +28,23 @@ npm run test:admin
 |------|------|
 | `gates.spec.ts` | 匿名 302、export token、无 CSRF 登录、错密 |
 | `roles-money.spec.ts` | staff 403 export/refund；admin 退款校验/IDOR；admin 收据 PDF |
+| `ops-detail.spec.ts` | reconcile / financials（含 `total_refunded`）/ mark-paid / $0 cancel API |
+| `manage-ui-money.spec.ts` | **浏览器 UI**：Manage → Refund 弹窗 / Full refund / 真退 $1；Cancel order 确认 |
+
+## 本地 CI 前置
+
+```bash
+cd flask-app
+python local_tests/prepare_e2e_env.py   # QA trip + _e2e_admin + 写 tests/e2e/.env.e2e
+python run.py                           # :8080
+# 另开终端：
+cd tests/e2e && npm run test:admin
+```
+
+或一键：`npm run test:ci-local`（需 Flask 已在 8080）。
 
 ## 未覆盖
 
-- 真退款打 Stripe（避免污染账本；仅校验器）
 - CSRF 跨站（SameSite 浏览器行为）
 - 登录爆破限速（易锁 IP，不默认跑）
+- Manage 全量字段编辑 / Messages UI

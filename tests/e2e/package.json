@@ -11,6 +11,7 @@
     "test:booking": "playwright test booking",
     "test:coupon": "playwright test coupon",
     "test:admin": "playwright test admin",
+    "test:ci-local": "playwright test admin",
     "test:installment": "node scripts/gen-installment-fixture.mjs && playwright test installment",
     "test:upload": "playwright test upload",
     "test:public": "playwright test public",

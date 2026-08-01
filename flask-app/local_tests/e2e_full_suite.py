@@ -36,12 +36,24 @@ def _buyer(email: str):
         "first_name": "QA",
         "last_name": "E2E",
         "email": email,
-        "phone": "5550100",
+        "phone": "5550100123",
         "address": "1 Test St",
         "city": "Testville",
         "state": "CA",
         "zip_code": "90001",
         "country": "US",
+    }
+
+
+def _participant(email: str, last_name: str = "E2E"):
+    return {
+        "first_name": "QA",
+        "last_name": last_name,
+        "email": email,
+        "phone": "5550100123",
+        "dob": "1990-01-15",
+        "gender": "Male",
+        "registration_type": "Student",
     }
 
 
@@ -131,7 +143,7 @@ def run():
                 "buyer_info": _buyer(email),
                 "packages": [{"package_id": pkg_full.id, "quantity": 1, "payment_plan_type": "full"}],
                 "addons": [],
-                "participants": [{"first_name": "QA", "last_name": "Full", "email": email, "phone": "1"}],
+                "participants": [_participant(email, "Full")],
                 "discount_code": None,
                 "payment_method": "full",
             }
@@ -163,7 +175,7 @@ def run():
             # full package should be fully_paid
             print(f"[WARN] full booking status={booking_full.status}")
         ctx = _booking_receipt_context(booking_full)
-        pdf = build_booking_receipt_pdf(booking_full, ctx["trip"], ctx["expected_amount"], ctx["participants_info"])
+        pdf = build_booking_receipt_pdf(ctx)
         if not pdf.startswith(b"%PDF"):
             _fail("receipt PDF invalid")
         att = _receipt_pdf_attachment(booking_full)
@@ -207,7 +219,7 @@ def run():
                 "buyer_info": _buyer(email),
                 "packages": [{"package_id": pkg_inst.id, "quantity": 1, "payment_plan_type": "deposit_installment"}],
                 "addons": [],
-                "participants": [{"first_name": "QA", "last_name": "Dep", "email": email, "phone": "1"}],
+                "participants": [_participant(email, "Dep")],
                 "discount_code": None,
                 "payment_method": "deposit_installment",
             }
@@ -253,7 +265,7 @@ def run():
                 "buyer_info": _buyer(email),
                 "packages": [{"package_id": pkg_inst.id, "quantity": 1, "payment_plan_type": "deposit_installment"}],
                 "addons": [],
-                "participants": [{"first_name": "QA", "last_name": "Zero", "email": email, "phone": "1"}],
+                "participants": [_participant(email, "Zero")],
                 "discount_code": "QAZERO",
                 "payment_method": "deposit_installment",
             }

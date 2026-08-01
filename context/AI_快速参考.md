@@ -102,6 +102,8 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 冒烟编排 | `cd flask-app && python local_tests/run_all.py` |
 | 金钱 E2E | `python local_tests/e2e_full_suite.py`（Stripe Test 真扣/真退 + SES） |
 | Playwright 对抗 | `cd tests/e2e && npm test`（约 180 条：门禁+细节；需 8080 + QA trip + `E2E_STRIPE_*` / `E2E_ADMIN_*`） |
+| Manage UI 退款 | `tests/e2e/admin/manage-ui-money.spec.ts`（按钮/弹窗；API 套件测不到） |
+| 本地 CI（推送前） | `python local_tests/prepare_e2e_env.py` → `pytest` → `npm run test:ci-local`（admin）→ `e2e_full_suite`；或 `local_tests/run_local_ci.ps1` |
 | Messaging | `python local_tests/test_messaging.py` |
 
 

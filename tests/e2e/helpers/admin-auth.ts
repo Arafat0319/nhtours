@@ -64,6 +64,29 @@ export async function adminLogin(
   return false;
 }
 
+/** Copy cookies from API request context onto a browser page context. */
+export async function applyAdminSessionToPage(
+  request: APIRequestContext,
+  page: import('@playwright/test').Page,
+): Promise<void> {
+  const state = await request.storageState();
+  if (state.cookies?.length) {
+    await page.context().addCookies(state.cookies);
+  }
+}
+
+/** Browser form login (reliable for Manage UI tests). */
+export async function adminLoginOnPage(
+  page: import('@playwright/test').Page,
+  creds: AdminCreds,
+): Promise<void> {
+  await page.goto('/admin/login');
+  await page.locator('input[name="username"]').fill(creds.username);
+  await page.locator('input[name="password"]').fill(creds.password);
+  await page.locator('button[type="submit"], input[type="submit"]').first().click();
+  await page.waitForURL(/\/admin(?!\/login)/, { timeout: 15_000 });
+}
+
 export async function expectRedirectToLogin(
   res: { status: () => number; headers: () => Record<string, string> },
   label: string,

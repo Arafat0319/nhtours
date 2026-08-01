@@ -143,21 +143,27 @@ def test_booking_payment_display_status_priority():
 
     booking = SimpleNamespace(id=9, status="deposit_paid")
 
-    with patch.object(payments_mod, "booking_has_refund", return_value=False), patch.object(
+    # 优先级：cancelled > fully/partially_refunded > overdue > 库内 status
+    with patch.object(payments_mod, "booking_refund_display_kind", return_value=None), patch.object(
         payments_mod, "booking_has_overdue_amount", return_value=True
     ):
         assert payments_mod.booking_payment_display_status(booking) == "overdue"
 
-    with patch.object(payments_mod, "booking_has_refund", return_value=True), patch.object(
-        payments_mod, "booking_has_overdue_amount", return_value=True
+    with patch.object(
+        payments_mod, "booking_refund_display_kind", return_value="partially_refunded"
+    ), patch.object(payments_mod, "booking_has_overdue_amount", return_value=True):
+        assert payments_mod.booking_payment_display_status(booking) == "partially_refunded"
+
+    with patch.object(
+        payments_mod, "booking_refund_display_kind", return_value="fully_refunded"
     ):
-        assert payments_mod.booking_payment_display_status(booking) == "refunded"
+        assert payments_mod.booking_payment_display_status(booking) == "fully_refunded"
 
     assert payments_mod.booking_payment_display_status(
         SimpleNamespace(id=10, status="cancelled")
     ) == "cancelled"
 
-    with patch.object(payments_mod, "booking_has_refund", return_value=False), patch.object(
+    with patch.object(payments_mod, "booking_refund_display_kind", return_value=None), patch.object(
         payments_mod, "booking_has_overdue_amount", return_value=False
     ):
         assert payments_mod.booking_payment_display_status(booking) == "deposit_paid"

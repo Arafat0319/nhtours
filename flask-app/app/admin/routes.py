@@ -104,16 +104,18 @@ def _prefetch_booking_finance_graph(trip_id):
 def calculate_trip_stats(trip):
     """
     计算行程的统计信息（参与者数量、已付金额、应付金额）
-    返回: dict with 'participants_count', 'amount_paid', 'amount_gross', 'amount_discount', 'amount_expected', 'amount_available'
+    返回: dict with 'participants_count', 'amount_paid', 'amount_gross', 'amount_discount',
+    'amount_expected', 'amount_refunded', 'amount_available'
     
     重要说明：
     - amount_paid: 来自 Booking.amount_paid，是客户实际支付的基础金额（不含 Stripe 手续费）
     - amount_gross: 原价总额（套餐 + 附加项）
     - amount_discount: 折扣总额
     - amount_expected: 净应收金额（gross - discount）
+    - amount_refunded: Σ 已退基础额（与 Manage Refunded 同口径）
     - amount_available: Σ balance due（待收；已退款不计入欠款）
     """
-    from app.payments import booking_balance_due
+    from app.payments import booking_balance_due, booking_refunded_total
 
     bookings, bp_by_booking, participant_addons_by_booking, booking_addons_by_booking = (
         _prefetch_booking_finance_graph(trip.id)
@@ -133,6 +135,7 @@ def calculate_trip_stats(trip):
     amount_gross = 0.0
     amount_discount = 0.0
     amount_expected = 0.0
+    amount_refunded = 0.0
     amount_available = 0.0
     
     for b in bookings:
@@ -177,6 +180,7 @@ def calculate_trip_stats(trip):
         amount_gross += booking_gross
         amount_discount += discount
         amount_expected += booking_expected
+        amount_refunded += booking_refunded_total(b)
         due = booking_balance_due(b, expected=booking_expected)
         if due is not None:
             amount_available += due
@@ -187,6 +191,7 @@ def calculate_trip_stats(trip):
         'amount_gross': amount_gross,
         'amount_discount': amount_discount,
         'amount_expected': amount_expected,
+        'amount_refunded': round(amount_refunded, 2),
         'amount_available': amount_available
     }
 
@@ -2099,6 +2104,7 @@ def reports():
             'amount_discount': stats['amount_discount'],
             'amount_expected': stats['amount_expected'],
             'amount_paid': stats['amount_paid'],
+            'amount_refunded': stats.get('amount_refunded', 0.0) or 0.0,
             'amount_pending': stats['amount_available']
         }
 
@@ -2118,6 +2124,7 @@ def reports():
             'total_discount': sum(s['amount_discount'] for s in summaries),
             'total_expected': sum(s['amount_expected'] for s in summaries),
             'total_paid': sum(s['amount_paid'] for s in summaries),
+            'total_refunded': sum(s.get('amount_refunded', 0.0) or 0.0 for s in summaries),
             'total_pending': sum(s['amount_pending'] for s in summaries)
         }
 
@@ -2133,6 +2140,7 @@ def reports():
         'total_discount': upcoming_total['total_discount'] + past_total['total_discount'] + deactivated_total['total_discount'],
         'total_expected': upcoming_total['total_expected'] + past_total['total_expected'] + deactivated_total['total_expected'],
         'total_paid': upcoming_total['total_paid'] + past_total['total_paid'] + deactivated_total['total_paid'],
+        'total_refunded': upcoming_total['total_refunded'] + past_total['total_refunded'] + deactivated_total['total_refunded'],
         'total_pending': upcoming_total['total_pending'] + past_total['total_pending'] + deactivated_total['total_pending']
     }
 
@@ -2397,19 +2405,35 @@ def mark_installment_paid(installment_id):
 @bp.route('/payments/export')
 @admin_required
 def export_payments():
-    """导出Payments为Excel文件（含退款金额/原因/时间）"""
+    """导出 Payments 为 Excel（列内容独立；视觉与 Manage Download Excel 统一）。"""
     try:
-        from openpyxl import Workbook
-        from openpyxl.styles import Font, Alignment
         from io import BytesIO
         from datetime import datetime
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from openpyxl.utils import get_column_letter
 
-        # 创建Excel工作簿
         wb = Workbook()
         ws = wb.active
-        ws.title = "Payments"
+        ws.title = 'Payments'
 
-        # 设置表头
+        # 与 Manage bookings export 同款样式
+        header_fill = PatternFill(start_color='3D3D3D', end_color='3D3D3D', fill_type='solid')
+        header_font = Font(name='Arial', size=11, bold=True, color='FFFFFF')
+        body_font = Font(name='Arial', size=11)
+        header_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        cell_align = Alignment(horizontal='left', vertical='center', wrap_text=False)
+        money_align = Alignment(horizontal='right', vertical='center', wrap_text=False)
+        thin = Border(
+            left=Side(style='thin', color='E5E7EB'),
+            right=Side(style='thin', color='E5E7EB'),
+            top=Side(style='thin', color='E5E7EB'),
+            bottom=Side(style='thin', color='E5E7EB'),
+        )
+        money_format = '#,##0.00'
+        money_cols = {5, 6, 7}  # Amount, Refunded, Net
+        dash = '-'
+
         headers = [
             'Order Number',
             'Client Name',
@@ -2424,83 +2448,81 @@ def export_payments():
             'Refunded At',
             'Created',
         ]
-        ws.append(headers)
-
-        # 设置表头样式
-        header_font = Font(bold=True)
-        for cell in ws[1]:
+        ws.row_dimensions[1].height = 28
+        for col_idx, header in enumerate(headers, start=1):
+            cell = ws.cell(row=1, column=col_idx, value=header)
             cell.font = header_font
-            cell.alignment = Alignment(horizontal='left')
+            cell.fill = header_fill
+            cell.alignment = header_align
+            cell.border = thin
 
-        # 预加载关联数据并查询所有payments
         payments = Payment.query.options(
             joinedload(Payment.client),
             joinedload(Payment.trip),
             joinedload(Payment.booking),
         ).order_by(Payment.created_at.desc()).all()
 
-        # 填充数据
-        for payment in payments:
+        for row_idx, payment in enumerate(payments, start=2):
             booking = payment.booking
             order_number = (
                 (booking.order_number if booking else None)
-                or (f'#{payment.booking_id}' if payment.booking_id else '-')
+                or (f'#{payment.booking_id}' if payment.booking_id else dash)
             )
-            client_name = payment.client.name if payment.client else '-'
-            client_email = payment.client.email if payment.client else '-'
-            trip_title = payment.trip.title if payment.trip else '-'
             amount = round(float(payment.amount or 0.0), 2)
             refunded = round(float(payment.refunded_amount or 0.0), 2)
             net = round(max(0.0, amount - refunded), 2)
-            status = payment.status or 'pending'
-            reason = (payment.refund_reason or '').strip() or ('-' if refunded <= 0 else '')
-            paid_at = payment.paid_at.strftime('%Y-%m-%d %H:%M') if payment.paid_at else '-'
-            refunded_at = (
-                payment.refunded_at.strftime('%Y-%m-%d %H:%M') if payment.refunded_at else '-'
-            )
-            created = payment.created_at.strftime('%Y-%m-%d %H:%M') if payment.created_at else '-'
-
-            ws.append([
+            reason = (payment.refund_reason or '').strip()
+            if not reason:
+                reason = dash
+            row_data = [
                 order_number,
-                client_name,
-                client_email,
-                trip_title,
+                payment.client.name if payment.client else dash,
+                payment.client.email if payment.client else dash,
+                payment.trip.title if payment.trip else dash,
                 amount,
-                refunded if refunded else '-',
+                refunded if refunded else dash,
                 net,
-                status,
-                reason or '-',
-                paid_at,
-                refunded_at,
-                created,
-            ])
+                (payment.status or 'pending').replace('_', ' '),
+                reason,
+                payment.paid_at.strftime('%Y-%m-%d %H:%M') if payment.paid_at else dash,
+                payment.refunded_at.strftime('%Y-%m-%d %H:%M') if payment.refunded_at else dash,
+                payment.created_at.strftime('%Y-%m-%d %H:%M') if payment.created_at else dash,
+            ]
+            for col_idx, value in enumerate(row_data, start=1):
+                cell = ws.cell(row=row_idx, column=col_idx, value=value)
+                cell.font = body_font
+                cell.border = thin
+                if col_idx in money_cols:
+                    cell.alignment = money_align
+                    if isinstance(value, (int, float)):
+                        cell.number_format = money_format
+                else:
+                    cell.alignment = cell_align
 
-        # 自动调整列宽
-        for column in ws.columns:
-            max_length = 0
-            column_letter = column[0].column_letter
-            for cell in column:
-                try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except Exception:
-                    pass
-            adjusted_width = min(max_length + 2, 50)
-            ws.column_dimensions[column_letter].width = adjusted_width
+        def _display_width(value):
+            if value is None:
+                return 0
+            width = 0
+            for ch in str(value):
+                width += 2 if ord(ch) > 0x2E80 else 1
+            return width
 
-        # 保存到内存
+        for col_idx in range(1, (ws.max_column or 0) + 1):
+            max_len = 0
+            for r in range(1, (ws.max_row or 0) + 1):
+                max_len = max(max_len, _display_width(ws.cell(row=r, column=col_idx).value))
+            ws.column_dimensions[get_column_letter(col_idx)].width = min(max(max_len + 3, 8), 50)
+
         output = BytesIO()
         wb.save(output)
         output.seek(0)
 
-        # 生成文件名
         filename = f'payments_{datetime.now().strftime("%Y%m%d")}.xlsx'
-
         return send_file(
             output,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             as_attachment=True,
-            download_name=filename
+            download_name=filename,
         )
     except Exception as e:
         flash(f'导出失败: {str(e)}', 'error')
@@ -3308,6 +3330,8 @@ def manage_booking(trip_id, booking_id):
     
     # 确保 booking 属于这个 trip
     if booking.trip_id != trip.id:
+        if request.args.get('format') == 'json' or request.is_json or request.method == 'POST':
+            return jsonify({'success': False, 'message': 'Booking does not belong to this trip'}), 400
         flash('Booking does not belong to this trip', 'error')
         return redirect(url_for('admin.manage_trip', id=trip_id))
     
