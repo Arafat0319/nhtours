@@ -37,6 +37,7 @@ from app.payments import (
     create_payment_intent,
     update_payment_intent_amount,
     retrieve_payment_intent,
+    payment_intent_error_message,
     retrieve_payment_method_card_details,
     calculate_fee,
     safe_cancel_payment_intent,
@@ -380,6 +381,9 @@ def trip_detail(slug):
                 use_experimental_modal=True,
                 preview_booking_success=bool(
                     current_app.debug and request.args.get('preview_booking_success') == '1'
+                ),
+                preview_booking_failure=bool(
+                    current_app.debug and request.args.get('preview_booking_failure') == '1'
                 ))
         # 使用 buyer_email 作为主要邮箱（优先于兼容字段 email）
         buyer_email = form.buyer_email.data or form.email.data
@@ -496,6 +500,9 @@ def trip_detail(slug):
                          use_experimental_modal=True,
                          preview_booking_success=bool(
                              current_app.debug and request.args.get('preview_booking_success') == '1'
+                         ),
+                         preview_booking_failure=bool(
+                             current_app.debug and request.args.get('preview_booking_failure') == '1'
                          ))
 
 
@@ -2000,6 +2007,11 @@ def booking_success():
     if booking_id and token and verify_receipt_token(token, booking_id):
         receipt_url = url_for('main.booking_receipt', booking_id=booking_id, token=token)
 
+    failure_message = None
+    if payment_status == 'failed' and payment and payment.stripe_payment_intent_id:
+        intent = retrieve_payment_intent(payment.stripe_payment_intent_id)
+        failure_message = payment_intent_error_message(intent)
+
     return render_template(
         'booking/success.html',
         booking_id=booking_id,
@@ -2008,6 +2020,7 @@ def booking_success():
         already_paid=already_paid,
         receipt_url=receipt_url,
         receipt_token=token if (booking_id and token and verify_receipt_token(token, booking_id)) else None,
+        failure_message=failure_message,
     )
 
 
@@ -2091,10 +2104,14 @@ def api_payment_status():
                         current_app.logger.info(f"Payment for {payment_intent_id} already exists (created by webhook)")
                 elif intent and intent_status in {'requires_payment_method', 'canceled', 'requires_action'}:
                     # 支付失败或需要操作
-                    return jsonify({
+                    payload = {
                         'status': 'failed' if intent_status in {'requires_payment_method', 'canceled'} else 'requires_action',
                         'payment_intent_id': payment_intent_id,
-                    }), 200
+                    }
+                    err_msg = payment_intent_error_message(intent)
+                    if err_msg:
+                        payload['error_message'] = err_msg
+                    return jsonify(payload), 200
                 else:
                     # 仍在处理中
                     return jsonify({'status': 'pending', 'payment_intent_id': payment_intent_id}), 200
@@ -2144,13 +2161,19 @@ def api_payment_status():
         if payment_intent_id:
             receipt_url = _receipt_public_download_url(payment.booking_id)
 
-    return jsonify({
+    status_payload = {
         'status': payment.status or 'pending',
         'booking_id': payment.booking_id,
         'payment_intent_id': payment.stripe_payment_intent_id,
         'redirect_url': redirect_url,
         'receipt_url': receipt_url,
-    }), 200
+    }
+    if (payment.status or '') == 'failed' and payment.stripe_payment_intent_id:
+        intent_for_err = retrieve_payment_intent(payment.stripe_payment_intent_id)
+        err_msg = payment_intent_error_message(intent_for_err)
+        if err_msg:
+            status_payload['error_message'] = err_msg
+    return jsonify(status_payload), 200
 
 
 @bp.route('/api/booking/upload', methods=['POST'])
@@ -2668,11 +2691,13 @@ def pay_installment(installment_id):
 @bp.route('/test/booking-success-preview')
 def test_booking_success_preview():
     """
-    本地预览付款成功相关 UI，无需重新下单。仅 DEBUG。
+    本地预览付款成功/失败相关 UI，无需重新下单。仅 DEBUG。
 
     - 默认 / ?view=modal → 真实行程页 #booking-modal 成功态
-    - ?view=already_paid → 邮件付款链接再次点击时的 Already Paid 全页
-    - ?view=page → Booking Confirmed 全页（少见路径）
+    - ?view=failure → 真实行程页弹窗失败态（含示例原因）
+    - ?view=already_paid → Already Paid 全页
+    - ?view=page → Booking Confirmed 全页
+    - ?view=failed_page → Payment Failed 全页（含示例原因）
     """
     if not current_app.debug:
         abort(404)
@@ -2686,6 +2711,18 @@ def test_booking_success_preview():
             already_paid=(view == 'already_paid'),
             receipt_url='#',
             receipt_token=None,
+            failure_message=None,
+        )
+    if view == 'failed_page':
+        return render_template(
+            'booking/success.html',
+            booking_id=999001,
+            booking=None,
+            payment_status='failed',
+            already_paid=False,
+            receipt_url=None,
+            receipt_token=None,
+            failure_message='Your card has insufficient funds.',
         )
     trip = (
         Trip.query.filter_by(status='published').order_by(Trip.id.desc()).first()
@@ -2693,6 +2730,10 @@ def test_booking_success_preview():
     )
     if not trip:
         abort(404)
+    if view == 'failure':
+        return redirect(
+            url_for('main.trip_detail', slug=trip.slug, preview_booking_failure=1)
+        )
     return redirect(
         url_for('main.trip_detail', slug=trip.slug, preview_booking_success=1)
     )
@@ -3787,15 +3828,19 @@ def handle_payment_intent_failed(payment_intent):
     处理 Payment Intent 失败事件
     """
     payment_intent_id = payment_intent['id']
-    current_app.logger.warning(f"Payment Intent {payment_intent_id} failed")
-    
+    err_msg = payment_intent_error_message(payment_intent)
+    current_app.logger.warning(
+        "Payment Intent %s failed%s",
+        payment_intent_id,
+        f": {err_msg}" if err_msg else "",
+    )
+
     payment = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
     if payment and payment.status != 'succeeded':
         payment.status = 'failed'
         db.session.commit()
 
-    # 可以在这里记录失败原因、发送通知等
-    # 但通常不需要更新 Booking 状态（因为支付未成功）
+    # 通常不需要更新 Booking 状态（支付未成功）；对客原因由前端 Stripe error / status API 展示
 
 
 def handle_refund(charge_data):

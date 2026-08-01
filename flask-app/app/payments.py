@@ -182,6 +182,26 @@ def retrieve_payment_intent(payment_intent_id):
         return None
 
 
+def payment_intent_error_message(intent):
+    """
+    从 Stripe PaymentIntent（SDK 对象或 dict）提取对客可读失败原因。
+    无则返回 None。
+    """
+    if not intent:
+        return None
+    err = intent.get('last_payment_error') if isinstance(intent, dict) else getattr(intent, 'last_payment_error', None)
+    if not err:
+        return None
+    if isinstance(err, dict):
+        msg = err.get('message')
+    else:
+        msg = getattr(err, 'message', None)
+    if not msg:
+        return None
+    text = str(msg).strip()
+    return text or None
+
+
 def safe_cancel_payment_intent(payment_intent_id, reason=''):
     """
     取消 PaymentIntent；已 canceled / succeeded 等不可取消状态不视为失败。

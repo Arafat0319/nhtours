@@ -599,18 +599,27 @@
             } catch (e) {}
         })();
 
-        // DEBUG：真实行程页预览付款成功弹窗（服务端仅 debug 时打 data-preview-booking-success）
-        (function previewBookingSuccessModal() {
+        // DEBUG：真实行程页预览付款成功 / 失败弹窗（服务端仅 debug 时打 data-preview-*）
+        (function previewBookingResultModal() {
             var m = document.getElementById('booking-modal');
-            if (!m || m.getAttribute('data-preview-booking-success') !== '1') return;
+            if (!m) return;
+            var previewFail = m.getAttribute('data-preview-booking-failure') === '1';
+            var previewOk = m.getAttribute('data-preview-booking-success') === '1';
+            if (!previewFail && !previewOk) return;
             m.classList.remove('hidden');
             document.documentElement.style.overflow = 'hidden';
             document.body.style.overflow = 'hidden';
-            // booking_id 须为真值，否则收据按钮会被隐藏（与真实成功态同一分支）
-            showBookingModalResult('success', {
-                booking_id: 999001,
-                receipt_url: '#'
-            });
+            if (previewFail) {
+                showBookingModalResult('failure', {
+                    message: 'Your card has insufficient funds.'
+                });
+            } else {
+                // booking_id 须为真值，否则收据按钮会被隐藏（与真实成功态同一分支）
+                showBookingModalResult('success', {
+                    booking_id: 999001,
+                    receipt_url: '#'
+                });
+            }
             try {
                 history.replaceState({}, '', window.location.pathname + (window.location.hash || ''));
             } catch (e) {}
@@ -2828,7 +2837,9 @@
                 }
             } catch (error) {
                 console.error('Error creating free booking:', error);
-                showBookingModalResult('failure');
+                showBookingModalResult('failure', {
+                    message: (error && error.message) || 'We could not complete your booking. Please try again.'
+                });
                 var btn = submitButton || nextButton;
                 if (btn) { btn.disabled = false; btn.textContent = 'Confirm Booking'; }
                 return;
@@ -2880,18 +2891,22 @@
                 },
             });
             if (error) {
-                showBookingModalResult('failure');
+                showBookingModalResult('failure', { error: error });
             } else {
                 // 无重定向（无 3DS）时在当前页轮询状态并在弹窗内显示结果
                 const pi = embeddedPaymentSession.payment_intent_id;
                 if (pi) {
                     pollPaymentStatusThenShowResult(pi);
                 } else {
-                    showBookingModalResult('failure');
+                    showBookingModalResult('failure', {
+                        message: 'Payment confirmation did not return a session. Please try again.'
+                    });
                 }
             }
         } catch (err) {
-            showBookingModalResult('failure');
+            showBookingModalResult('failure', {
+                message: (err && err.message) || PAYMENT_FAILURE_FALLBACK
+            });
         } finally {
             var btn = submitButton || nextButton;
             if (btn) { btn.disabled = false; btn.textContent = 'Confirm Booking'; }
@@ -3001,9 +3016,48 @@
         });
     }
 
+    var PAYMENT_FAILURE_FALLBACK = 'Your payment could not be completed. Please try again.';
+
+    /**
+     * Stripe error / 字符串 → 对客可读原因（不展示技术 code）
+     */
+    function formatPaymentFailureMessage(errorOrMsg) {
+        if (!errorOrMsg) return PAYMENT_FAILURE_FALLBACK;
+        if (typeof errorOrMsg === 'string') {
+            var s = errorOrMsg.trim();
+            return s || PAYMENT_FAILURE_FALLBACK;
+        }
+        var msg = (errorOrMsg.message && String(errorOrMsg.message).trim()) || '';
+        if (msg) return msg;
+        var code = errorOrMsg.decline_code || errorOrMsg.code;
+        var map = {
+            insufficient_funds: 'Your card has insufficient funds.',
+            lost_card: 'Your card was declined. Please contact your bank.',
+            stolen_card: 'Your card was declined. Please contact your bank.',
+            expired_card: 'Your card has expired.',
+            incorrect_cvc: 'Your card’s security code is incorrect.',
+            incorrect_number: 'Your card number is incorrect.',
+            card_declined: 'Your card was declined. Please try another card or contact your bank.',
+            processing_error: 'We could not process your card. Please try again.',
+            generic_decline: 'Your card was declined. Please try another card or contact your bank.'
+        };
+        return (code && map[code]) || PAYMENT_FAILURE_FALLBACK;
+    }
+
+    function setBookingFailureReason(errorOrMsg) {
+        var reasonWrap = document.getElementById('booking-result-failure-reason');
+        var detailEl = document.getElementById('booking-result-failure-detail');
+        var text = formatPaymentFailureMessage(errorOrMsg);
+        if (detailEl) detailEl.textContent = text;
+        if (reasonWrap) {
+            if (text) reasonWrap.removeAttribute('hidden');
+            else reasonWrap.setAttribute('hidden', '');
+        }
+    }
+
     /**
      * 在弹窗左侧显示付款结果：loading | success | failure，传 null 则恢复表单
-     * data: { booking_id, receipt_url }
+     * data: { booking_id, receipt_url, message / error }
      */
     function showBookingModalResult(state, data) {
         const resultWrap = document.getElementById('booking-modal-result');
@@ -3075,6 +3129,9 @@
             }
         } else if (state === 'failure') {
             if (failureEl) failureEl.classList.remove('hidden');
+            setBookingFailureReason(
+                (data && (data.message || data.error_message || data.error)) || PAYMENT_FAILURE_FALLBACK
+            );
         }
         // 付款结果页：有 booking_id 时用接口拉取金额填充 Your Booking，否则用 updateOrderSummary；高亮 Payment 步骤
         requestAnimationFrame(function() {
@@ -3154,7 +3211,9 @@
                         return;
                     }
                     if (data.status === 'failed') {
-                        showBookingModalResult('failure');
+                        showBookingModalResult('failure', {
+                            message: data.error_message || data.message || PAYMENT_FAILURE_FALLBACK
+                        });
                         var btn = submitButton || nextButton;
                         if (btn) { btn.disabled = false; btn.textContent = 'Confirm Booking'; }
                         return;

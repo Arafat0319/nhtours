@@ -59,8 +59,14 @@ const showPreSubmitError = () => {
     showMessage("Please complete your card details before continuing.");
 };
 
-const showPaymentFailed = () => {
-    showMessage("Payment failed. Please try again.");
+const showPaymentFailed = (errorOrMsg) => {
+    let text = "Your payment could not be completed. Please try again.";
+    if (typeof errorOrMsg === "string" && errorOrMsg.trim()) {
+        text = errorOrMsg.trim();
+    } else if (errorOrMsg && errorOrMsg.message) {
+        text = String(errorOrMsg.message).trim() || text;
+    }
+    showMessage(text);
 };
 
 const clearMessage = () => {
@@ -212,7 +218,7 @@ const requestQuote = async (silent = false) => {
     } catch (err) {
         console.error("Quote request failed:", err);
         if (!silent) {
-            showPaymentFailed();
+            showPaymentFailed(err);
         }
     } finally {
         quoteInFlight = false;
@@ -384,11 +390,11 @@ if (placeOrderButton) {
             });
 
             if (error) {
-                showPaymentFailed();
+                showPaymentFailed(error);
                 return;
             }
         } catch (err) {
-            showMessage(err.message || "Payment failed. Please try again.");
+            showPaymentFailed(err);
         } finally {
             if (placeOrderButton) {
                 placeOrderButton.disabled = false;

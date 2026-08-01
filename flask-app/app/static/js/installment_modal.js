@@ -113,6 +113,40 @@
         }
     }
 
+    var PAYMENT_FAILURE_FALLBACK = 'Your payment could not be completed. Please try again.';
+
+    function formatPaymentFailureMessage(errorOrMsg) {
+        if (!errorOrMsg) return PAYMENT_FAILURE_FALLBACK;
+        if (typeof errorOrMsg === 'string') {
+            var s = errorOrMsg.trim();
+            return s || PAYMENT_FAILURE_FALLBACK;
+        }
+        var msg = (errorOrMsg.message && String(errorOrMsg.message).trim()) || '';
+        if (msg) return msg;
+        var code = errorOrMsg.decline_code || errorOrMsg.code;
+        var map = {
+            insufficient_funds: 'Your card has insufficient funds.',
+            expired_card: 'Your card has expired.',
+            incorrect_cvc: 'Your card’s security code is incorrect.',
+            incorrect_number: 'Your card number is incorrect.',
+            card_declined: 'Your card was declined. Please try another card or contact your bank.',
+            processing_error: 'We could not process your card. Please try again.',
+            generic_decline: 'Your card was declined. Please try another card or contact your bank.'
+        };
+        return (code && map[code]) || PAYMENT_FAILURE_FALLBACK;
+    }
+
+    function setFailureReason(errorOrMsg) {
+        var reasonWrap = document.getElementById('booking-result-failure-reason');
+        var detailEl = document.getElementById('booking-result-failure-detail');
+        var text = formatPaymentFailureMessage(errorOrMsg);
+        if (detailEl) detailEl.textContent = text;
+        if (reasonWrap) {
+            if (text) reasonWrap.removeAttribute('hidden');
+            else reasonWrap.setAttribute('hidden', '');
+        }
+    }
+
     function showResult(state, data) {
         if (!resultWrap || !formArea || !btnBar) return;
 
@@ -152,6 +186,9 @@
             if (payoffSec) payoffSec.classList.add('hidden');
         } else if (state === 'failure') {
             if (failureEl) failureEl.classList.remove('hidden');
+            setFailureReason(
+                (data && (data.message || data.error_message || data.error)) || PAYMENT_FAILURE_FALLBACK
+            );
         }
     }
 
@@ -173,7 +210,9 @@
                         return;
                     }
                     if (data.status === 'failed') {
-                        showResult('failure');
+                        showResult('failure', {
+                            message: data.error_message || data.message || PAYMENT_FAILURE_FALLBACK
+                        });
                         if (placeOrderBtn) {
                             placeOrderBtn.disabled = false;
                             placeOrderBtn.textContent = 'Confirm payment';
@@ -312,17 +351,21 @@
                 });
 
                 if (error) {
-                    showResult('failure');
+                    showResult('failure', { error: error });
                 } else {
                     var pi = paymentIntentId || (result && result.payment_intent_id);
                     if (pi) {
                         pollPaymentStatus(pi);
                     } else {
-                        showResult('failure');
+                        showResult('failure', {
+                            message: 'Payment confirmation did not return a session. Please try again.'
+                        });
                     }
                 }
             } catch (err) {
-                showResult('failure');
+                showResult('failure', {
+                    message: (err && err.message) || PAYMENT_FAILURE_FALLBACK
+                });
             } finally {
                 placeOrderBtn.disabled = false;
                 placeOrderBtn.textContent = 'Confirm payment';

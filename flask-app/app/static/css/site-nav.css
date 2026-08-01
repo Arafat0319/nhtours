@@ -258,3 +258,49 @@ nav:has(> ol.flex.flex-wrap.items-center.space-x-2.text-lg.font-medium.text-ambe
 	width: 1.125rem;
 	height: 1.125rem;
 }
+
+/* Payment failed — soft warm callout（站内失败页 / 弹窗共用） */
+.payment-failure-lead {
+	margin: 0 0 1rem;
+	text-align: center;
+	font-size: 1rem;
+	line-height: 1.5;
+	color: #4b5563;
+}
+.payment-failure-reason {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.75rem;
+	max-width: 22rem;
+	margin: 0 auto 1rem;
+	padding: 0.875rem 1rem;
+	text-align: left;
+	background: #fff8f3;
+	border: 1px solid #f0d6c4;
+	border-radius: 0.5rem;
+	box-shadow: 0 1px 2px rgba(61, 48, 40, 0.04);
+}
+.payment-failure-reason[hidden] {
+	display: none !important;
+}
+.payment-failure-reason__icon {
+	flex-shrink: 0;
+	width: 1.25rem;
+	height: 1.25rem;
+	margin-top: 0.125rem;
+	color: #c2410c;
+}
+.payment-failure-reason__text {
+	margin: 0;
+	font-size: 0.9375rem;
+	line-height: 1.45;
+	font-weight: 500;
+	color: #7c2d12;
+}
+.payment-failure-reassure {
+	margin: 0 0 1.5rem;
+	text-align: center;
+	font-size: 0.875rem;
+	line-height: 1.45;
+	color: #6b7280;
+}

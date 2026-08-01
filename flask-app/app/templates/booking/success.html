@@ -50,8 +50,17 @@
             </div>
         </div>
         <h1 class="text-4xl font-bold text-gray-900" style="margin-top: calc(var(--spacing) * 38); margin-bottom: calc(var(--spacing) * 8);">Payment Failed</h1>
-        <p class="text-xl text-gray-600" style="margin-bottom: calc(var(--spacing) * 38);">
-            Your payment could not be completed. Please try again.
+        <p class="payment-failure-lead" style="font-size: 1.25rem; margin-bottom: 1.25rem;">Your payment could not be completed.</p>
+        {% if failure_message %}
+        <div class="payment-failure-reason" style="margin-bottom: 1.25rem;">
+            <svg class="payment-failure-reason__icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4m0 4h.01M12 3a9 9 0 100 18 9 9 0 000-18z"/>
+            </svg>
+            <p class="payment-failure-reason__text">{{ failure_message }}</p>
+        </div>
+        {% endif %}
+        <p class="payment-failure-reassure" style="margin-bottom: calc(var(--spacing) * 38); font-size: 1rem;">
+            No charge was made. You can try again or use a different card.
         </p>
     {% else %}
         <div class="mb-8 flex justify-center">

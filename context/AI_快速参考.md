@@ -147,6 +147,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 后台角色 | `User.role`：`admin`（默认）/ `staff`；敏感操作 `@admin_required` |
 | 测试 | `pytest tests/`（门禁等）；全量冒烟 `local_tests/run_all.py` |
 | Download receipt | `.nh-receipt-download-btn`；本地预览弹窗：`/test/booking-success-preview`；邮件蓝钮 |
+| 付款失败原因 | 弹窗暖色 callout 显示 Stripe message；预览 `?view=failure` |
 | 支付门禁 | summary 须 token/PI；`/booking/payment` 须 token；discount apply 服务端重算；upload 须 `trip_id`+魔数；`/test/*` 仅 debug |
 
 ## Testimonials / Feedback
