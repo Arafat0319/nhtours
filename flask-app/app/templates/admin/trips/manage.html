@@ -2430,6 +2430,12 @@
                             <span>Card Fee</span>
                             <span>$${(booking.payment_summary.card_fee || 0).toFixed(2)}</span>
                         </div>
+                        ${(booking.payment_summary.refunded || 0) > 0.001 ? `
+                        <div class="flex justify-between text-red-600">
+                            <span>Refunded</span>
+                            <span class="font-medium">-$${(booking.payment_summary.refunded || 0).toFixed(2)}</span>
+                        </div>
+                        ` : ''}
                         <div class="flex justify-between text-gray-900 font-medium pt-1">
                             <span>Net Received</span>
                             <span>$${(booking.payment_summary.net_received || 0).toFixed(2)}</span>

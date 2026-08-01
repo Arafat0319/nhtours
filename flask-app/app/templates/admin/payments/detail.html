@@ -62,6 +62,68 @@
         </div>
     </div>
 
+    {% set refund_history = (payment.payment_metadata or {}).get('refund_history') or [] %}
+    {% if (payment.refunded_amount and payment.refunded_amount > 0) or refund_history or payment.refund_reason %}
+    <!-- Refund Details -->
+    <div class="bg-white rounded-lg shadow-sm border border-red-100 p-6">
+        <h3 class="text-lg font-medium text-gray-900 mb-1">Refund Details</h3>
+        <p class="text-sm text-gray-500 mb-4">Amounts are base (card fees are not refunded).</p>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">Total Refunded</label>
+                <p class="text-lg font-semibold text-red-600">${{ "%.2f"|format(payment.refunded_amount or 0) }}</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">Latest Refunded At</label>
+                <p class="text-sm text-gray-900">
+                    {{ payment.refunded_at.strftime('%Y-%m-%d %H:%M:%S') if payment.refunded_at else '—' }}
+                </p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">Latest Reason</label>
+                <p class="text-sm text-gray-900">{{ payment.refund_reason or '—' }}</p>
+            </div>
+        </div>
+        {% if refund_history %}
+        <div class="overflow-x-auto border border-gray-100 rounded-md">
+            <table class="min-w-full text-sm">
+                <thead class="bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <tr>
+                        <th class="px-3 py-2">When</th>
+                        <th class="px-3 py-2">Amount</th>
+                        <th class="px-3 py-2">Reason</th>
+                        <th class="px-3 py-2">Type</th>
+                        <th class="px-3 py-2">Stripe Refund</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for entry in refund_history|reverse %}
+                    <tr>
+                        <td class="px-3 py-2 text-gray-700 whitespace-nowrap">
+                            {% set at = entry.get('at') or entry.get('created_at') or '' %}
+                            {{ at.replace('T', ' ').replace('Z', '') if at else '—' }}
+                        </td>
+                        <td class="px-3 py-2 font-medium text-red-600 whitespace-nowrap">
+                            −${{ "%.2f"|format(entry.get('amount') or 0) }}
+                        </td>
+                        <td class="px-3 py-2 text-gray-900">{{ entry.get('reason') or '—' }}</td>
+                        <td class="px-3 py-2 text-gray-600 whitespace-nowrap">
+                            {% if entry.get('manual_only') %}Manual only{% else %}Stripe{% endif %}
+                        </td>
+                        <td class="px-3 py-2 text-xs font-mono text-gray-500 break-all">
+                            {{ entry.get('stripe_refund_id') or '—' }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% elif payment.refund_reason or payment.refunded_at %}
+        <p class="text-xs text-gray-500">No refund history rows stored; showing latest reason / time above.</p>
+        {% endif %}
+    </div>
+    {% endif %}
+
     <!-- Main Information Grid -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- Left Column -->
@@ -202,17 +264,8 @@
                         <p class="text-sm text-gray-900">{{ payment.paid_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
                     </div>
                     {% endif %}
-                    {% if payment.refunded_at %}
-                    <div>
-                        <label class="block text-sm font-medium text-gray-500 mb-1">Refunded At</label>
-                        <p class="text-sm text-gray-900">{{ payment.refunded_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
-                    </div>
-                    {% endif %}
-                    {% if payment.refund_reason %}
-                    <div>
-                        <label class="block text-sm font-medium text-gray-500 mb-1">Refund Reason</label>
-                        <p class="text-sm text-gray-900">{{ payment.refund_reason }}</p>
-                    </div>
+                    {% if payment.refunded_amount and payment.refunded_amount > 0 %}
+                    <p class="text-xs text-gray-500">See <span class="font-medium text-gray-700">Refund Details</span> above for amount, reason, and history.</p>
                     {% endif %}
                 </div>
             </div>

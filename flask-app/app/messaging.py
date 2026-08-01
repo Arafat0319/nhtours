@@ -66,12 +66,9 @@ def booking_expected_amount(booking):
 
 
 def booking_balance_due(booking):
-    """剩余未付；cancelled 返回 None。"""
-    if booking.status == 'cancelled':
-        return None
-    expected = booking_expected_amount(booking)
-    paid = round(float(booking.amount_paid) if booking.amount_paid is not None else 0.0, 2)
-    return round(max(0.0, expected - paid), 2)
+    """剩余未付；cancelled 返回 None。退款不计入欠款。"""
+    from app.payments import booking_balance_due as _payments_balance_due
+    return _payments_balance_due(booking, expected=booking_expected_amount(booking))
 
 
 def _buyer_recipient(booking):

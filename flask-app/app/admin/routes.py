@@ -111,8 +111,10 @@ def calculate_trip_stats(trip):
     - amount_gross: 原价总额（套餐 + 附加项）
     - amount_discount: 折扣总额
     - amount_expected: 净应收金额（gross - discount）
-    - amount_available: expected - paid（待收金额）
+    - amount_available: Σ balance due（待收；已退款不计入欠款）
     """
+    from app.payments import booking_balance_due
+
     bookings, bp_by_booking, participant_addons_by_booking, booking_addons_by_booking = (
         _prefetch_booking_finance_graph(trip.id)
     )
@@ -131,6 +133,7 @@ def calculate_trip_stats(trip):
     amount_gross = 0.0
     amount_discount = 0.0
     amount_expected = 0.0
+    amount_available = 0.0
     
     for b in bookings:
         booking_gross = 0.0
@@ -174,9 +177,9 @@ def calculate_trip_stats(trip):
         amount_gross += booking_gross
         amount_discount += discount
         amount_expected += booking_expected
-    
-    # Amount available = Expected - Paid (待收金额)
-    amount_available = amount_expected - amount_paid
+        due = booking_balance_due(b, expected=booking_expected)
+        if due is not None:
+            amount_available += due
     
     return {
         'participants_count': participants_count,
@@ -409,7 +412,8 @@ def manage_trip(id):
     total_discount = 0.0  # 折扣总额
     total_expected = 0.0  # 净应收金额（扣除折扣后）
     booking_balances = {}  # booking_id -> pending balance (None = cancelled / n/a)
-    
+    from app.payments import booking_balance_due
+
     for b in bookings:
         booking_gross = 0.0  # 该订单原价
         has_packages = False
@@ -454,13 +458,10 @@ def manage_trip(id):
         total_discount += discount
         total_expected += booking_expected
 
-        paid = float(b.amount_paid) if b.amount_paid is not None else 0.0
-        if b.status == 'cancelled':
-            booking_balances[b.id] = None
-        else:
-            booking_balances[b.id] = round(max(0.0, booking_expected - paid), 2)
+        # 退款不计入欠款：due = expected − paid − refunded
+        booking_balances[b.id] = booking_balance_due(b, expected=booking_expected)
 
-    total_pending = total_expected - total_paid
+    total_pending = round(sum(v for v in booking_balances.values() if v is not None), 2)
 
     # Calculate add-ons summary for each booking
     booking_addons_summary = {}
@@ -2769,7 +2770,8 @@ def export_bookings(id):
             total_refunds += refunds
         else:
             expected_cell = expected
-            balance_cell = round(max(0.0, expected - net_paid), 2)
+            # 退款不计入欠款：expected − net_paid − refunds
+            balance_cell = round(max(0.0, expected - net_paid - refunds), 2)
             participants_cell = pax_count
             names_cell = _participant_names(booking)
             total_expected += expected
@@ -3456,20 +3458,23 @@ def manage_booking(trip_id, booking_id):
             total_charged = 0.0
             total_fee_dollars = 0.0
             net_received = 0.0
+            total_refunded = 0.0
             from app.payments import (
                 payment_charged_amount,
                 payment_base_amount,
                 payment_fee_amount,
                 payment_refundable_remaining,
                 payment_max_refund,
+                payment_refunded_clamped,
                 booking_deposit_reserved,
                 booking_payment_display_status,
+                booking_balance_due,
             )
             for payment in Payment.query.filter_by(booking_id=booking.id).order_by(Payment.created_at.desc()).all():
                 amt = payment_charged_amount(payment)
                 fee_dollars = payment_fee_amount(payment)
                 base_dollars = payment_base_amount(payment)
-                refunded = round(float(payment.refunded_amount or 0.0), 2)
+                refunded = payment_refunded_clamped(payment)
                 remaining = payment_refundable_remaining(payment)
                 # 实收：基础金额 − 已退（已为基础口径）
                 net_from_payment = round(max(0.0, base_dollars - refunded), 2)
@@ -3499,13 +3504,16 @@ def manage_booking(trip_id, booking_id):
                     total_charged += amt
                     total_fee_dollars += fee_dollars
                     net_received += net_from_payment
+                    total_refunded += refunded
             net_received = round(net_received, 2)
             total_fee_dollars = round(total_fee_dollars, 2)
             total_charged = round(total_charged, 2)
+            total_refunded = round(total_refunded, 2)
             payment_summary = {
                 'total_charged': total_charged,
                 'card_fee': total_fee_dollars,
-                'net_received': net_received
+                'refunded': total_refunded,
+                'net_received': net_received,
             }
             # 有支付记录时用汇总实收作为“已付金额”显示（与 Payment 表一致，避免 DB 存错）
             amount_paid_display = round(net_received if total_charged > 0 else (float(booking.amount_paid) if booking.amount_paid else 0.0), 2)
@@ -3598,7 +3606,9 @@ def manage_booking(trip_id, booking_id):
                     'amount_paid': float(booking.amount_paid) if booking.amount_paid else 0.0,
                     'amount_paid_display': amount_paid_display,
                     'expected_amount': expected_amount,
-                    'pending_amount': max(0.0, expected_amount - amount_paid_display),
+                    'pending_amount': booking_balance_due(
+                        booking, expected=expected_amount
+                    ) if booking.status != 'cancelled' else 0.0,
                     'payment_summary': payment_summary,
                     'deposit_hint': deposit_hint,
                     'deposit_reserved': deposit_reserved,
@@ -3794,6 +3804,8 @@ def cancel_booking_order(trip_id, booking_id):
 @login_required
 def get_trip_financials(id):
     """获取行程的财务数据（用于 AJAX 更新）"""
+    from app.payments import booking_balance_due
+
     trip = Trip.query.get_or_404(id)
     bookings = trip.bookings.all() if trip.bookings else []
     
@@ -3803,6 +3815,7 @@ def get_trip_financials(id):
     total_gross = 0.0
     total_discount = 0.0
     total_expected = 0.0
+    total_pending = 0.0
     
     for b in bookings:
         booking_gross = 0.0
@@ -3847,8 +3860,9 @@ def get_trip_financials(id):
         total_gross += booking_gross
         total_discount += discount
         total_expected += booking_expected
-    
-    total_pending = total_expected - total_paid
+        due = booking_balance_due(b, expected=booking_expected)
+        if due is not None:
+            total_pending += due
     
     return jsonify({
         'success': True,

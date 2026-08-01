@@ -415,6 +415,14 @@ def computed_booking_amount_paid(booking):
     return round(total, 2)
 
 
+def booking_refunded_total(booking):
+    """订单已退基础金额合计（Σ payment.refunded_amount，钳制后）。"""
+    total = 0.0
+    for payment in ledger_payments_for_booking(booking):
+        total += payment_refunded_clamped(payment)
+    return round(total, 2)
+
+
 def booking_has_refund(booking):
     """是否有过基础额退款（部分或全额）。"""
     for payment in ledger_payments_for_booking(booking):
@@ -423,6 +431,22 @@ def booking_has_refund(booking):
         if (payment.status or '') in ('refunded', 'partially_refunded'):
             return True
     return False
+
+
+def booking_balance_due(booking, expected=None):
+    """
+    客户仍应付金额（Balance due）。
+    退款会降低 amount_paid，但不能把已退部分算成「还欠」：
+    due = expected − amount_paid − refunded（≡ expected − 原已收基础额）。
+    """
+    if (getattr(booking, 'status', None) or '') == 'cancelled':
+        return None
+    if expected is None:
+        totals = calculate_booking_total(booking)
+        return round(float(totals.get('amount_due') or 0.0), 2)
+    paid = float(booking.amount_paid) if booking.amount_paid is not None else 0.0
+    refunded = booking_refunded_total(booking)
+    return round(max(0.0, float(expected) - paid - refunded), 2)
 
 
 def booking_has_overdue_amount(booking, today=None):
@@ -930,13 +954,16 @@ def calculate_booking_total(booking):
     
     total = max(0.0, subtotal - discount)
     amount_paid = float(booking.amount_paid) if booking.amount_paid else 0.0
-    amount_due = max(0.0, total - amount_paid)
+    amount_refunded = booking_refunded_total(booking)
+    # 已退部分曾计入收款，不能因退款再变成「欠款」
+    amount_due = max(0.0, total - amount_paid - amount_refunded)
     
     return {
         'subtotal': subtotal,
         'discount': discount,
         'total': total,
         'amount_paid': amount_paid,
+        'amount_refunded': amount_refunded,
         'amount_due': amount_due
     }
 
