@@ -131,7 +131,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 收据邮件 | HTML+PDF；日期美西；全款：Expected→实扣斜体→Paid（无 Due/Remaining）；定稿 `.cursor/rules/receipt-pdf-layout.mdc` |
 | 退款 / 取消 | **不自动发客户邮件**；退款走 Stripe/账本；需通知请用 Messages |
 | 分期催款 | 美西日历；每天美西 9:00；**仅 1 个 Gunicorn worker 跑 APScheduler**（文件锁防重复发） |
-| Payments 标签 | Full=已完成收款；Installment=未结清计划（含 Final payment）+ 多期分期 |
+| Payments 标签 | 以 order 分类：Full=全款或定金+单笔尾款；Installment=定金后>1期 |
 | 报名校验 | 前端 `booking.js` + 后端 `booking_validation.py`（email/phone/name/dob/zip）；Promo 未选套餐 → `#discount-message` 琥珀提示 |
 | 安全审计 | `/var/log/nhtours/audit.log`；`nh-audit` / `nh-audit --all` / `nh-audit -f` |
 | 安全加固 | ✅ **生产已完成**（2026-07-06）；凭据轮换、审计、限流；详见 `06` / [手册/安全手册.md](../手册/安全手册.md) |

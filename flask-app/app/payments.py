@@ -751,20 +751,22 @@ def booking_is_multi_period_plan(booking_id):
     return booking_post_deposit_installment_count(booking_id) > 1
 
 
-def multi_period_booking_ids(booking_ids=None):
-    """
-    返回「定金后 >1 期」的 booking_id 集合。
-    若传入 booking_ids 则限定范围；否则全库统计（Payments 列表用）。
-    """
+def _booking_ids_with_post_deposit_count(count_op, count_value, booking_ids=None):
+    """按定金后期数筛选 booking_id。count_op: 'eq' | 'gt'。"""
     from app import db
     from app.models import InstallmentPayment
     from sqlalchemy import func
 
+    having = (
+        func.count(InstallmentPayment.id) == count_value
+        if count_op == 'eq'
+        else func.count(InstallmentPayment.id) > count_value
+    )
     q = (
         db.session.query(InstallmentPayment.booking_id)
         .filter(InstallmentPayment.installment_number > 0)
         .group_by(InstallmentPayment.booking_id)
-        .having(func.count(InstallmentPayment.id) > 1)
+        .having(having)
     )
     if booking_ids is not None:
         ids = list(booking_ids)
@@ -772,6 +774,31 @@ def multi_period_booking_ids(booking_ids=None):
             return set()
         q = q.filter(InstallmentPayment.booking_id.in_(ids))
     return {row[0] for row in q.all() if row[0] is not None}
+
+
+def multi_period_booking_ids(booking_ids=None):
+    """定金后 >1 期 → Installment Payments。"""
+    return _booking_ids_with_post_deposit_count('gt', 1, booking_ids=booking_ids)
+
+
+def single_balance_booking_ids(booking_ids=None):
+    """定金后恰好 1 期尾款（Final payment）→ Full Payments。"""
+    return _booking_ids_with_post_deposit_count('eq', 1, booking_ids=booking_ids)
+
+
+def booking_payments_plan_kind(booking_id):
+    """
+    订单在 Payments 页的归属：
+    - multi: 定金后 >1 期 → Installment
+    - deposit_balance: 定金 + 1 笔尾款 → Full
+    - one_time: 无分期尾款（一次付清等）→ Full
+    """
+    n = booking_post_deposit_installment_count(booking_id)
+    if n > 1:
+        return 'multi'
+    if n == 1:
+        return 'deposit_balance'
+    return 'one_time'
 
 
 def cancel_unpaid_installments(booking):

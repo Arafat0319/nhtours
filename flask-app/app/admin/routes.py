@@ -2013,457 +2013,68 @@ def checkout_test(id):
 @login_required
 def payments():
     """
-    Payments管理页面 - 重构版：支持多 Tab（Payment Records、Installment Payments）
+    Payments：以 order 为基本单位。
+    Full = 一次付全款 + 定金/单笔尾款；Installment = 定金后 >1 期。
     """
-    from datetime import date
-    
-    # 获取当前 Tab（默认为 'records'）
+    from app.admin.payment_list_data import (
+        build_one_time_order_groups,
+        build_schedule_order_groups,
+    )
+    from app.payments import multi_period_booking_ids, single_balance_booking_ids
+
     tab = request.args.get('tab', 'records')
-    
-    today = date.today()
     search = request.args.get('search', '').strip()
-    
-    # Tab 1: Payment Records（全款 / 定金+单笔尾款；不含真正多期分期）
+    status_filter = request.args.get('status', '')
+
     if tab == 'records':
-        from app.payments import multi_period_booking_ids
-
-        multi_ids = multi_period_booking_ids()
-        query = Payment.query.options(
-            joinedload(Payment.booking),
-            joinedload(Payment.client),
-            joinedload(Payment.trip)
+        # Full：定金+单笔尾款（可展开看 Final payment）+ 一次付全款
+        schedule_groups, today = build_schedule_order_groups(
+            plan_kinds={'deposit_balance'},
+            search=search,
+            status_filter=status_filter,
         )
-        # 排除「定金后超过 1 期」订单上的付款（那些只进 Installment Payments）
-        if multi_ids:
-            query = query.filter(
-                or_(
-                    Payment.booking_id.is_(None),
-                    ~Payment.booking_id.in_(list(multi_ids)),
-                )
-            )
-        
-        # 搜索功能
-        if search:
-            # 使用 outerjoin 因为有些 Payment 可能没有关联的 Booking
-            # 明确指定连接条件以避免歧义
-            # 对于 Trip，使用子查询来避免 join 歧义
-            from sqlalchemy import exists, select
-            
-            # Booking ID / Order number 搜索
-            booking_condition = exists(
-                select(1).where(
-                    and_(
-                        Payment.booking_id == Booking.id,
-                        or_(
-                            Booking.id.cast(db.String).ilike(f'%{search}%'),
-                            Booking.order_number.ilike(f'%{search}%'),
-                        )
-                    )
-                )
-            )
-            
-            # Client 搜索（通过 Booking 或直接通过 Payment）
-            client_via_booking = exists(
-                select(1).where(
-                    and_(
-                        Payment.booking_id == Booking.id,
-                        Booking.client_id == Client.id,
-                        or_(
-                            Client.name.ilike(f'%{search}%'),
-                            Client.email.ilike(f'%{search}%')
-                        )
-                    )
-                )
-            )
-            
-            client_via_payment = exists(
-                select(1).where(
-                    and_(
-                        Payment.client_id == Client.id,
-                        or_(
-                            Client.name.ilike(f'%{search}%'),
-                            Client.email.ilike(f'%{search}%')
-                        )
-                    )
-                )
-            )
-            
-            # Trip 搜索（通过 Booking.trip_id）
-            trip_via_booking = exists(
-                select(1).where(
-                    and_(
-                        Payment.booking_id == Booking.id,
-                        Booking.trip_id == Trip.id,
-                        Trip.title.ilike(f'%{search}%')
-                    )
-                )
-            )
-            
-            # Trip 搜索（直接通过 Payment.trip_id）
-            trip_via_payment = exists(
-                select(1).where(
-                    and_(
-                        Payment.trip_id == Trip.id,
-                        Trip.title.ilike(f'%{search}%')
-                    )
-                )
-            )
-            
-            query = query.filter(or_(
-                booking_condition,
-                client_via_booking,
-                client_via_payment,
-                trip_via_booking,
-                trip_via_payment
-            ))
-        
-        # 状态筛选
-        status_filter = request.args.get('status', '')
-        if status_filter:
-            query = query.filter(Payment.status == status_filter)
-        
-        # 排序功能
-        sort_field = request.args.get('sort', 'created_at')
-        sort_order = request.args.get('order', 'desc')
-        
-        if sort_field == 'payment_id':
-            if sort_order == 'asc':
-                query = query.order_by(Payment.id.asc())
-            else:
-                query = query.order_by(Payment.id.desc())
-        elif sort_field == 'created_at':
-            if sort_order == 'asc':
-                query = query.order_by(Payment.created_at.asc())
-            else:
-                query = query.order_by(Payment.created_at.desc())
-        else:
-            # 默认按创建时间排序
-            query = query.order_by(Payment.created_at.desc())
-        
-        payments_list = query.limit(100).all()
-        
-        return render_template('admin/payments/list.html',
-                             title='Payments',
-                             tab=tab,
-                             payments_list=payments_list,
-                             search=search,
-                             status_filter=status_filter)
-    
-    # Tab 2: Installment Payments（分期付款）
-    elif tab == 'installments':
-        query = InstallmentPayment.query.options(
-            joinedload(InstallmentPayment.booking).joinedload(Booking.trip),
-            joinedload(InstallmentPayment.booking).joinedload(Booking.client)
+        schedule_ids = {g['booking_id'] for g in schedule_groups}
+        exclude = schedule_ids | multi_period_booking_ids() | single_balance_booking_ids()
+        one_time_groups, _ = build_one_time_order_groups(
+            search=search,
+            status_filter=status_filter,
+            exclude_booking_ids=exclude,
         )
-        
-        # 搜索功能
-        if search:
-            from sqlalchemy import exists, select
-            # Booking ID / Order number 搜索
-            booking_condition = exists(
-                select(1).where(
-                    and_(
-                        InstallmentPayment.booking_id == Booking.id,
-                        or_(
-                            Booking.id.cast(db.String).ilike(f'%{search}%'),
-                            Booking.order_number.ilike(f'%{search}%'),
-                        )
-                    )
-                )
-            )
-            
-            # Client 搜索（通过 Booking）
-            client_via_booking = exists(
-                select(1).where(
-                    and_(
-                        InstallmentPayment.booking_id == Booking.id,
-                        Booking.client_id == Client.id,
-                        or_(
-                            Client.name.ilike(f'%{search}%'),
-                            Client.email.ilike(f'%{search}%')
-                        )
-                    )
-                )
-            )
-            
-            # Trip 搜索（通过 Booking）
-            trip_via_booking = exists(
-                select(1).where(
-                    and_(
-                        InstallmentPayment.booking_id == Booking.id,
-                        Booking.trip_id == Trip.id,
-                        Trip.title.ilike(f'%{search}%')
-                    )
-                )
-            )
-            
-            query = query.filter(or_(
-                booking_condition,
-                client_via_booking,
-                trip_via_booking
-            ))
-        
-        # 状态筛选
-        status_filter = request.args.get('status', '')
-        if status_filter:
-            query = query.filter(InstallmentPayment.status == status_filter)
-        
-        # 获取所有分期付款记录
-        all_installments = query.order_by(InstallmentPayment.booking_id, InstallmentPayment.installment_number).limit(200).all()
-        
-        # 按 booking_id 分组，找到每个 booking 的 deposit 和其他分期付款
-        from collections import defaultdict
-        from datetime import date
-        today = date.today()
-        
-        # 查找所有一次性结清付款（payoff payments）
-        payoff_payments = Payment.query.filter(
-            Payment.booking_id.isnot(None),
-            Payment.status == 'succeeded'
-        ).all()
-        
-        # 按 booking_id 组织 payoff payments
-        booking_payoff_payments = {}
-        for payment in payoff_payments:
-            metadata = payment.payment_metadata or {}
-            if metadata.get('payment_step') == 'payoff' and payment.booking_id:
-                booking_id = payment.booking_id
-                if booking_id not in booking_payoff_payments:
-                    booking_payoff_payments[booking_id] = []
-                booking_payoff_payments[booking_id].append(payment)
-        
-        grouped_installments = defaultdict(lambda: {'deposit': None, 'others': [], 'payoff_payment': None})
-        
-        for installment in all_installments:
-            booking_id = installment.booking_id
-            if installment.installment_number == 0:
-                # 这是 deposit
-                grouped_installments[booking_id]['deposit'] = installment
-            else:
-                # 这是其他分期付款
-                grouped_installments[booking_id]['others'].append(installment)
-        
-        # 为每个有 payoff payment 的 booking 添加 payoff payment 信息
-        for booking_id, payoff_list in booking_payoff_payments.items():
-            if booking_id in grouped_installments and payoff_list:
-                # 使用最新的 payoff payment
-                grouped_installments[booking_id]['payoff_payment'] = max(payoff_list, key=lambda p: p.created_at or datetime.min)
-        
-        # 查询所有相关的 Payment 记录，建立映射
-        installment_ids = [inst.id for inst in all_installments]
-        payments_map = {}
-        if installment_ids:
-            # 首先查找直接关联的 Payment（通过 installment_payment_id）
-            payments = Payment.query.filter(
-                Payment.installment_payment_id.in_(installment_ids)
-            ).all()
-            for payment in payments:
-                inst_id = payment.installment_payment_id
-                if inst_id not in payments_map:
-                    payments_map[inst_id] = []
-                payments_map[inst_id].append(payment)
-        
-        # 查找所有与这些 booking 相关的 Payment 记录（包括一次性支付多个 installment 的情况）
-        booking_ids = list(grouped_installments.keys())
-        if booking_ids:
-            booking_payments = Payment.query.filter(
-                Payment.booking_id.in_(booking_ids),
-                Payment.status == 'succeeded',
-                Payment.installment_payment_id.is_(None)  # 一次性支付，没有直接关联到单个 installment
-            ).all()
-            
-            # 为每个 booking 建立 Payment 列表
-            booking_payments_map = {}
-            for payment in booking_payments:
-                booking_id = payment.booking_id
-                if booking_id not in booking_payments_map:
-                    booking_payments_map[booking_id] = []
-                booking_payments_map[booking_id].append(payment)
-            
-            # 对于状态为 'paid' 但没有直接 Payment 记录的 installment，尝试匹配 booking 相关的 Payment
-            for installment in all_installments:
-                if installment.id not in payments_map and installment.status == 'paid':
-                    booking_id = installment.booking_id
-                    if booking_id in booking_payments_map:
-                        # 找到时间最接近的 Payment（在 installment.paid_at 当天或之后）
-                        matching_payment = None
-                        if installment.paid_at:
-                            inst_paid_date = installment.paid_at.date() if isinstance(installment.paid_at, datetime) else installment.paid_at
-                            for payment in booking_payments_map[booking_id]:
-                                if payment.created_at:
-                                    payment_date = payment.created_at.date() if isinstance(payment.created_at, datetime) else payment.created_at
-                                    # 如果 Payment 时间在 installment.paid_at 当天或之后，且金额足够覆盖
-                                    if payment_date >= inst_paid_date:
-                                        if matching_payment is None or payment.created_at < matching_payment.created_at:
-                                            matching_payment = payment
-                        else:
-                            # 如果没有 paid_at，使用最早的 Payment
-                            if booking_payments_map[booking_id]:
-                                matching_payment = min(booking_payments_map[booking_id], 
-                                                     key=lambda p: p.created_at or datetime.max)
-                        
-                        if matching_payment:
-                            if installment.id not in payments_map:
-                                payments_map[installment.id] = []
-                            payments_map[installment.id].append(matching_payment)
-        
-        # 构建结构化的数据：
-        # - 多期（定金后 >1）：始终列出
-        # - 定金 + 单笔尾款：仅当仍有未付（pending/overdue）时列出，便于 Reminder / Mark Paid
-        #   （已全部付清的定金+尾款只出现在 Full Payments）
-        def _installment_unpaid(inst):
-            return (getattr(inst, 'status', None) or '') in ('pending', 'overdue')
+        orders_grouped = schedule_groups + one_time_groups
+        orders_grouped.sort(
+            key=lambda g: (
+                (g.get('deposit') and g['deposit'].created_at)
+                or (g.get('primary_payment') and g['primary_payment'].created_at)
+                or datetime.min
+            ),
+            reverse=True,
+        )
+        return render_template(
+            'admin/payments/list.html',
+            title='Payments',
+            tab=tab,
+            orders_grouped=orders_grouped,
+            today=today,
+            search=search,
+            status_filter=status_filter,
+        )
 
-        installments_grouped = []
-        for booking_id, group in grouped_installments.items():
-            if not group['deposit']:
-                continue
-            raw_others = group['others'] or []
-            is_multi_period = len(raw_others) > 1
-            if not is_multi_period and len(raw_others) == 0:
-                continue
+    if tab == 'installments':
+        orders_grouped, today = build_schedule_order_groups(
+            plan_kinds={'multi'},
+            search=search,
+            status_filter=status_filter,
+        )
+        return render_template(
+            'admin/payments/list.html',
+            title='Payments',
+            tab=tab,
+            orders_grouped=orders_grouped,
+            today=today,
+            search=search,
+            status_filter=status_filter,
+        )
 
-            # 如果有 payoff payment，过滤掉被一次性结清的 pending 分期付款
-            others = list(raw_others)
-            if group['payoff_payment']:
-                # 找出被一次性结清的 installment（原本是 pending，现在被标记为 paid，但没有对应的 Payment 记录）
-                payoff_payment = group['payoff_payment']
-                payoff_date = payoff_payment.created_at.date() if payoff_payment.created_at else None
-
-                # 过滤：隐藏那些被一次性结清的 installment
-                # 被一次性结清的特征：
-                # 1. status 是 'paid'
-                # 2. 没有对应的 Payment 记录（不在 payments_map 中）
-                # 3. paid_at 接近 payoff payment 的时间（同一天或之后）
-                filtered_others = []
-                for inst in others:
-                    # 检查是否有对应的 Payment 记录
-                    has_payment = inst.id in payments_map and len(payments_map[inst.id]) > 0
-
-                    # 如果 installment 有对应的 Payment 记录，显示（说明是单独支付的）
-                    if has_payment:
-                        filtered_others.append(inst)
-                    # 如果 installment 是 pending，显示（还未被结清）
-                    elif inst.status == 'pending':
-                        filtered_others.append(inst)
-                    # 如果 installment 是 paid 但没有 Payment 记录
-                    elif inst.status == 'paid':
-                        if inst.paid_at and payoff_date:
-                            # 检查 paid_at 是否接近 payoff 时间（同一天或之后）
-                            if isinstance(inst.paid_at, datetime):
-                                inst_paid_date = inst.paid_at.date()
-                            else:
-                                inst_paid_date = inst.paid_at
-
-                            # 如果 paid_at 在 payoff 当天或之后，说明是被一次性结清的，隐藏
-                            if inst_paid_date >= payoff_date:
-                                # 被一次性结清的，不显示
-                                pass
-                            else:
-                                # 可能是手动标记的（在 payoff 之前），显示
-                                filtered_others.append(inst)
-                        else:
-                            # 没有 paid_at 或 payoff_date，可能是手动标记的，显示
-                            filtered_others.append(inst)
-                    else:
-                        # 其他情况（如 overdue 等），显示
-                        filtered_others.append(inst)
-
-                others = filtered_others
-
-            others = sorted(others, key=lambda x: x.installment_number)
-            schedule = [group['deposit']] + others
-            unpaid = [i for i in schedule if i and _installment_unpaid(i)]
-            unpaid.sort(
-                key=lambda i: (
-                    i.due_date or date.max,
-                    i.installment_number if i.installment_number is not None else 999,
-                )
-            )
-            next_action = unpaid[0] if unpaid else None
-
-            # 定金+单笔尾款：全部付清则不进本 Tab
-            if not is_multi_period and next_action is None:
-                continue
-
-            installments_grouped.append({
-                'deposit': group['deposit'],
-                'others': others,
-                'payoff_payment': group['payoff_payment'],
-                'booking_id': booking_id,
-                'post_deposit_count': len(raw_others),
-                'is_multi_period': is_multi_period,
-                'has_unpaid': next_action is not None,
-                'next_action_installment': next_action,
-            })
-        
-        # 为每个 installment 添加对应的 Payment 记录到数据中
-        for group in installments_grouped:
-            # Deposit 的 Payment
-            deposit_id = group['deposit'].id
-            deposit_payments = payments_map.get(deposit_id, [])
-            group['deposit_payment'] = deposit_payments[0] if deposit_payments else None
-            
-            # Others 的 Payment - 构建映射字典
-            group['others_payments'] = {}
-            for inst in group['others']:
-                inst_id = inst.id
-                inst_payments = payments_map.get(inst_id, [])
-                group['others_payments'][inst_id] = inst_payments[0] if inst_payments else None
-            
-            # 构建统一的子项列表（包括 Payoff 和 installments），按付款时间排序
-            sub_items = []
-            
-            # 添加 Payoff（如果有）
-            if group['payoff_payment']:
-                payoff = group['payoff_payment']
-                sub_items.append({
-                    'type': 'payoff',
-                    'payment': payoff,
-                    'payment_time': payoff.paid_at or payoff.created_at or datetime.max,
-                    'installment': None
-                })
-            
-            # 添加 installments
-            for inst in group['others']:
-                payment = group['others_payments'].get(inst.id)
-                if payment and payment.paid_at:
-                    payment_time = payment.paid_at
-                elif inst.paid_at:
-                    payment_time = inst.paid_at
-                else:
-                    payment_time = None
-                
-                sub_items.append({
-                    'type': 'installment',
-                    'payment': payment,
-                    'payment_time': payment_time,
-                    'installment': inst
-                })
-            
-            # 排序：有付款时间的按时间排序在前，没有的按到期日期排序在后
-            def sort_key(item):
-                if item['payment_time']:
-                    return (0, item['payment_time'])
-                elif item['type'] == 'installment' and item['installment'].due_date:
-                    return (1, item['installment'].due_date)
-                else:
-                    return (2, datetime.max)
-            
-            group['sub_items'] = sorted(sub_items, key=sort_key)
-        
-        # 按 deposit 的创建时间排序
-        installments_grouped.sort(key=lambda x: x['deposit'].created_at if x['deposit'].created_at else datetime.min, reverse=True)
-        
-        return render_template('admin/payments/list.html',
-                             title='Payments',
-                             tab=tab,
-                             installments_grouped=installments_grouped,
-                             payments_map=payments_map,
-                             today=today,
-                             search=search,
-                             status_filter=status_filter)
-    
     return redirect(url_for('admin.payments', tab='records'))
 
 

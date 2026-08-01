@@ -1,0 +1,279 @@
+{# 以 order 为基本单位的可展开付款计划表（Full / Installment 共用） #}
+{% if orders_grouped %}
+<div class="overflow-x-auto">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Order number</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Buyer</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Trip</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Type</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Due Date</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Payment ID</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Detail</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% for group in orders_grouped %}
+            {% set booking = group.booking %}
+            {% set deposit = group.deposit %}
+            {% set payment = group.deposit_payment or group.primary_payment %}
+            {% set can_expand = group.others or group.payoff_payment %}
+
+            {% if group.plan_kind == 'one_time' %}
+            <tr class="hover:bg-gray-50">
+                <td class="px-4 py-3 text-sm">
+                    {% if booking %}
+                    <a href="{{ url_for('admin.manage_trip', id=booking.trip_id) if booking.trip_id else '#' }}"
+                        class="text-wetravel-cyan hover:underline">
+                        {{ booking.order_number or ('#' ~ booking.id) }}
+                    </a>
+                    {% if booking.order_number %}
+                    <span class="block text-xs text-gray-400">id: {{ booking.id }}</span>
+                    {% endif %}
+                    {% else %}
+                    <span class="text-gray-400">-</span>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3 text-sm">{{ booking.buyer_name if booking else 'N/A' }}</td>
+                <td class="px-4 py-3 text-sm">
+                    {% if booking and booking.trip %}{{ booking.trip.title }}{% else %}<span class="text-gray-400">-</span>{% endif %}
+                </td>
+                <td class="px-4 py-3 text-sm"><span class="font-medium">Full payment</span></td>
+                <td class="px-4 py-3 text-sm font-semibold">${{ ((payment.amount if payment else 0) or 0)|format_price }}</td>
+                <td class="px-4 py-3 text-sm text-gray-500">
+                    {% if payment and payment.paid_at %}{{ payment.paid_at.strftime('%Y-%m-%d %H:%M') }}
+                    {% elif payment and payment.created_at %}{{ payment.created_at.strftime('%Y-%m-%d %H:%M') }}
+                    {% else %}-{% endif %}
+                </td>
+                <td class="px-4 py-3 text-sm whitespace-nowrap">
+                    {% set st = (payment.status if payment else 'pending') or 'pending' %}
+                    <span class="px-2 py-1 text-xs font-medium rounded-full
+                        {% if st == 'succeeded' %}bg-green-100 text-green-800
+                        {% elif st == 'pending' %}bg-yellow-100 text-yellow-800
+                        {% elif st == 'failed' %}bg-red-100 text-red-800
+                        {% elif st == 'refunded' %}bg-gray-100 text-gray-800
+                        {% elif st == 'partially_refunded' %}bg-orange-100 text-orange-800
+                        {% else %}bg-gray-100 text-gray-800{% endif %}">
+                        {% if st == 'succeeded' %}paid
+                        {% elif st == 'partially_refunded' %}partially refunded
+                        {% else %}{{ st }}{% endif %}
+                    </span>
+                </td>
+                <td class="px-4 py-3 text-sm">{% if payment %}#{{ payment.id }}{% else %}<span class="text-gray-400">-</span>{% endif %}</td>
+                <td class="px-4 py-3 text-sm">
+                    {% if payment %}
+                    <a href="{{ url_for('admin.payment_detail', payment_id=payment.id) }}" class="text-wetravel-cyan hover:underline">View</a>
+                    {% elif booking and booking.trip_id %}
+                    <a href="{{ url_for('admin.manage_trip', id=booking.trip_id) }}" class="text-wetravel-cyan hover:underline">View</a>
+                    {% else %}-{% endif %}
+                </td>
+                <td class="px-4 py-3 text-sm text-gray-400">-</td>
+            </tr>
+            {% else %}
+            {% set row_status = group.deposit_display_status or deposit.status or 'pending' %}
+            {% set is_future = deposit.due_date and deposit.due_date > today and row_status not in ('paid', 'refunded', 'partially refunded') %}
+            {% set is_due = deposit.due_date and deposit.due_date <= today and row_status in ('pending', 'overdue') %}
+            <tr class="hover:bg-gray-50 {% if can_expand %}cursor-pointer{% endif %}"
+                {% if group.has_unpaid %}data-auto-expand="{{ group.booking_id }}"{% endif %}
+                {% if can_expand %}onclick="toggleInstallments({{ group.booking_id }})"{% endif %}>
+                <td class="px-4 py-3 text-sm">
+                    <div class="flex items-center">
+                        {% if can_expand %}
+                        <svg class="w-4 h-4 mr-2 text-gray-400 transform transition-transform duration-200" id="icon-{{ group.booking_id }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
+                        {% endif %}
+                        <div>
+                            {% if booking %}
+                            <a href="{{ url_for('admin.manage_trip', id=booking.trip_id) if booking.trip_id else '#' }}"
+                                class="text-wetravel-cyan hover:underline" onclick="event.stopPropagation();">
+                                {{ booking.order_number or ('#' ~ booking.id) }}
+                            </a>
+                            {% if booking.order_number %}
+                            <span class="block text-xs text-gray-400">id: {{ booking.id }}</span>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-gray-400">-</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </td>
+                <td class="px-4 py-3 text-sm">{{ booking.buyer_name if booking else 'N/A' }}</td>
+                <td class="px-4 py-3 text-sm">
+                    {% if booking and booking.trip %}{{ booking.trip.title }}{% else %}<span class="text-gray-400">-</span>{% endif %}
+                </td>
+                <td class="px-4 py-3 text-sm"><span class="font-medium">Deposit</span></td>
+                <td class="px-4 py-3 text-sm font-semibold">${{ (deposit.amount or 0)|format_price }}</td>
+                <td class="px-4 py-3 text-sm">
+                    {% if deposit.due_date %}
+                        {{ deposit.due_date.strftime('%Y-%m-%d') }}
+                        {% if is_future %}<span class="text-blue-600 text-xs ml-1">(Future)</span>
+                        {% elif is_due %}<span class="text-yellow-600 text-xs ml-1">(Due)</span>{% endif %}
+                    {% else %}<span class="text-gray-400">-</span>{% endif %}
+                </td>
+                <td class="px-4 py-3 text-sm whitespace-nowrap">
+                    <span class="px-2 py-1 text-xs font-medium rounded-full
+                        {% if row_status == 'paid' %}bg-green-100 text-green-800
+                        {% elif row_status == 'overdue' %}bg-red-100 text-red-800
+                        {% elif row_status == 'refunded' or row_status == 'partially refunded' %}bg-gray-100 text-gray-800
+                        {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                        {{ row_status }}
+                    </span>
+                    {% if group.has_unpaid and group.next_action_installment and group.next_action_installment.id != deposit.id %}
+                    <span class="block text-xs text-gray-400 mt-0.5">has unpaid</span>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3 text-sm">{% if payment %}#{{ payment.id }}{% else %}<span class="text-gray-400">-</span>{% endif %}</td>
+                <td class="px-4 py-3 text-sm">
+                    {% if payment %}
+                    <a href="{{ url_for('admin.payment_detail', payment_id=payment.id) }}"
+                        class="text-wetravel-cyan hover:underline" onclick="event.stopPropagation();">View</a>
+                    {% elif booking and booking.trip_id %}
+                    <a href="{{ url_for('admin.manage_trip', id=booking.trip_id) }}"
+                        class="text-wetravel-cyan hover:underline" onclick="event.stopPropagation();">View</a>
+                    {% else %}<span class="text-gray-400">-</span>{% endif %}
+                </td>
+                <td class="px-4 py-3 text-sm" onclick="event.stopPropagation();">
+                    <div class="relative inline-block text-left">
+                        <button type="button"
+                            class="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-wetravel-cyan"
+                            onclick="toggleDropdown('dropdown-{{ deposit.id }}')">
+                            Actions
+                            <svg class="-mr-1 ml-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                            </svg>
+                        </button>
+                        <div id="dropdown-{{ deposit.id }}"
+                            class="hidden origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+                            <div class="py-1" role="menu">
+                                {% if group.next_action_installment %}
+                                <button onclick="sendReminder({{ group.next_action_installment.id }})"
+                                    class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100" role="menuitem">
+                                    Send Reminder
+                                </button>
+                                <button onclick="markPaid({{ group.next_action_installment.id }})"
+                                    class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100" role="menuitem">
+                                    Mark Paid
+                                </button>
+                                {% else %}
+                                <span class="block px-4 py-2 text-xs text-gray-400">No actions available</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+
+            {% if group.sub_items %}
+            {% for item in group.sub_items %}
+            {% if item.type == 'payoff' %}
+            <tr class="installment-row-{{ group.booking_id }} hidden border-l-4 border-purple-500 bg-gray-100">
+                <td class="pl-8 pr-4 py-2.5 text-sm text-gray-400" colspan="3">-</td>
+                <td class="px-4 py-2.5 text-sm">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">Payoff</span>
+                </td>
+                <td class="px-4 py-2.5 text-sm font-semibold text-purple-700">${{ (item.payment.amount or 0)|format_price }}</td>
+                <td class="px-4 py-2.5 text-sm text-gray-600">
+                    {% if item.payment.paid_at %}{{ item.payment.paid_at.strftime('%Y-%m-%d %H:%M') }}
+                    {% elif item.payment.created_at %}{{ item.payment.created_at.strftime('%Y-%m-%d %H:%M') }}
+                    {% else %}-{% endif %}
+                </td>
+                <td class="px-4 py-2.5 text-sm"><span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">paid</span></td>
+                <td class="px-4 py-2.5 text-sm"><span class="font-medium text-purple-700">#{{ item.payment.id }}</span></td>
+                <td class="px-4 py-2.5 text-sm">
+                    <a href="{{ url_for('admin.payment_detail', payment_id=item.payment.id) }}"
+                        class="text-wetravel-cyan hover:underline" onclick="event.stopPropagation();">View</a>
+                </td>
+                <td class="px-4 py-2.5 text-sm text-gray-400">-</td>
+            </tr>
+            {% else %}
+            {% set installment = item.installment %}
+            {% set inst_payment = item.payment %}
+            {% set inst_status = item.display_status or installment.status or 'pending' %}
+            {% set inst_is_future = installment.due_date and installment.due_date > today and inst_status not in ('paid', 'refunded', 'partially refunded') %}
+            {% set inst_is_due = installment.due_date and installment.due_date <= today and inst_status in ('pending', 'overdue') %}
+            <tr class="installment-row-{{ group.booking_id }} hidden border-l-4 border-indigo-400 bg-gray-100">
+                <td class="pl-8 pr-4 py-2.5 text-sm text-gray-400" colspan="3">-</td>
+                <td class="px-4 py-2.5 text-sm whitespace-nowrap">
+                    <span class="text-indigo-700 font-medium">
+                        {% if group.post_deposit_count == 1 %}Final payment{% else %}#{{ installment.installment_number }}{% endif %}
+                    </span>
+                </td>
+                <td class="px-4 py-2.5 text-sm font-semibold text-gray-700">${{ (installment.amount or 0)|format_price }}</td>
+                <td class="px-4 py-2.5 text-sm text-gray-600">
+                    {% if installment.status == 'paid' and inst_payment and inst_payment.paid_at %}
+                        {{ inst_payment.paid_at.strftime('%Y-%m-%d %H:%M') }}
+                    {% elif installment.status == 'paid' and installment.paid_at %}
+                        {{ installment.paid_at.strftime('%Y-%m-%d %H:%M') }}
+                    {% elif installment.due_date %}
+                        {{ installment.due_date.strftime('%Y-%m-%d') }}
+                        {% if inst_is_future %}<span class="text-blue-600 text-xs ml-1">(Future)</span>
+                        {% elif inst_is_due %}<span class="text-amber-600 text-xs ml-1">(Due)</span>{% endif %}
+                    {% else %}-{% endif %}
+                </td>
+                <td class="px-4 py-2.5 text-sm">
+                    <span class="px-2 py-1 text-xs rounded-full
+                        {% if inst_status == 'paid' %}bg-green-100 text-green-800
+                        {% elif inst_status == 'overdue' %}bg-red-100 text-red-800
+                        {% elif inst_status == 'cancelled' %}bg-gray-100 text-gray-600
+                        {% elif inst_status == 'refunded' or inst_status == 'partially refunded' %}bg-gray-100 text-gray-800
+                        {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                        {{ inst_status }}
+                    </span>
+                </td>
+                <td class="px-4 py-2.5 text-sm">
+                    {% if inst_payment %}<span class="font-medium text-gray-700">#{{ inst_payment.id }}</span>
+                    {% else %}<span class="text-gray-400">-</span>{% endif %}
+                </td>
+                <td class="px-4 py-2.5 text-sm">
+                    {% if inst_payment %}
+                    <a href="{{ url_for('admin.payment_detail', payment_id=inst_payment.id) }}"
+                        class="text-wetravel-cyan hover:underline" onclick="event.stopPropagation();">View</a>
+                    {% elif booking and booking.trip_id %}
+                    <a href="{{ url_for('admin.manage_trip', id=booking.trip_id) }}"
+                        class="text-wetravel-cyan hover:underline" onclick="event.stopPropagation();">View</a>
+                    {% else %}<span class="text-gray-400">-</span>{% endif %}
+                </td>
+                <td class="px-4 py-2.5 text-sm" onclick="event.stopPropagation();">
+                    <div class="relative inline-block text-left">
+                        <button type="button"
+                            class="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-wetravel-cyan"
+                            onclick="toggleDropdown('dropdown-inst-{{ installment.id }}')">
+                            Actions
+                            <svg class="-mr-1 ml-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                            </svg>
+                        </button>
+                        <div id="dropdown-inst-{{ installment.id }}"
+                            class="hidden origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+                            <div class="py-1" role="menu">
+                                {% if inst_status in ('pending', 'overdue') %}
+                                <button onclick="sendReminder({{ installment.id }})"
+                                    class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100" role="menuitem">Send Reminder</button>
+                                <button onclick="markPaid({{ installment.id }})"
+                                    class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100" role="menuitem">Mark Paid</button>
+                                {% else %}
+                                <span class="block px-4 py-2 text-xs text-gray-400">No actions available</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+            {% endif %}
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="text-center py-12 text-gray-500">
+    No orders found.
+</div>
+{% endif %}
