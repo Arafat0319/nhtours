@@ -882,8 +882,8 @@
                     </svg>
                     Generate Receipt
                 </button>
-                <button type="button" id="reconcileLedgerBtn" class="px-4 py-2 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none">
-                    Reconcile
+                <button type="button" id="cancelOrderBtn" class="px-4 py-2 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none">
+                    Cancel order
                 </button>
                 <button type="button" id="refundBookingBtn" class="px-4 py-2 border border-orange-300 rounded text-sm font-medium text-orange-700 hover:bg-orange-50 focus:outline-none flex items-center">
                     <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -913,8 +913,8 @@
     </div>
 </div>
 
-<!-- Refund Modal -->
-<div id="refundModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+<!-- Refund Modal (above Manage modal z-50) -->
+<div id="refundModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-[60]">
     <div class="relative top-10 mx-auto w-full max-w-lg shadow-lg rounded-md bg-white mb-10">
         <div class="p-6">
             <div class="flex justify-between items-center mb-4">
@@ -930,45 +930,17 @@
                 <div>
                     <p class="text-sm text-gray-600 mb-1">Booking <span class="font-medium" id="refundBookingLabel"></span></p>
                     <p class="text-sm text-gray-600">Amount paid (net): <span class="font-semibold" id="refundAmountPaid">$0.00</span></p>
-                    <p id="refundFeeNote" class="mt-2 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded px-2 py-1.5">
-                        Card processing fees are never refunded. Refund amounts use the net (base) amount only.
-                    </p>
-                    <p id="refundDepositHint" class="hidden mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5"></p>
+                    <p class="text-sm text-gray-600 mt-1">Refundable total: <span class="font-semibold" id="refundMaxAmount">$0.00</span></p>
+                    <p id="refundPaymentMeta" class="mt-2 text-xs text-gray-500"></p>
                 </div>
 
                 <div class="border-t pt-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Payment to refund <span class="text-red-500">*</span></label>
-                    <select id="refundPaymentSelect" class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm">
-                    </select>
-                    <p id="refundPaymentMeta" class="mt-1 text-xs text-gray-500"></p>
-                </div>
-
-                <div>
-                    <label class="flex items-start gap-2 cursor-pointer">
-                        <input type="checkbox" id="refundIncludeDeposit" class="mt-1 text-wetravel-cyan focus:ring-wetravel-cyan">
-                        <span class="text-sm text-gray-700">Also refund deposit <span class="text-gray-500 font-normal">(unchecked by default — deposit is withheld)</span></span>
-                    </label>
-                </div>
-                
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-3">Refund Type</label>
-                    <div class="space-y-2">
-                        <label class="flex items-center">
-                            <input type="radio" name="refundType" value="full" checked class="text-wetravel-cyan focus:ring-wetravel-cyan">
-                            <span class="ml-2 text-sm text-gray-700">Full remaining (<span id="refundFullAmount">$0.00</span>)</span>
-                        </label>
-                        <label class="flex items-center">
-                            <input type="radio" name="refundType" value="partial" class="text-wetravel-cyan focus:ring-wetravel-cyan">
-                            <span class="ml-2 text-sm text-gray-700">Partial (custom amount)</span>
-                        </label>
-                    </div>
-                </div>
-                
-                <div id="partialRefundInput" class="hidden">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Refund Amount ($)</label>
-                    <input type="text" id="refundAmount" inputmode="decimal" pattern="[0-9]*\.?[0-9]*" 
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Refund amount ($) <span class="text-red-500">*</span></label>
+                    <input type="text" id="refundAmount" inputmode="decimal" pattern="[0-9]*\.?[0-9]*"
                         class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm"
-                        placeholder="0.00">
+                        placeholder="0.00" required>
+                    <p class="mt-1 text-xs text-gray-500">Enter the amount agreed with the customer (up to refundable total; card fees are not refunded).</p>
+                    <p id="refundAmountError" class="mt-1 text-sm text-red-600 hidden" role="alert"></p>
                 </div>
                 
                 <div>
@@ -1003,7 +975,7 @@
 </div>
 
 <!-- Delete Confirmation Modal -->
-<div id="deleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+<div id="deleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-[60]">
     <div class="relative top-20 mx-auto w-full max-w-md shadow-lg rounded-md bg-white">
         <div class="p-6">
             <div class="flex items-center mb-4">
@@ -2481,15 +2453,22 @@
                 <div class="bg-white border border-gray-200 rounded-lg p-6">
                     <h4 class="text-lg font-medium text-gray-900 mb-4">Payment Information</h4>
                     <div class="space-y-4">
+                        ${booking.status === 'cancelled' ? `
+                        <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2">
+                            <p class="text-sm font-medium text-red-800">Order cancelled</p>
+                            <p class="text-xs text-red-700 mt-0.5">Payment status can no longer be edited. Use Refund if money still needs to be returned.</p>
+                        </div>
+                        <input type="hidden" id="bookingStatus" value="cancelled">
+                        ` : `
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Payment Status</label>
                             <select id="bookingStatus" class="admin-select block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm">
                                 <option value="pending" ${booking.status === 'pending' ? 'selected' : ''}>Pending</option>
                                 <option value="deposit_paid" ${booking.status === 'deposit_paid' ? 'selected' : ''}>Deposit Paid</option>
                                 <option value="fully_paid" ${booking.status === 'fully_paid' ? 'selected' : ''}>Fully Paid</option>
-                                <option value="cancelled" ${booking.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
                             </select>
                         </div>
+                        `}
                         <div class="grid grid-cols-3 gap-4">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">Expected Amount</label>
@@ -2717,6 +2696,18 @@
             const orderNumEl = document.getElementById('bookingOrderNumber');
             if (orderNumEl) orderNumEl.textContent = booking.order_number || ('#' + booking.id);
             
+            // Cancel order: hide when already cancelled
+            const cancelOrderBtn = document.getElementById('cancelOrderBtn');
+            if (cancelOrderBtn) {
+                if (booking.status === 'cancelled') {
+                    cancelOrderBtn.classList.add('hidden');
+                    cancelOrderBtn.disabled = true;
+                } else {
+                    cancelOrderBtn.classList.remove('hidden');
+                    cancelOrderBtn.disabled = false;
+                }
+            }
+
             // Attach event listener to Amount Paid input for real-time update
             // Use setTimeout to ensure DOM is updated after innerHTML
             setTimeout(() => {
@@ -3120,32 +3111,48 @@
             });
         }
 
-        const reconcileLedgerBtn = document.getElementById('reconcileLedgerBtn');
-        if (reconcileLedgerBtn) {
-            reconcileLedgerBtn.addEventListener('click', async function() {
+        const cancelOrderBtn = document.getElementById('cancelOrderBtn');
+        if (cancelOrderBtn) {
+            cancelOrderBtn.addEventListener('click', async function() {
                 if (!currentBookingId) return;
+                if (currentBookingData && currentBookingData.status === 'cancelled') {
+                    showToast('This order is already cancelled', 'warning');
+                    return;
+                }
+                const label = (currentBookingData && currentBookingData.order_number)
+                    ? currentBookingData.order_number
+                    : ('#' + currentBookingId);
+                if (!confirm(
+                    'Cancel order ' + label + '?\n\n'
+                    + 'This marks the booking as Cancelled and stops unpaid installments.\n'
+                    + 'It does NOT refund money — use Refund if needed.\n'
+                    + 'No email is sent to the customer.'
+                )) {
+                    return;
+                }
+                cancelOrderBtn.disabled = true;
+                const prevText = cancelOrderBtn.innerText;
+                cancelOrderBtn.innerText = 'Cancelling...';
                 try {
-                    const resp = await fetch(`/admin/trips/{{ trip.id }}/bookings/${currentBookingId}/reconcile-ledger`);
-                    const data = await resp.json();
-                    if (!resp.ok || !data.success) {
-                        alert((data && data.message) || 'Reconcile failed');
-                        return;
+                    const response = await fetch(
+                        `/admin/trips/{{ trip.id }}/bookings/${currentBookingId}/cancel`,
+                        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }
+                    );
+                    const data = await response.json();
+                    if (response.ok && data.success) {
+                        showToast(data.message || 'Order cancelled', 'success');
+                        closeManageBookingModal();
+                        reloadManagePage('bookings');
+                    } else {
+                        showToast((data && data.message) || 'Failed to cancel order', 'error');
+                        cancelOrderBtn.disabled = false;
+                        cancelOrderBtn.innerText = prevText;
                     }
-                    const r = data.reconcile || {};
-                    let msg = 'Ledger reconcile (read-only)\n\n'
-                        + 'Stored amount_paid: $' + Number(r.stored_amount_paid || 0).toFixed(2) + '\n'
-                        + 'Computed Σ(base−refunded): $' + Number(r.computed_amount_paid || 0).toFixed(2) + '\n'
-                        + 'Delta: $' + Number(r.delta || 0).toFixed(2) + '\n'
-                        + (r.ok ? 'OK: amounts align.' : 'MISMATCH or anomalies detected.');
-                    if (r.anomalies && r.anomalies.length) {
-                        msg += '\n\nAnomalies:\n' + r.anomalies.map(function(a) {
-                            return '- payment #' + a.payment_id + ': ' + a.issue
-                                + (a.refunded_amount != null ? ' (refunded=' + a.refunded_amount + ', base=' + a.base + ')' : '');
-                        }).join('\n');
-                    }
-                    alert(msg);
-                } catch (e) {
-                    alert('Reconcile request failed');
+                } catch (err) {
+                    console.error('Error cancelling order:', err);
+                    showToast('Error cancelling order: ' + err.message, 'error');
+                    cancelOrderBtn.disabled = false;
+                    cancelOrderBtn.innerText = prevText;
                 }
             });
         }
@@ -3156,10 +3163,7 @@
         const closeRefundModalBtn = document.getElementById('closeRefundModalBtn');
         const cancelRefundBtn = document.getElementById('cancelRefundBtn');
         const confirmRefundBtn = document.getElementById('confirmRefundBtn');
-        const refundTypeRadios = document.querySelectorAll('input[name="refundType"]');
-        const partialRefundInput = document.getElementById('partialRefundInput');
         const refundAmountInput = document.getElementById('refundAmount');
-        const refundPaymentSelect = document.getElementById('refundPaymentSelect');
 
         function getRefundablePayments() {
             const list = (currentBookingData && currentBookingData.payments) || [];
@@ -3168,81 +3172,79 @@
             });
         }
 
-        function getSelectedRefundPayment() {
-            if (!refundPaymentSelect) return null;
-            const id = parseInt(refundPaymentSelect.value, 10);
-            return getRefundablePayments().find(function(p) { return p.id === id; }) || null;
+        function getTotalRefundable() {
+            return getRefundablePayments().reduce(function(sum, p) {
+                return sum + Number(p.refundable_remaining || 0);
+            }, 0);
         }
 
-        function isIncludeDepositChecked() {
-            const el = document.getElementById('refundIncludeDeposit');
-            return !!(el && el.checked);
+        function setRefundAmountError(message) {
+            const errEl = document.getElementById('refundAmountError');
+            if (!errEl) return;
+            if (message) {
+                errEl.textContent = message;
+                errEl.classList.remove('hidden');
+                if (refundAmountInput) {
+                    refundAmountInput.classList.add('ring-red-500');
+                    refundAmountInput.classList.remove('ring-gray-300');
+                }
+            } else {
+                errEl.textContent = '';
+                errEl.classList.add('hidden');
+                if (refundAmountInput) {
+                    refundAmountInput.classList.remove('ring-red-500');
+                }
+            }
         }
 
-        function getMaxRefundForPayment(p) {
-            if (!p) return 0;
-            if (isIncludeDepositChecked()) {
-                return Number(p.refundable_remaining || 0);
+        function validateRefundAmountLive() {
+            const maxRefund = getTotalRefundable();
+            const raw = refundAmountInput ? String(refundAmountInput.value || '').trim() : '';
+            if (!raw) {
+                setRefundAmountError('');
+                return true;
             }
-            if (p.max_refund_without_deposit != null) {
-                return Number(p.max_refund_without_deposit || 0);
+            const amount = parseFloat(raw);
+            if (isNaN(amount) || amount < 0) {
+                setRefundAmountError('Please enter a valid refund amount.');
+                return false;
             }
-            return Number(p.refundable_remaining || 0);
+            if (amount > maxRefund + 0.001) {
+                setRefundAmountError(
+                    'Amount exceeds refundable total ($' + maxRefund.toFixed(2) + '). Enter an amount up to the refundable total.'
+                );
+                return false;
+            }
+            setRefundAmountError('');
+            return true;
         }
 
         function updateRefundPaymentUI() {
-            const p = getSelectedRefundPayment();
-            const remainingBase = p ? Number(p.refundable_remaining || 0) : 0;
-            const maxRefund = getMaxRefundForPayment(p);
-            document.getElementById('refundFullAmount').textContent = '$' + maxRefund.toFixed(2);
+            const maxRefund = getTotalRefundable();
+            const maxEl = document.getElementById('refundMaxAmount');
+            if (maxEl) maxEl.textContent = '$' + maxRefund.toFixed(2);
             const meta = document.getElementById('refundPaymentMeta');
             if (meta) {
-                if (!p) {
+                if (maxRefund <= 0.001) {
                     const paid = Number((currentBookingData && (currentBookingData.amount_paid_display != null ? currentBookingData.amount_paid_display : currentBookingData.amount_paid)) || 0);
                     if (paid <= 0.001) {
-                        meta.textContent = 'No payments to refund. You can cancel this $0 booking with “Cancel booking” + reason.';
+                        meta.textContent = 'Nothing to refund. You can cancel this $0 booking with “Cancel booking” + reason, or use Cancel order.';
                     } else {
-                        meta.textContent = 'No refundable payments on this booking.';
+                        meta.textContent = 'No remaining refundable balance on this booking.';
                     }
                 } else {
-                    const refunded = Number(p.refunded_amount || 0).toFixed(2);
-                    const charged = Number(p.amount || 0).toFixed(2);
-                    const base = Number(p.base_amount != null ? p.base_amount : (p.amount - (p.fee_amount || 0))).toFixed(2);
-                    const fee = Number(p.fee_amount || 0).toFixed(2);
-                    meta.textContent = 'Charged $' + charged + ' (base $' + base + ' + fee $' + fee + ', fee not refundable) · Already refunded $' + refunded
-                        + ' · Cap now $' + maxRefund.toFixed(2)
-                        + (isIncludeDepositChecked() ? '' : ' (deposit withheld)')
-                        + (p.stripe_payment_intent_id ? ' · ' + p.stripe_payment_intent_id : ' · (no Stripe PI)');
+                    meta.textContent = '';
                 }
             }
+            validateRefundAmountLive();
             if (confirmRefundBtn) {
-                const cancelOnly = !p && !!(document.getElementById('refundCancelBooking') || {}).checked;
-                confirmRefundBtn.disabled = !(p && maxRefund > 0) && !cancelOnly;
+                const cancelOnly = maxRefund <= 0.001 && !!(document.getElementById('refundCancelBooking') || {}).checked;
+                // Keep Process Refund clickable so validation can show a message (not a silent disabled click)
+                confirmRefundBtn.disabled = false;
+                confirmRefundBtn.title = (maxRefund <= 0.001 && !cancelOnly)
+                    ? 'No refundable balance — check Cancel booking to cancel only, or enter $0 with Cancel booking'
+                    : '';
             }
-        }
-
-        function populateRefundPaymentSelect() {
-            if (!refundPaymentSelect) return;
-            const payments = getRefundablePayments();
-            refundPaymentSelect.innerHTML = '';
-            if (!payments.length) {
-                const opt = document.createElement('option');
-                opt.value = '';
-                opt.textContent = 'No refundable payments';
-                refundPaymentSelect.appendChild(opt);
-            } else {
-                payments.forEach(function(p, idx) {
-                    const opt = document.createElement('option');
-                    opt.value = String(p.id);
-                    const when = p.paid_at || p.created_at || '';
-                    const rem = Number(p.refundable_remaining || 0).toFixed(2);
-                    const base = Number(p.base_amount != null ? p.base_amount : p.amount || 0).toFixed(2);
-                    opt.textContent = '#' + p.id + ' · base $' + base + ' · $' + rem + ' left' + (when ? ' · ' + when : '');
-                    if (idx === 0) opt.selected = true;
-                    refundPaymentSelect.appendChild(opt);
-                });
-            }
-            updateRefundPaymentUI();
         }
         
         // Attach event listeners to refundAmountInput if it exists
@@ -3261,7 +3263,9 @@
                 if (parts.length > 2) {
                     this.value = parts[0] + '.' + parts.slice(1).join('');
                 }
+                validateRefundAmountLive();
             });
+            refundAmountInput.addEventListener('blur', validateRefundAmountLive);
             refundAmountInput.addEventListener('paste', function(e) {
                 const paste = (e.clipboardData || window.clipboardData).getData('text');
                 const filteredPaste = paste.replace(/[^0-9.]/g, '');
@@ -3269,83 +3273,63 @@
                 const finalPaste = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : filteredPaste;
                 document.execCommand('insertText', false, finalPaste);
                 e.preventDefault();
+                validateRefundAmountLive();
             });
         }
 
-        if (refundPaymentSelect) {
-            refundPaymentSelect.addEventListener('change', updateRefundPaymentUI);
-        }
-        const refundIncludeDepositEl = document.getElementById('refundIncludeDeposit');
-        if (refundIncludeDepositEl) {
-            refundIncludeDepositEl.addEventListener('change', updateRefundPaymentUI);
-        }
         const refundCancelBookingEl = document.getElementById('refundCancelBooking');
         if (refundCancelBookingEl) {
             refundCancelBookingEl.addEventListener('change', updateRefundPaymentUI);
         }
 
-        // Toggle partial refund input
-        refundTypeRadios.forEach(radio => {
-            radio.addEventListener('change', function() {
-                if (this.value === 'partial') {
-                    partialRefundInput.classList.remove('hidden');
-                    refundAmountInput.required = true;
-                } else {
-                    partialRefundInput.classList.add('hidden');
-                    refundAmountInput.required = false;
-                }
-            });
-        });
-
         // Open Refund Modal
         if (refundBookingBtn) {
             refundBookingBtn.addEventListener('click', function() {
-                if (!currentBookingId || !currentBookingData) return;
-                
-                const paidForRefund = (currentBookingData.amount_paid_display != null ? currentBookingData.amount_paid_display : currentBookingData.amount_paid) || 0;
-                const label = currentBookingData.order_number
-                    ? (currentBookingData.order_number + ' (id ' + currentBookingId + ')')
-                    : ('#' + currentBookingId);
-                document.getElementById('refundBookingLabel').textContent = label;
-                document.getElementById('refundAmountPaid').textContent = '$' + parseFloat(paidForRefund).toFixed(2);
-
-                const hintEl = document.getElementById('refundDepositHint');
-                if (hintEl) {
-                    const dep = currentBookingData.deposit_hint != null
-                        ? currentBookingData.deposit_hint
-                        : currentBookingData.deposit_reserved;
-                    if (dep != null && Number(dep) > 0) {
-                        hintEl.textContent = 'Deposit about $' + Number(dep).toFixed(2) + ' is withheld by default. Check “Also refund deposit” only if you intend to return it.';
-                        hintEl.classList.remove('hidden');
-                    } else {
-                        hintEl.textContent = 'No package deposit configured. Card fees are still never refunded.';
-                        hintEl.classList.remove('hidden');
+                try {
+                    if (!currentBookingId || !currentBookingData) {
+                        showToast('Booking details are still loading. Please wait a moment and try again.', 'warning');
+                        return;
                     }
-                }
+                    if (!refundModal) {
+                        showToast('Refund dialog failed to load. Please refresh the page.', 'error');
+                        return;
+                    }
 
-                populateRefundPaymentSelect();
-                
-                // Reset form
-                document.querySelector('input[name="refundType"][value="full"]').checked = true;
-                partialRefundInput.classList.add('hidden');
-                refundAmountInput.value = '';
-                refundAmountInput.required = false;
-                document.getElementById('refundReason').value = '';
-                const cancelCb = document.getElementById('refundCancelBooking');
-                const manualCb = document.getElementById('refundManualOnly');
-                const depositCb = document.getElementById('refundIncludeDeposit');
-                if (cancelCb) cancelCb.checked = false;
-                if (manualCb) manualCb.checked = false;
-                if (depositCb) depositCb.checked = false;
-                updateRefundPaymentUI();
-                
-                refundModal.classList.remove('hidden');
+                    const paidForRefund = (currentBookingData.amount_paid_display != null ? currentBookingData.amount_paid_display : currentBookingData.amount_paid) || 0;
+                    const label = currentBookingData.order_number
+                        ? (currentBookingData.order_number + ' (id ' + currentBookingId + ')')
+                        : ('#' + currentBookingId);
+                    const labelEl = document.getElementById('refundBookingLabel');
+                    const paidEl = document.getElementById('refundAmountPaid');
+                    if (labelEl) labelEl.textContent = label;
+                    if (paidEl) paidEl.textContent = '$' + parseFloat(paidForRefund).toFixed(2);
+
+                    // Reset form
+                    if (refundAmountInput) refundAmountInput.value = '';
+                    const reasonEl = document.getElementById('refundReason');
+                    if (reasonEl) reasonEl.value = '';
+                    const cancelCb = document.getElementById('refundCancelBooking');
+                    const manualCb = document.getElementById('refundManualOnly');
+                    if (cancelCb) cancelCb.checked = false;
+                    if (manualCb) manualCb.checked = false;
+                    setRefundAmountError('');
+                    updateRefundPaymentUI();
+
+                    refundModal.classList.remove('hidden');
+                    if (refundAmountInput) {
+                        setTimeout(function() { refundAmountInput.focus(); }, 50);
+                    }
+                } catch (err) {
+                    console.error('Error opening refund modal:', err);
+                    showToast('Could not open refund dialog: ' + (err.message || err), 'error');
+                }
             });
         }
 
         // Close Refund Modal
         function closeRefundModal() {
-            refundModal.classList.add('hidden');
+            if (refundModal) refundModal.classList.add('hidden');
+            setRefundAmountError('');
         }
 
         if (closeRefundModalBtn) {
@@ -3360,81 +3344,35 @@
             confirmRefundBtn.addEventListener('click', async function() {
                 if (!currentBookingId) return;
 
-                const payment = getSelectedRefundPayment();
                 const cancelBooking = !!(document.getElementById('refundCancelBooking') || {}).checked;
                 const manualOnly = !!(document.getElementById('refundManualOnly') || {}).checked;
-                const includeDeposit = isIncludeDepositChecked();
                 const reason = (document.getElementById('refundReason').value || '').trim();
                 if (!reason) {
                     showToast('Refund reason is required', 'warning');
                     return;
                 }
 
-                // $0 / no payment: cancel-only path
-                if (!payment) {
-                    if (!cancelBooking) {
-                        showToast('Select a payment to refund, or check Cancel booking for $0 orders', 'warning');
-                        return;
-                    }
-                    confirmRefundBtn.disabled = true;
-                    confirmRefundBtn.innerText = 'Processing...';
-                    try {
-                        const response = await fetch(`/admin/trips/{{ trip.id }}/bookings/${currentBookingId}/refund`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                amount: 0,
-                                reason: reason,
-                                cancel_booking: true,
-                                manual_only: true,
-                                include_deposit: false
-                            })
-                        });
-                        const data = await response.json();
-                        if (data.success) {
-                            showToast(data.message || 'Booking cancelled', 'success');
-                            closeRefundModal();
-                            closeManageBookingModal();
-                            reloadManagePage('bookings');
-                        } else {
-                            showToast('Error: ' + (data.message || 'Failed'), 'error');
-                            confirmRefundBtn.disabled = false;
-                            confirmRefundBtn.innerText = 'Process Refund';
-                            updateRefundPaymentUI();
-                        }
-                    } catch (err) {
-                        showToast('Error: ' + err.message, 'error');
-                        confirmRefundBtn.disabled = false;
-                        confirmRefundBtn.innerText = 'Process Refund';
-                        updateRefundPaymentUI();
-                    }
-                    return;
-                }
-                
-                const refundType = document.querySelector('input[name="refundType"]:checked').value;
-                let refundAmount = 0;
-                const maxRefund = getMaxRefundForPayment(payment);
-                
-                if (refundType === 'full') {
-                    refundAmount = maxRefund;
-                } else {
-                    refundAmount = parseFloat(refundAmountInput.value);
-                    if (!refundAmount || refundAmount <= 0) {
-                        showToast('Please enter a valid refund amount', 'warning');
-                        return;
-                    }
-                    if (refundAmount > maxRefund + 0.001) {
-                        showToast('Refund amount cannot exceed remaining $' + maxRefund.toFixed(2), 'error');
-                        return;
-                    }
-                }
+                const maxRefund = getTotalRefundable();
+                const refundAmount = parseFloat(refundAmountInput && refundAmountInput.value);
+                const amountToSend = (refundAmount && refundAmount > 0) ? refundAmount : 0;
 
-                if (refundAmount <= 0.001) {
+                if (amountToSend <= 0.001) {
                     if (!cancelBooking) {
-                        showToast('Nothing to refund under current deposit settings. Check “Also refund deposit” or Cancel booking.', 'warning');
+                        setRefundAmountError('Please enter the refund amount agreed with the customer (max $' + maxRefund.toFixed(2) + ').');
+                        showToast('Please enter a refund amount (max $' + maxRefund.toFixed(2) + '), or check Cancel booking for cancel-only.', 'warning');
                         return;
                     }
-                    // cancel with 0 amount
+                    setRefundAmountError('');
+                } else if (amountToSend > maxRefund + 0.001) {
+                    const msg = 'Refund amount $' + amountToSend.toFixed(2)
+                        + ' exceeds refundable total $' + maxRefund.toFixed(2)
+                        + '. Please enter an amount up to $' + maxRefund.toFixed(2) + '.';
+                    setRefundAmountError(msg);
+                    showToast(msg, 'error');
+                    if (refundAmountInput) refundAmountInput.focus();
+                    return;
+                } else {
+                    setRefundAmountError('');
                 }
                 
                 confirmRefundBtn.disabled = true;
@@ -3447,24 +3385,29 @@
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify({
-                            payment_id: payment.id,
-                            amount: refundAmount,
+                            amount: amountToSend,
                             reason: reason,
-                            type: refundType,
                             cancel_booking: cancelBooking,
-                            manual_only: manualOnly,
-                            include_deposit: includeDeposit
+                            manual_only: manualOnly
                         })
                     });
                     
-                    const data = await response.json();
-                    if (data.success) {
+                    let data = {};
+                    try {
+                        data = await response.json();
+                    } catch (parseErr) {
+                        data = {};
+                    }
+                    if (response.ok && data.success) {
                         showToast(data.message || 'Refund processed successfully!', 'success');
                         closeRefundModal();
                         closeManageBookingModal();
                         reloadManagePage('bookings'); // Reload to update financials
                     } else {
-                        showToast('Error: ' + (data.message || 'Failed to process refund'), 'error');
+                        const errMsg = data.message
+                            || (response.status === 403 ? 'Admin permission required to refund' : null)
+                            || ('Failed to process refund (HTTP ' + response.status + ')');
+                        showToast('Error: ' + errMsg, 'error');
                         confirmRefundBtn.disabled = false;
                         confirmRefundBtn.innerText = 'Process Refund';
                         updateRefundPaymentUI();

@@ -2408,52 +2408,84 @@ def mark_installment_paid(installment_id):
 @bp.route('/payments/export')
 @admin_required
 def export_payments():
-    """导出Payments为Excel文件"""
+    """导出Payments为Excel文件（含退款金额/原因/时间）"""
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Font, Alignment
         from io import BytesIO
         from datetime import datetime
-        
+
         # 创建Excel工作簿
         wb = Workbook()
         ws = wb.active
         ws.title = "Payments"
-        
+
         # 设置表头
-        headers = ['Client Name', 'Client Email', 'Trip Title', 'Amount', 'Status', 'Date']
+        headers = [
+            'Order Number',
+            'Client Name',
+            'Client Email',
+            'Trip Title',
+            'Amount',
+            'Refunded',
+            'Net',
+            'Status',
+            'Refund Reason',
+            'Paid At',
+            'Refunded At',
+            'Created',
+        ]
         ws.append(headers)
-        
+
         # 设置表头样式
         header_font = Font(bold=True)
         for cell in ws[1]:
             cell.font = header_font
             cell.alignment = Alignment(horizontal='left')
-        
+
         # 预加载关联数据并查询所有payments
         payments = Payment.query.options(
             joinedload(Payment.client),
-            joinedload(Payment.trip)
+            joinedload(Payment.trip),
+            joinedload(Payment.booking),
         ).order_by(Payment.created_at.desc()).all()
-        
+
         # 填充数据
         for payment in payments:
+            booking = payment.booking
+            order_number = (
+                (booking.order_number if booking else None)
+                or (f'#{payment.booking_id}' if payment.booking_id else '-')
+            )
             client_name = payment.client.name if payment.client else '-'
             client_email = payment.client.email if payment.client else '-'
             trip_title = payment.trip.title if payment.trip else '-'
-            amount = payment.amount or 0.0
+            amount = round(float(payment.amount or 0.0), 2)
+            refunded = round(float(payment.refunded_amount or 0.0), 2)
+            net = round(max(0.0, amount - refunded), 2)
             status = payment.status or 'pending'
-            date_str = payment.created_at.strftime('%Y-%m-%d %H:%M') if payment.created_at else '-'
-            
+            reason = (payment.refund_reason or '').strip() or ('-' if refunded <= 0 else '')
+            paid_at = payment.paid_at.strftime('%Y-%m-%d %H:%M') if payment.paid_at else '-'
+            refunded_at = (
+                payment.refunded_at.strftime('%Y-%m-%d %H:%M') if payment.refunded_at else '-'
+            )
+            created = payment.created_at.strftime('%Y-%m-%d %H:%M') if payment.created_at else '-'
+
             ws.append([
+                order_number,
                 client_name,
                 client_email,
                 trip_title,
                 amount,
+                refunded if refunded else '-',
+                net,
                 status,
-                date_str
+                reason or '-',
+                paid_at,
+                refunded_at,
+                created,
             ])
-        
+
         # 自动调整列宽
         for column in ws.columns:
             max_length = 0
@@ -2462,19 +2494,19 @@ def export_payments():
                 try:
                     if len(str(cell.value)) > max_length:
                         max_length = len(str(cell.value))
-                except:
+                except Exception:
                     pass
             adjusted_width = min(max_length + 2, 50)
             ws.column_dimensions[column_letter].width = adjusted_width
-        
+
         # 保存到内存
         output = BytesIO()
         wb.save(output)
         output.seek(0)
-        
+
         # 生成文件名
         filename = f'payments_{datetime.now().strftime("%Y%m%d")}.xlsx'
-        
+
         return send_file(
             output,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -2935,13 +2967,18 @@ def _get_participants_export_data(trip, include_cancelled=True):
     """提取参与者导出数据，供 CSV 和 HTML 共用。
     include_cancelled=False 时跳过已取消订单（Canceled sheet 单独列出）。
     """
+    from app.payments import booking_payment_display_status
+
     bookings = trip.bookings.all()
     custom_questions = list(trip.questions.order_by(CustomQuestion.id).all()) if trip.questions else []
     headers = ['No', 'First Name', 'Middle Name', 'Last Name', 'Gender', 'Date of Birth', 'Registration Type',
                'Dietary restrictions or allergies', 'Medical conditions']
     for q in custom_questions:
         headers.append(q.label)
-    headers.extend(['Email', 'Buyer', 'Package', 'Add-ons', 'Payment Status', 'Booking Date'])
+    headers.extend([
+        'Email', 'Buyer', 'Package', 'Add-ons',
+        'Payment Status', 'Refunds', 'Net Paid', 'Booking Date',
+    ])
 
     rows = []
     row_num = 1
@@ -2959,7 +2996,13 @@ def _get_participants_export_data(trip, include_cancelled=True):
             if ba.addon:
                 addons_map[ba.addon.name] = addons_map.get(ba.addon.name, 0) + ba.quantity
         addons_str = ', '.join([f"{n} x{q}" if q > 1 else n for n, q in addons_map.items()]) if addons_map else '-'
-        status_display = booking.status.replace('_', ' ').title()
+        status_display = booking_payment_display_status(booking).replace('_', ' ').title()
+        refunds_total = 0.0
+        for payment in Payment.query.filter_by(booking_id=booking.id).all():
+            if payment.status in ('succeeded', 'partially_refunded', 'refunded'):
+                refunds_total += float(payment.refunded_amount or 0.0)
+        refunds_total = round(refunds_total, 2)
+        net_paid = round(float(booking.amount_paid) if booking.amount_paid is not None else 0.0, 2)
         booking_date_str = booking.created_at.strftime('%d %b %Y').upper() if booking.created_at else '-'
         buyer_name = (
             f"{booking.buyer_first_name or ''} {booking.buyer_last_name or ''}".strip()
@@ -2995,7 +3038,16 @@ def _get_participants_export_data(trip, include_cancelled=True):
                         row.append(ans.get('value') or '-')
                 else:
                     row.append(ans or '-')
-            row.extend([participant.email or '-', buyer_name, package_str, addons_str, status_display, booking_date_str])
+            row.extend([
+                participant.email or '-',
+                buyer_name,
+                package_str,
+                addons_str,
+                status_display,
+                refunds_total if refunds_total else '-',
+                net_paid,
+                booking_date_str,
+            ])
             rows.append(row)
             row_num += 1
     return headers, rows
@@ -3570,6 +3622,20 @@ def manage_booking(trip_id, booking_id):
         if request.form:
             prev_status = booking.status
             new_status = request.form.get('status', booking.status)
+            # 取消订单请走 /cancel；Save Changes 不允许把状态设为 cancelled
+            if new_status == 'cancelled' and prev_status != 'cancelled':
+                return jsonify({
+                    'success': False,
+                    'message': 'Use Cancel order to cancel this booking (not Payment Status).',
+                }), 400
+            if prev_status == 'cancelled':
+                # 已取消：保持 cancelled，仍可改备注/参与者等；忽略付款状态下拉
+                new_status = 'cancelled'
+            elif new_status not in ('pending', 'deposit_paid', 'fully_paid'):
+                return jsonify({
+                    'success': False,
+                    'message': 'Invalid payment status.',
+                }), 400
             booking.status = new_status
             _ap = request.form.get('amount_paid')
             if _ap is not None and _ap != '':
@@ -3610,22 +3676,26 @@ def manage_booking(trip_id, booking_id):
                     # Log error but don't fail the whole request
                     print(f"Error updating participants: {e}")
 
-            if new_status == 'cancelled' and prev_status != 'cancelled':
-                from app.payments import cancel_unpaid_installments
-                cancel_unpaid_installments(booking)
-            
             db.session.commit()
             return jsonify({'success': True, 'message': 'Booking updated successfully'})
         
         # Handle form validation (if using WTForms)
         if form.validate_on_submit():
             prev_status = booking.status
-            booking.status = form.status.data
+            new_status = form.status.data
+            if new_status == 'cancelled' and prev_status != 'cancelled':
+                if request.is_json or request.headers.get('Content-Type') == 'application/json':
+                    return jsonify({
+                        'success': False,
+                        'message': 'Use Cancel order to cancel this booking (not Payment Status).',
+                    }), 400
+                flash('Use Cancel order to cancel this booking.', 'error')
+                return redirect(url_for('admin.manage_trip', id=trip_id))
+            if prev_status == 'cancelled':
+                new_status = 'cancelled'
+            booking.status = new_status
             booking.amount_paid = form.amount_paid.data
             booking.special_requests = form.special_requests.data
-            if booking.status == 'cancelled' and prev_status != 'cancelled':
-                from app.payments import cancel_unpaid_installments
-                cancel_unpaid_installments(booking)
             db.session.commit()
             
             if request.is_json or request.headers.get('Content-Type') == 'application/json':
@@ -3687,6 +3757,37 @@ def reconcile_booking_ledger_route(trip_id, booking_id):
         return jsonify({'success': False, 'message': 'Booking does not belong to this trip'}), 400
     result = reconcile_booking_ledger(booking)
     return jsonify({'success': True, 'reconcile': result})
+
+
+@bp.route('/trips/<int:trip_id>/bookings/<int:booking_id>/cancel', methods=['POST'])
+@login_required
+def cancel_booking_order(trip_id, booking_id):
+    """取消订单（不退款）。未付分期一并取消。"""
+    from app.payments import cancel_unpaid_installments
+
+    trip = Trip.query.get_or_404(trip_id)
+    booking = Booking.query.get_or_404(booking_id)
+    if booking.trip_id != trip.id:
+        return jsonify({'success': False, 'message': 'Booking does not belong to this trip'}), 400
+
+    if booking.status == 'cancelled':
+        return jsonify({'success': True, 'message': 'Order is already cancelled', 'status': 'cancelled'})
+
+    try:
+        booking.status = 'cancelled'
+        cancel_unpaid_installments(booking)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error cancelling booking {booking_id}: {e}')
+        return jsonify({'success': False, 'message': 'Failed to cancel order'}), 500
+
+    return jsonify({
+        'success': True,
+        'message': 'Order cancelled',
+        'status': 'cancelled',
+        'order_number': booking.order_number,
+    })
 
 
 @bp.route('/trips/<int:id>/financials')
@@ -3766,9 +3867,9 @@ def get_trip_financials(id):
 def refund_booking(trip_id, booking_id):
     """
     处理预订退款：
-    - 金额为基础口径（不含卡手续费；手续费永不退）
-    - 默认不含定金；include_deposit=true 时可退定金部分
-    - $0 / 无可退金额时允许仅 cancel_booking（不调 Stripe）
+    - 管理员手填与客户谈好的退款金额（基础口径；卡费永不退）
+    - 系统按订单可退总额校验，并自动分摊到各笔 Payment（无需选手动选哪一笔）
+    - $0 时允许仅 cancel_booking
     """
     trip = Trip.query.get_or_404(trip_id)
     booking = Booking.query.get_or_404(booking_id)
@@ -3783,10 +3884,8 @@ def refund_booking(trip_id, booking_id):
         return jsonify({'success': False, 'message': 'Invalid refund amount'}), 400
 
     reason = (data.get('reason') or '').strip()
-    payment_id = data.get('payment_id')
     manual_only = bool(data.get('manual_only'))
     cancel_booking = bool(data.get('cancel_booking'))
-    include_deposit = bool(data.get('include_deposit'))
 
     if not reason:
         return jsonify({'success': False, 'message': 'Refund reason is required'}), 400
@@ -3819,96 +3918,117 @@ def refund_booking(trip_id, booking_id):
             current_app.logger.error(f"Error cancelling $0 booking: {str(e)}")
             return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
 
-    if not payment_id:
-        return jsonify({'success': False, 'message': 'payment_id is required'}), 400
-
-    payment = Payment.query.filter_by(id=payment_id, booking_id=booking.id).first()
-    if not payment:
-        return jsonify({'success': False, 'message': 'Payment not found for this booking'}), 404
-
-    if payment.status not in ('succeeded', 'partially_refunded'):
-        return jsonify({
-            'success': False,
-            'message': f'Payment status "{payment.status}" is not refundable'
-        }), 400
-
     from app.payments import (
         process_refund,
         apply_refund_to_ledger,
-        payment_max_refund,
+        payment_refundable_remaining,
         extract_stripe_charge_id,
         retrieve_payment_intent,
     )
 
-    max_allowed = payment_max_refund(payment, booking, include_deposit=include_deposit)
-    if max_allowed <= 0.001:
+    payments = (
+        Payment.query.filter(
+            Payment.booking_id == booking.id,
+            Payment.status.in_(('succeeded', 'partially_refunded')),
+        )
+        .order_by(Payment.created_at.asc(), Payment.id.asc())
+        .all()
+    )
+    slices = []
+    remaining = round(refund_amount, 2)
+    total_available = 0.0
+    for payment in payments:
+        avail = payment_refundable_remaining(payment)
+        if avail <= 0.001:
+            continue
+        total_available += avail
+        if remaining <= 0.001:
+            continue
+        take = round(min(remaining, avail), 2)
+        if take > 0.001:
+            slices.append((payment, take))
+            remaining = round(remaining - take, 2)
+
+    if total_available <= 0.001:
         return jsonify({
             'success': False,
             'message': (
-                'Nothing refundable under current settings '
-                '(card fees are never refunded; deposit is withheld unless “Also refund deposit” is checked). '
+                'Nothing left to refund on this booking. '
                 'You can still cancel with amount 0 + Cancel booking checked.'
             )
         }), 400
 
-    if refund_amount > max_allowed + 0.001:
+    if refund_amount > total_available + 0.001:
         return jsonify({
             'success': False,
-            'message': (
-                f'Refund amount cannot exceed ${max_allowed:.2f} '
-                f'({"including" if include_deposit else "excluding"} deposit; fees never refunded)'
-            )
+            'message': f'Refund amount cannot exceed ${total_available:.2f} (refundable total)',
+        }), 400
+
+    if remaining > 0.001 or not slices:
+        return jsonify({
+            'success': False,
+            'message': 'Could not allocate refund across payments',
         }), 400
 
     try:
-        stripe_refund = None
-        stripe_refund_id = None
+        stripe_refund_ids = []
+        last_ledger = None
+        for idx, (payment, slice_amount) in enumerate(slices):
+            is_last = idx == len(slices) - 1
+            stripe_refund_id = None
 
-        if not manual_only:
-            pi = payment.stripe_payment_intent_id
-            if not pi or not str(pi).startswith('pi_'):
-                return jsonify({
-                    'success': False,
-                    'message': 'This payment has no Stripe PaymentIntent. Use “Manual only” to record a local refund, or refund in Stripe Dashboard.'
-                }), 400
+            if not manual_only:
+                pi = payment.stripe_payment_intent_id
+                if not pi or not str(pi).startswith('pi_'):
+                    return jsonify({
+                        'success': False,
+                        'message': (
+                            f'Payment #{payment.id} has no Stripe PaymentIntent. '
+                            'Use “Manual only” to record a local refund, or refund in Stripe Dashboard.'
+                        )
+                    }), 400
 
-            if not payment.stripe_charge_id:
-                try:
-                    intent = retrieve_payment_intent(pi)
-                    charge_id = extract_stripe_charge_id(intent)
-                    if charge_id:
-                        payment.stripe_charge_id = charge_id
-                except Exception as e:
-                    current_app.logger.warning(f'Could not fetch charge for {pi}: {e}')
+                if not payment.stripe_charge_id:
+                    try:
+                        intent = retrieve_payment_intent(pi)
+                        charge_id = extract_stripe_charge_id(intent)
+                        if charge_id:
+                            payment.stripe_charge_id = charge_id
+                    except Exception as e:
+                        current_app.logger.warning(f'Could not fetch charge for {pi}: {e}')
 
-            stripe_refund, err = process_refund(pi, refund_amount, reason)
-            if err or not stripe_refund:
-                return jsonify({
-                    'success': False,
-                    'message': f'Stripe refund failed: {err or "unknown error"}'
-                }), 400
-            stripe_refund_id = getattr(stripe_refund, 'id', None)
+                stripe_refund, err = process_refund(pi, slice_amount, reason)
+                if err or not stripe_refund:
+                    db.session.rollback()
+                    return jsonify({
+                        'success': False,
+                        'message': f'Stripe refund failed on payment #{payment.id}: {err or "unknown error"}'
+                    }), 400
+                stripe_refund_id = getattr(stripe_refund, 'id', None)
+                if stripe_refund_id:
+                    stripe_refund_ids.append(stripe_refund_id)
 
-        ledger = apply_refund_to_ledger(
-            payment,
-            booking,
-            refund_amount,
-            reason=reason,
-            stripe_refund_id=stripe_refund_id,
-            cancel_booking=cancel_booking,
-            manual_only=manual_only,
-        )
+            last_ledger = apply_refund_to_ledger(
+                payment,
+                booking,
+                slice_amount,
+                reason=reason,
+                stripe_refund_id=stripe_refund_id,
+                cancel_booking=(cancel_booking and is_last),
+                manual_only=manual_only,
+            )
+
         db.session.commit()
 
         return jsonify({
             'success': True,
             'message': 'Refund processed successfully' if not manual_only else 'Manual refund recorded',
-            'stripe_refund_id': stripe_refund_id,
+            'stripe_refund_id': stripe_refund_ids[0] if len(stripe_refund_ids) == 1 else None,
+            'stripe_refund_ids': stripe_refund_ids,
             'manual_only': manual_only,
-            'include_deposit': include_deposit,
-            'new_amount_paid': ledger['booking_amount_paid'],
-            'booking_status': ledger['booking_status'],
-            'payment_refunded_amount': ledger['payment_refunded_amount'],
+            'new_amount_paid': last_ledger['booking_amount_paid'] if last_ledger else float(booking.amount_paid or 0),
+            'booking_status': last_ledger['booking_status'] if last_ledger else booking.status,
+            'payment_refunded_amount': None,
         })
 
     except ValueError as e:

@@ -74,7 +74,8 @@
 | `/admin/trips/<id>/bookings/add` | POST | 后台手动添加订单 |
 | `/admin/trips/<trip_id>/bookings/<booking_id>` | GET/POST | 订单详情 / 编辑 |
 | `/admin/trips/<trip_id>/bookings/<booking_id>/receipt` | GET | 生成收据 |
-| `/admin/trips/<trip_id>/bookings/<booking_id>/refund` | POST | 退款：JSON `{ payment_id, amount, reason, cancel_booking?, manual_only? }`；按 PI 调 Stripe |
+| `/admin/trips/<trip_id>/bookings/<booking_id>/cancel` | POST | 取消订单（不退款）；幂等；取消未付分期 |
+| `/admin/trips/<trip_id>/bookings/<booking_id>/refund` | POST | 退款：JSON `{ amount, reason, cancel_booking?, manual_only? }`；按 PI 调 Stripe |
 
 ### 客户管理
 
@@ -100,7 +101,8 @@
 
 | 路由 | 方法 | 说明 |
 |------|------|------|
-| `/admin/trips/<id>/bookings/export` | GET | 导出订单 Excel **静态快照**（需登录；Participants / Contact / Summary / Canceled；无 Web 刷新） |
+| `/admin/trips/<id>/bookings/export` | GET | 导出订单 Excel **静态快照**（需登录；Participants 含 Refunds/Net Paid；Summary / Canceled 含退款；无 Web 刷新） |
+| `/admin/payments/export` | GET | 导出 Payments Excel（含 Refunded / Net / Refund Reason / Refunded At；需 admin） |
 | `/admin/trips/<id>/financials` | GET | 获取财务统计 JSON |
 
 ---

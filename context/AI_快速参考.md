@@ -86,10 +86,11 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 
 | 项 | 值 |
 |----|-----|
-| 入口 | Manage → **Download Excel** |
-| 路由 | `GET /admin/trips/<id>/bookings/export` |
-| 内容 | 静态快照：Participants / Contact / Bookings Summary / **Canceled** |
+| 入口 | Manage → **Download Excel**；Payments → **Export** |
+| 行程订单 | `GET /admin/trips/<id>/bookings/export`：Participants / Contact / Bookings Summary / **Canceled** |
+| Participants | Payment Status（含 Refunded）、**Refunds**、Net Paid |
 | Summary | Expected、Payments Received、**Refunds**、Net Paid、Balance due + Totals + Collected Funds |
+| Payments 导出 | `GET /admin/payments/export`：Order Number、Amount、**Refunded**、Net、Status、Refund Reason、Refunded At |
 | 取消/退款 | 取消单在 Summary 标 cancelled 并显示退款；详表见 Canceled sheet |
 | 列宽 | 按内容撑开、不换行（`export_bookings` `_autosize`） |
 | 不再使用 | Power Query / Web 连接刷新；Manage「验证数据源」已移除 |
@@ -107,9 +108,10 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 项 | 值 |
 |----|-----|
 | 口径 | **基础金额**退款；**卡手续费永不退** |
-| 定金 | 默认不退；勾选 **Also refund deposit** 才可退定金部分 |
-| $0 取消 | `amount=0` + Cancel booking；不要求 Payment / 不调 Stripe |
-| 代码 | `payments.py`（`payment_max_refund` / `stripe_refunded_as_base`）、`refund_booking`、`handle_refund` |
+| 退款 | 手填金额（上限=订单可退总额；系统自动分摊到各 Payment；卡费不退） |
+| 取消订单 | Manage → **Cancel order** → `POST .../bookings/<id>/cancel`（不退款）；Payment Status 下拉无 Cancelled |
+| $0 / 退款同时取消 | Refund 弹窗勾选 Cancel booking；或仅 Cancel order |
+| 代码 | `payments.py`（`payment_max_refund` / `stripe_refunded_as_base`）、`refund_booking`、`cancel_booking_order`、`handle_refund` |
 
 ## 部署
 
