@@ -412,7 +412,7 @@ def manage_trip(id):
     total_discount = 0.0  # 折扣总额
     total_expected = 0.0  # 净应收金额（扣除折扣后）
     booking_balances = {}  # booking_id -> pending balance (None = cancelled / n/a)
-    from app.payments import booking_balance_due
+    from app.payments import booking_balance_due, booking_refunded_total
 
     for b in bookings:
         booking_gross = 0.0  # 该订单原价
@@ -462,6 +462,7 @@ def manage_trip(id):
         booking_balances[b.id] = booking_balance_due(b, expected=booking_expected)
 
     total_pending = round(sum(v for v in booking_balances.values() if v is not None), 2)
+    total_refunded = round(sum(booking_refunded_total(b) for b in bookings), 2)
 
     # Calculate add-ons summary for each booking
     booking_addons_summary = {}
@@ -599,6 +600,7 @@ def manage_trip(id):
                            total_discount=total_discount,
                            total_expected=total_expected,
                            total_paid=total_paid,
+                           total_refunded=total_refunded,
                            total_pending=total_pending,
                            sent_messages=sent_messages,
                            scheduled_messages=scheduled_messages,
@@ -3790,7 +3792,7 @@ def cancel_booking_order(trip_id, booking_id):
 @login_required
 def get_trip_financials(id):
     """获取行程的财务数据（用于 AJAX 更新）"""
-    from app.payments import booking_balance_due
+    from app.payments import booking_balance_due, booking_refunded_total
 
     trip = Trip.query.get_or_404(id)
     bookings = trip.bookings.all() if trip.bookings else []
@@ -3802,6 +3804,7 @@ def get_trip_financials(id):
     total_discount = 0.0
     total_expected = 0.0
     total_pending = 0.0
+    total_refunded = 0.0
     
     for b in bookings:
         booking_gross = 0.0
@@ -3846,6 +3849,7 @@ def get_trip_financials(id):
         total_gross += booking_gross
         total_discount += discount
         total_expected += booking_expected
+        total_refunded += booking_refunded_total(b)
         due = booking_balance_due(b, expected=booking_expected)
         if due is not None:
             total_pending += due
@@ -3857,6 +3861,7 @@ def get_trip_financials(id):
             'total_discount': round(total_discount, 2),
             'expected_amount': round(total_expected, 2),
             'amount_paid': round(total_paid, 2),
+            'total_refunded': round(total_refunded, 2),
             'amount_pending': round(total_pending, 2)
         }
     })

@@ -134,6 +134,10 @@
                     <span class="text-gray-500">Amount paid</span>
                     <span id="financialPaid" class="font-medium text-gray-700 font-mono">${{ (total_paid)|format_price }}</span>
                 </div>
+                <div id="refundedRow" class="flex justify-between w-64 {% if (total_refunded or 0) <= 0 %}hidden{% endif %}">
+                    <span class="text-gray-500">Refunded</span>
+                    <span id="financialRefunded" class="font-medium text-purple-600 font-mono">-${{ (total_refunded or 0)|format_price }}</span>
+                </div>
                 <div class="flex justify-between w-64">
                     <span class="text-gray-500">Balance due</span>
                     <span id="financialPending" class="font-medium {% if total_pending > 0 %}text-amber-600{% else %}text-green-600{% endif %} font-mono">${{ (total_pending)|format_price }}</span>
@@ -2964,6 +2968,8 @@
                     const discountRow = document.getElementById('discountRow');
                     const expectedEl = document.getElementById('financialExpected');
                     const paidEl = document.getElementById('financialPaid');
+                    const refundedEl = document.getElementById('financialRefunded');
+                    const refundedRow = document.getElementById('refundedRow');
                     const pendingEl = document.getElementById('financialPending');
                     
                     if (grossEl) grossEl.textContent = '$' + financials.gross_amount.toFixed(2);
@@ -2977,6 +2983,15 @@
                     }
                     if (expectedEl) expectedEl.textContent = '$' + financials.expected_amount.toFixed(2);
                     if (paidEl) paidEl.textContent = '$' + financials.amount_paid.toFixed(2);
+                    if (refundedEl && refundedRow) {
+                        const refunded = Number(financials.total_refunded || 0);
+                        if (refunded > 0) {
+                            refundedEl.textContent = '-$' + refunded.toFixed(2);
+                            refundedRow.classList.remove('hidden');
+                        } else {
+                            refundedRow.classList.add('hidden');
+                        }
+                    }
                     if (pendingEl) {
                         pendingEl.textContent = '$' + financials.amount_pending.toFixed(2);
                         // Update color based on pending amount
