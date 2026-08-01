@@ -7,7 +7,7 @@ alwaysApply: true
 
 **用户已最终确认**：所有订单收据统一此视觉风格与业务规则；仅订单内容不同。  
 实现：`flask-app/app/receipt_pdf.py` + `_booking_receipt_context`（`routes.py`）+ `booking/receipt.html`。  
-资源：页眉 `nexus-horizons-receipt-header.png` / 页脚 `nexus-horizons-email.png`。  
+资源：页眉与页脚均用 `nexus-horizons-receipt-header.png`（同一 logo；缺省时回退 email logo）。  
 **定稿 PDF 样例（打开对照）**：`flask-app/docs/receipt-reference/`（含一次付清 / 定金 / 多笔 History）。  
 未经用户明确要求，**不要**改页头、页脚、分页规则、Trip Total 行顺序、说明文字位置或主要区块。
 

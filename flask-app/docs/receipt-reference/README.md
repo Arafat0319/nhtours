@@ -25,7 +25,7 @@
 ## 视觉要点
 
 - 页头：竖版 NHTOURS logo（蓝 `rgb(0,54,112)`）+ 大标题 + Order number，底边对齐  
-- 页脚：邮件品牌 logo `nexus-horizons-email.png`（勿换成页头竖版）  
+- 页脚：与页眉相同，`nexus-horizons-receipt-header.png`（客户要求上下一致）  
 - 第 1 页页脚横线上方：Paid/Remaining / Due this time 说明  
 
 **样例生成日**：2026-07-28（按付款方式修正 History 后）

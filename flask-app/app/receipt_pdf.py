@@ -118,7 +118,7 @@ def _logo_rgb_bytes(logo_path, max_height_px=None):
 
 
 class ReceiptPDF(FPDF):
-    """Letter receipt: header lockup + legacy footer logo on every page."""
+    """Letter receipt: same brand logo in header (top-left) and footer."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -131,11 +131,11 @@ class ReceiptPDF(FPDF):
         # Fallback to email logo if header asset missing
         if not header_bytes:
             header_bytes, header_aspect = _logo_rgb_bytes(_resolve_logo_path(_EMAIL_LOGO_NAME))
-        footer_bytes, footer_aspect = _logo_rgb_bytes(_resolve_logo_path(_EMAIL_LOGO_NAME))
+        # Footer uses the same mark as top-left header (customer request)
         self._header_logo_bytes = header_bytes
         self._header_logo_aspect = header_aspect or 1.0
-        self._footer_logo_bytes = footer_bytes
-        self._footer_logo_aspect = footer_aspect or (300 / 125)
+        self._footer_logo_bytes = header_bytes
+        self._footer_logo_aspect = header_aspect or 1.0
         # Drawn above the footer rule on page 1 (Paid/Pending + due-at-booking notes)
         self._footer_notes = []
 
@@ -224,18 +224,18 @@ class ReceiptPDF(FPDF):
         self.set_draw_color(229, 231, 235)
         self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
         self.ln(3)
-        # Keep original email/footer brand mark unchanged
+        # Same logo as page header (top-left)
         if self._footer_logo_bytes:
-            logo_w = 34
+            logo_w = 17
             x = (self.w - logo_w) / 2
-            self._draw_logo_bytes(
+            logo_h = self._draw_logo_bytes(
                 self._footer_logo_bytes,
                 self._footer_logo_aspect,
                 x,
                 self.get_y(),
                 logo_w,
             )
-            self.set_y(self.get_y() + 15)
+            self.set_y(self.get_y() + max(logo_h + 3, 12))
         self.set_font("Helvetica", size=8)
         self.set_text_color(120, 120, 120)
         self.cell(0, 4, "Thank you for choosing Nexus Horizons Tours!", align="C", new_x="LMARGIN", new_y="NEXT")
