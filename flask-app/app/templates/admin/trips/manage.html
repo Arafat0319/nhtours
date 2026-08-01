@@ -207,6 +207,8 @@
                         <option value="pending">Pending</option>
                         <option value="deposit_paid">Deposit Paid</option>
                         <option value="fully_paid">Fully Paid</option>
+                        <option value="overdue">Overdue</option>
+                        <option value="refunded">Refunded</option>
                         <option value="cancelled">Cancelled</option>
                     </select>
                 </div>
@@ -243,8 +245,9 @@
                     <tbody class="bg-white divide-y divide-gray-100" id="bookingsTableBody">
                         {% if bookings %}
                         {% for booking in bookings %}
+                        {% set pay_status = booking_payment_statuses.get(booking.id, booking.status) %}
                         <tr class="booking-row" data-name="{{ booking.client.name|lower }}"
-                            data-email="{{ booking.client.email|lower }}" data-status="{{ booking.status }}" data-booking-id="{{ booking.id }}"
+                            data-email="{{ booking.client.email|lower }}" data-status="{{ pay_status }}" data-booking-id="{{ booking.id }}"
                             data-order-number="{{ (booking.order_number or '')|lower }}">
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                 <div class="font-medium">{{ booking.order_number or ('#' ~ booking.id) }}</div>
@@ -285,11 +288,13 @@
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <span id="status-badge-{{ booking.id }}" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                                    {% if booking.status == 'fully_paid' %}bg-green-100 text-green-800
-                                    {% elif booking.status == 'deposit_paid' %}bg-blue-100 text-blue-800
-                                    {% elif booking.status == 'cancelled' %}bg-red-100 text-red-800
+                                    {% if pay_status == 'fully_paid' %}bg-green-100 text-green-800
+                                    {% elif pay_status == 'deposit_paid' %}bg-blue-100 text-blue-800
+                                    {% elif pay_status == 'overdue' %}bg-orange-100 text-orange-800
+                                    {% elif pay_status == 'refunded' %}bg-purple-100 text-purple-800
+                                    {% elif pay_status == 'cancelled' %}bg-red-100 text-red-800
                                     {% else %}bg-yellow-100 text-yellow-800{% endif %}">
-                                    {{ booking.status|replace('_', ' ')|title }}
+                                    {{ pay_status|replace('_', ' ')|title }}
                                 </span>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm font-mono" id="paid-cell-{{ booking.id }}">
@@ -354,6 +359,8 @@
                         <option value="pending">Pending</option>
                         <option value="deposit_paid">Deposit Paid</option>
                         <option value="fully_paid">Fully Paid</option>
+                        <option value="overdue">Overdue</option>
+                        <option value="refunded">Refunded</option>
                         <option value="cancelled">Cancelled</option>
                     </select>
                 </div>
@@ -446,6 +453,8 @@
                                 <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
                                     {% if participant.payment_status == 'fully_paid' %}bg-green-100 text-green-800
                                     {% elif participant.payment_status == 'deposit_paid' %}bg-blue-100 text-blue-800
+                                    {% elif participant.payment_status == 'overdue' %}bg-orange-100 text-orange-800
+                                    {% elif participant.payment_status == 'refunded' %}bg-purple-100 text-purple-800
                                     {% elif participant.payment_status == 'cancelled' %}bg-red-100 text-red-800
                                     {% else %}bg-yellow-100 text-yellow-800{% endif %}">
                                     {{ participant.payment_status|replace('_', ' ')|title }}
@@ -2881,14 +2890,17 @@
                     const row = document.querySelector(`tr[data-booking-id="${bookingId}"]`);
                     if (!row) return;
                     
-                    // Update status badge
+                    // Update status badge (display status may be overdue/refunded)
                     const statusBadge = document.getElementById(`status-badge-${bookingId}`);
                     if (statusBadge) {
-                        const statusText = booking.status.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                        const payStatus = booking.payment_status || booking.status || 'pending';
+                        const statusText = payStatus.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
                         let statusClass = 'bg-yellow-100 text-yellow-800';
-                        if (booking.status === 'fully_paid') statusClass = 'bg-green-100 text-green-800';
-                        else if (booking.status === 'deposit_paid') statusClass = 'bg-blue-100 text-blue-800';
-                        else if (booking.status === 'cancelled') statusClass = 'bg-red-100 text-red-800';
+                        if (payStatus === 'fully_paid') statusClass = 'bg-green-100 text-green-800';
+                        else if (payStatus === 'deposit_paid') statusClass = 'bg-blue-100 text-blue-800';
+                        else if (payStatus === 'overdue') statusClass = 'bg-orange-100 text-orange-800';
+                        else if (payStatus === 'refunded') statusClass = 'bg-purple-100 text-purple-800';
+                        else if (payStatus === 'cancelled') statusClass = 'bg-red-100 text-red-800';
                         statusBadge.className = `px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass}`;
                         statusBadge.textContent = statusText;
                     }
@@ -2971,8 +2983,8 @@
                         }
                     }
                     
-                    // Update data-status attribute for filtering
-                    row.setAttribute('data-status', booking.status);
+                    // Update data-status attribute for filtering (display status)
+                    row.setAttribute('data-status', booking.payment_status || booking.status);
                 }
             } catch (err) {
                 console.error('Error updating booking row:', err);

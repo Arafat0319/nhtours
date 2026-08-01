@@ -133,3 +133,31 @@ def test_create_installment_payments_catch_up(app):
         db.session.delete(bp)
         db.session.delete(booking)
         db.session.commit()
+
+
+def test_booking_payment_display_status_priority():
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    import app.payments as payments_mod
+
+    booking = SimpleNamespace(id=9, status="deposit_paid")
+
+    with patch.object(payments_mod, "booking_has_refund", return_value=False), patch.object(
+        payments_mod, "booking_has_overdue_amount", return_value=True
+    ):
+        assert payments_mod.booking_payment_display_status(booking) == "overdue"
+
+    with patch.object(payments_mod, "booking_has_refund", return_value=True), patch.object(
+        payments_mod, "booking_has_overdue_amount", return_value=True
+    ):
+        assert payments_mod.booking_payment_display_status(booking) == "refunded"
+
+    assert payments_mod.booking_payment_display_status(
+        SimpleNamespace(id=10, status="cancelled")
+    ) == "cancelled"
+
+    with patch.object(payments_mod, "booking_has_refund", return_value=False), patch.object(
+        payments_mod, "booking_has_overdue_amount", return_value=False
+    ):
+        assert payments_mod.booking_payment_display_status(booking) == "deposit_paid"

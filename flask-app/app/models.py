@@ -410,7 +410,7 @@ class Booking(db.Model):
     trip_id = db.Column(db.Integer, db.ForeignKey('trips.id'))
     client_id = db.Column(db.Integer, db.ForeignKey('clients.id'))
     
-    status = db.Column(db.String(20), default='pending') # pending, deposit_paid, fully_paid, cancelled
+    status = db.Column(db.String(20), default='pending') # pending, deposit_paid, fully_paid, cancelled（后台 Payment Status 还可展示 overdue/refunded）
     passenger_count = db.Column(db.Integer, default=1)  # Total participants (calculated from BookingPackage quantities)
     amount_paid = db.Column(db.Float, default=0.0)  # Total amount paid (sum of all BookingPackage amounts)
     special_requests = db.Column(db.Text)

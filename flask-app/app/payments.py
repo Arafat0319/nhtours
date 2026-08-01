@@ -381,6 +381,63 @@ def computed_booking_amount_paid(booking):
     return round(total, 2)
 
 
+def booking_has_refund(booking):
+    """是否有过基础额退款（部分或全额）。"""
+    for payment in ledger_payments_for_booking(booking):
+        if payment_refunded_clamped(payment) > 0.001:
+            return True
+        if (payment.status or '') in ('refunded', 'partially_refunded'):
+            return True
+    return False
+
+
+def booking_has_overdue_amount(booking, today=None):
+    """
+    当前仍有应付，且存在已过 due_date 的未付分期。
+    日历日按美西（与催款一致）。
+    """
+    from app.models import InstallmentPayment
+    from app.utils import pacific_today
+
+    if (booking.status or '') == 'cancelled':
+        return False
+    if (booking.status or '') == 'fully_paid':
+        return False
+
+    today = today or pacific_today()
+    past_due = (
+        InstallmentPayment.query.filter(
+            InstallmentPayment.booking_id == booking.id,
+            InstallmentPayment.status.in_(('pending', 'overdue')),
+            InstallmentPayment.due_date.isnot(None),
+            InstallmentPayment.due_date < today,
+        )
+        .first()
+    )
+    if not past_due:
+        return False
+    try:
+        due = float(calculate_booking_total(booking).get('amount_due') or 0)
+    except Exception:
+        due = 1.0
+    return due > 0.001
+
+
+def booking_payment_display_status(booking, today=None):
+    """
+    后台 Payment Status 展示态（不改库内 booking.status）。
+    优先级：cancelled > refunded > overdue > 库内 status
+    """
+    stored = (getattr(booking, 'status', None) or 'pending').strip() or 'pending'
+    if stored == 'cancelled':
+        return 'cancelled'
+    if booking_has_refund(booking):
+        return 'refunded'
+    if booking_has_overdue_amount(booking, today=today):
+        return 'overdue'
+    return stored
+
+
 def reconcile_booking_ledger(booking):
     """
     只读核对：amount_paid 是否等于 Σ(base − refunded)。
@@ -612,6 +669,27 @@ def process_refund(payment_intent_id, amount, reason=None):
     except Exception as e:
         current_app.logger.error(f"Unexpected error during refund: {str(e)}")
         return None, str(e)
+
+
+def installment_has_other_unpaid(installment, all_installments=None):
+    """
+    当前期之外是否还有未付分期。
+    无其他未付时（即最后一期）付款页不展示 PAY OFF。
+    """
+    from app.models import InstallmentPayment
+
+    if not installment:
+        return False
+    if all_installments is None:
+        booking_id = getattr(installment, 'booking_id', None)
+        if not booking_id:
+            return False
+        all_installments = InstallmentPayment.query.filter_by(booking_id=booking_id).all()
+    return any(
+        getattr(i, 'id', None) != getattr(installment, 'id', None)
+        and (getattr(i, 'status', None) or '') in ('pending', 'overdue')
+        for i in (all_installments or [])
+    )
 
 
 def cancel_unpaid_installments(booking):

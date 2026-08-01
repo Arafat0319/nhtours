@@ -489,10 +489,15 @@ def manage_trip(id):
     
     # Booking buyers for New Message (not participants)
     from app.messaging import collect_message_buyers, forced_reply_to_email, recipient_counts_for_trip
+    from app.payments import booking_payment_display_status
     message_buyers = collect_message_buyers(trip)
     buyer_count = len(message_buyers)
     message_recipient_counts = recipient_counts_for_trip(trip)
     balance_due_buyer_count = message_recipient_counts.get('payment_due', 0)
+
+    booking_payment_statuses = {
+        b.id: booking_payment_display_status(b) for b in bookings
+    }
 
     # Collect all participants with their booking and package info
     all_participants = []
@@ -558,7 +563,7 @@ def manage_trip(id):
                 'booking_date': booking.created_at,
                 'buyer_name': buyer_name or '-',
                 'buyer_email': buyer_email or '-',
-                'payment_status': booking.status,
+                'payment_status': booking_payment_statuses.get(booking.id, booking.status),
                 'packages': package_names,
                 'addons': participant_addons,
                 'question_answers': participant.question_answers or {},
@@ -595,6 +600,7 @@ def manage_trip(id):
                            bookings=bookings,
                            booking_addons_summary=booking_addons_summary,
                            booking_balances=booking_balances,
+                           booking_payment_statuses=booking_payment_statuses,
                            all_participants=all_participants,
                            total_participants_count=total_participants_count,
                            message_buyers=message_buyers,
@@ -3723,6 +3729,7 @@ def manage_booking(trip_id, booking_id):
                 payment_refundable_remaining,
                 payment_max_refund,
                 booking_deposit_reserved,
+                booking_payment_display_status,
             )
             for payment in Payment.query.filter_by(booking_id=booking.id).order_by(Payment.created_at.desc()).all():
                 amt = payment_charged_amount(payment)
@@ -3843,6 +3850,7 @@ def manage_booking(trip_id, booking_id):
                     'discount': discount_info,
                     # 金额信息
                     'status': booking.status,
+                    'payment_status': booking_payment_display_status(booking),
                     'amount_paid': float(booking.amount_paid) if booking.amount_paid else 0.0,
                     'amount_paid_display': amount_paid_display,
                     'expected_amount': expected_amount,

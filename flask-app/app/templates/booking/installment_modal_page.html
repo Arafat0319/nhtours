@@ -327,7 +327,7 @@
 								<span id="total-amount" class="text-lg font-bold text-gray-900">${{ (base_amount_cents / 100)|format_price }}</span>
 							</div>
 						</div>
-						{% if remaining_amount_cents and remaining_amount_cents > 0 %}
+						{% if show_payoff and remaining_amount_cents and remaining_amount_cents > 0 %}
 						<div id="installment-payoff-section" class="pt-4 border-t border-gray-200">
 							<div class="flex justify-between items-center">
 								<div>

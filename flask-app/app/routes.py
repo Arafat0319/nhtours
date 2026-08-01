@@ -2558,6 +2558,11 @@ def pay_installment(installment_id):
     remaining_amount_cents = int(round(remaining_amount * 100))
 
     base_amount_cents = int(round(float(installment.amount or 0.0) * 100))
+    from app.payments import installment_has_other_unpaid
+    show_payoff = bool(
+        remaining_amount_cents > 0
+        and installment_has_other_unpaid(installment, all_installments)
+    )
     summary_items = [
         {
             'label': f"Installment #{installment.installment_number if installment.installment_number > 0 else 'Deposit'}",
@@ -2641,8 +2646,9 @@ def pay_installment(installment_id):
         payment_plan='installment',
         payment_mode='installment',
         payment_step='installment',
-        remaining_amount_cents=remaining_amount_cents,
-        payoff_url=url_for('main.pay_installment_payoff', installment_id=installment.id, token=token) if remaining_amount_cents > 0 else None,
+        remaining_amount_cents=remaining_amount_cents if show_payoff else 0,
+        show_payoff=show_payoff,
+        payoff_url=url_for('main.pay_installment_payoff', installment_id=installment.id, token=token) if show_payoff else None,
     )
 
 
@@ -2729,6 +2735,7 @@ def test_installment_modal():
         payment_mode='installment',
         payment_step='installment',
         remaining_amount_cents=remaining_amount_cents,
+        show_payoff=True,
         payoff_url=None,
         preview_only=preview_only,
     )
@@ -2895,6 +2902,7 @@ def test_installment_payment_preview():
         payment_mode=payment_mode,
         payment_step=payment_step,
         remaining_amount_cents=remaining_amount_cents if not is_payoff else 0,
+        show_payoff=(not is_payoff),
         payoff_url=url_for('main.test_installment_payment_preview') + '?payoff=true' if not is_payoff else None,
     )
 

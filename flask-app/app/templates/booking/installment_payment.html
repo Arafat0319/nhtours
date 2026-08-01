@@ -82,8 +82,8 @@
                     </div>
                 </div>
 
-                {# 剩余余额 - 改为勾选框 #}
-                {% if remaining_amount_cents and remaining_amount_cents > 0 %}
+                {# 剩余余额 / PAY OFF：仅当还有其他未付分期时显示（最后一期隐藏） #}
+                {% if show_payoff and remaining_amount_cents and remaining_amount_cents > 0 %}
                 <div class="pt-4 border-t border-zinc-200">
                     <div class="flex justify-between items-center">
                         <div>
