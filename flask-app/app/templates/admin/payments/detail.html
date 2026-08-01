@@ -81,6 +81,24 @@
                             <span class="text-xs text-gray-400 ml-1">id: {{ payment.booking_id }}</span>
                         </p>
                     </div>
+                    {% if (payment.booking.discount_amount and payment.booking.discount_amount > 0) or payment.booking.discount_code %}
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Discount</label>
+                        <p class="text-sm text-green-700">
+                            {% if payment.booking.discount_code %}
+                            Code: <span class="font-medium">{{ payment.booking.discount_code.code }}</span>
+                            {% if payment.booking.discount_code.type == 'percent' %}
+                            ({{ payment.booking.discount_code.amount }}%)
+                            {% elif payment.booking.discount_code.amount %}
+                            (${{ '%.2f'|format(payment.booking.discount_code.amount) }})
+                            {% endif %}
+                            ·
+                            {% endif %}
+                            Applied: <span class="font-semibold">−${{ '%.2f'|format(payment.booking.discount_amount or 0) }}</span>
+                            <span class="block text-xs text-gray-500 mt-0.5">Applied at booking / first payment (usually with deposit).</span>
+                        </p>
+                    </div>
+                    {% endif %}
                     <div>
                         <label class="block text-sm font-medium text-gray-500 mb-1">Booking Status</label>
                         <p class="text-sm text-gray-900">{{ payment.booking.status|upper or 'N/A' }}</p>
@@ -164,6 +182,10 @@
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                 <h3 class="text-lg font-medium text-gray-900 mb-4">Payment Details</h3>
                 <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-500 mb-1">Payment ID</label>
+                        <p class="text-sm text-gray-900 font-mono">#{{ payment.id }}</p>
+                    </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-500 mb-1">Payment Method</label>
                         <p class="text-sm text-gray-900">{{ payment.payment_method_type|upper or 'N/A' }}</p>

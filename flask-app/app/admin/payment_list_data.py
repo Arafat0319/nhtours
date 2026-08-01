@@ -13,6 +13,23 @@ def _installment_unpaid(inst):
     return (getattr(inst, 'status', None) or '') in ('pending', 'overdue')
 
 
+def booking_discount_info(booking):
+    """订单折扣摘要（报名/首笔付款时用的优惠码）。"""
+    if not booking:
+        return None
+    amount = float(getattr(booking, 'discount_amount', None) or 0)
+    code_obj = getattr(booking, 'discount_code', None)
+    code = (code_obj.code if code_obj else None) or None
+    if amount <= 0.001 and not code:
+        return None
+    return {
+        'code': code,
+        'amount': round(amount, 2),
+        'type': getattr(code_obj, 'type', None) if code_obj else None,
+        'value': getattr(code_obj, 'amount', None) if code_obj else None,
+    }
+
+
 def _line_display_status(inst, payment=None):
     """
     列表展示用状态：若已有成功收款 Payment，即使 installment 行仍为 pending 也显示 paid。
@@ -159,6 +176,7 @@ def build_schedule_order_groups(*, plan_kinds, search='', status_filter='', limi
     query = InstallmentPayment.query.options(
         joinedload(InstallmentPayment.booking).joinedload(Booking.trip),
         joinedload(InstallmentPayment.booking).joinedload(Booking.client),
+        joinedload(InstallmentPayment.booking).joinedload(Booking.discount_code),
     )
     all_installments = (
         query.order_by(InstallmentPayment.booking_id, InstallmentPayment.installment_number)
@@ -298,6 +316,7 @@ def build_schedule_order_groups(*, plan_kinds, search='', status_filter='', limi
             'has_unpaid': False,
             'next_action_installment': None,
             'primary_payment': None,
+            'discount': booking_discount_info(booking),
         })
 
     # 先挂 Payment / 校正展示态，再按 status 筛选
@@ -319,6 +338,7 @@ def build_one_time_order_groups(*, search='', status_filter='', limit=100, exclu
     pay_q = (
         Payment.query.options(
             joinedload(Payment.booking).joinedload(Booking.trip),
+            joinedload(Payment.booking).joinedload(Booking.discount_code),
             joinedload(Payment.client),
             joinedload(Payment.trip),
         )
@@ -359,6 +379,7 @@ def build_one_time_order_groups(*, search='', status_filter='', limit=100, exclu
                 'deposit_payment': payment,
                 'others_payments': {},
                 'sub_items': [],
+                'discount': booking_discount_info(booking),
             }
         # 保留最新一笔作为主展示；若有 pending 优先
         cur = by_booking[bid]['primary_payment']

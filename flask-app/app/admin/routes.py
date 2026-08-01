@@ -2221,12 +2221,12 @@ def payments_api():
 def payment_detail(payment_id):
     """支付详情页面"""
     payment = Payment.query.options(
-        joinedload(Payment.booking),
+        joinedload(Payment.booking).joinedload(Booking.discount_code),
         joinedload(Payment.client),
         joinedload(Payment.trip),
         joinedload(Payment.installment_payment)
     ).get_or_404(payment_id)
-    
+
     return render_template('admin/payments/detail.html',
                          title=f'Payment #{payment_id}',
                          payment=payment)
