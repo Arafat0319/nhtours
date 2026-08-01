@@ -2343,7 +2343,7 @@
                                                     inst.status === 'overdue' ? 'bg-red-100 text-red-800' :
                                                     inst.status === 'cancelled' ? 'bg-gray-100 text-gray-600' :
                                                     'bg-yellow-100 text-yellow-800';
-                                const label = inst.installment_number === 0 ? 'Deposit' : `Payment #${inst.installment_number}`;
+                                const label = inst.label || (inst.installment_number === 0 ? 'Deposit' : `Installment #${inst.installment_number}`);
                                 return `<div class="flex justify-between items-center py-1.5 px-3 bg-gray-50 rounded">
                                     <div>
                                         <span class="text-sm text-gray-900">${label}</span>
@@ -3646,7 +3646,7 @@
                         <option value="payment_due">Everyone with payments past due / balance due ({{ message_recipient_counts.payment_due }})</option>
                         <option value="incomplete_questions">Everyone with incomplete required questions ({{ message_recipient_counts.incomplete_questions }})</option>
                         <option value="missing_signatures">Everyone with missing signatures ({{ message_recipient_counts.missing_signatures }})</option>
-                        <option value="specific">Specific booking contacts</option>
+                        <option value="specific">Choose one or more booking contacts</option>
                         <option value="custom">Enter email addresses…</option>
                     </select>
                     <p class="mt-1 text-xs text-gray-500">Emails go to the booking buyer / contact, not every participant (except when you type addresses).</p>
@@ -3665,12 +3665,33 @@
                     </div>
 
                     <div id="specificRecipients" class="mt-2 hidden">
-                        <select name="specific_recipients" id="specificRecipientsSelect" multiple
-                            class="admin-select block w-full rounded-md border-0 h-32 px-3 py-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 sm:text-sm">
+                        <div class="flex items-center justify-between gap-2 mb-1">
+                            <label class="block text-sm font-medium text-gray-700">Select booking contacts</label>
+                            {% if message_buyers %}
+                            <div class="flex gap-2 text-xs">
+                                <button type="button" id="specificSelectAllBtn" class="text-wetravel-cyan hover:underline">Select all</button>
+                                <span class="text-gray-300">|</span>
+                                <button type="button" id="specificClearBtn" class="text-wetravel-cyan hover:underline">Clear</button>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div id="specificRecipientsList"
+                             class="w-full max-h-48 overflow-y-auto rounded-md border-0 px-3 py-2 space-y-1 bg-white shadow-sm ring-1 ring-inset ring-gray-300">
                             {% for buyer in message_buyers %}
-                            <option value="{{ buyer.email }}">{{ buyer.name }} ({{ buyer.email }})</option>
+                            <label class="flex items-start gap-2 cursor-pointer text-sm text-gray-800 hover:bg-gray-50 rounded px-1 py-0.5">
+                                <input type="checkbox" class="specific-recipient-cb mt-0.5 rounded border-gray-300 text-wetravel-cyan focus:ring-wetravel-cyan"
+                                       value="{{ buyer.email }}"
+                                       data-name="{{ buyer.name|e }}">
+                                <span>
+                                    <span class="font-medium">{{ buyer.name }}</span>
+                                    <span class="text-gray-500">({{ buyer.email }})</span>
+                                </span>
+                            </label>
+                            {% else %}
+                            <p class="text-sm text-gray-500 py-2">No booking contacts with email on this trip.</p>
                             {% endfor %}
-                        </select>
+                        </div>
+                        <p class="mt-1 text-xs text-gray-500">Check one or more buyers. Each selected person gets one email (not every traveler on their booking).</p>
                     </div>
 
                     <div id="customRecipients" class="mt-2 hidden">
@@ -4099,7 +4120,7 @@
             return 0;
         }
         if (type === 'specific') {
-            return document.querySelectorAll('#specificRecipientsSelect option:checked').length;
+            return document.querySelectorAll('#specificRecipientsList .specific-recipient-cb:checked').length;
         }
         if (type === 'custom') {
             return parseCustomEmailsFromInput().length;
@@ -4112,8 +4133,8 @@
         const config = { type };
         if (type === 'specific') {
             config.recipients = Array.from(
-                document.querySelectorAll('#specificRecipientsSelect option:checked')
-            ).map(opt => ({ email: opt.value, name: opt.text.split(' (')[0] }));
+                document.querySelectorAll('#specificRecipientsList .specific-recipient-cb:checked')
+            ).map(cb => ({ email: cb.value, name: cb.dataset.name || cb.value }));
         } else if (type === 'custom') {
             const recipients = parseCustomEmailsFromInput();
             config.recipients = recipients;
@@ -4137,6 +4158,17 @@
         const n = getSelectedRecipientCount();
         if (type === 'custom') {
             preview.textContent = `Will send to ${n} address${n === 1 ? '' : 'es'}.`;
+        } else if (type === 'specific') {
+            const names = Array.from(
+                document.querySelectorAll('#specificRecipientsList .specific-recipient-cb:checked')
+            ).map(cb => cb.dataset.name || cb.value);
+            if (n === 0) {
+                preview.textContent = 'Select at least one booking contact.';
+            } else if (n <= 3) {
+                preview.textContent = `Will send to: ${names.join(', ')}.`;
+            } else {
+                preview.textContent = `Will send to ${n} booking contacts: ${names.slice(0, 2).join(', ')}, and ${n - 2} more.`;
+            }
         } else {
             preview.textContent = `Will send to ${n} booking contact${n === 1 ? '' : 's'}.`;
         }
@@ -4168,7 +4200,15 @@
 
     document.getElementById('recipientType')?.addEventListener('change', onRecipientTypeChange);
     document.getElementById('packageFilterSelect')?.addEventListener('change', updateRecipientPreview);
-    document.getElementById('specificRecipientsSelect')?.addEventListener('change', updateRecipientPreview);
+    document.getElementById('specificRecipientsList')?.addEventListener('change', updateRecipientPreview);
+    document.getElementById('specificSelectAllBtn')?.addEventListener('click', () => {
+        document.querySelectorAll('#specificRecipientsList .specific-recipient-cb').forEach(cb => { cb.checked = true; });
+        updateRecipientPreview();
+    });
+    document.getElementById('specificClearBtn')?.addEventListener('click', () => {
+        document.querySelectorAll('#specificRecipientsList .specific-recipient-cb').forEach(cb => { cb.checked = false; });
+        updateRecipientPreview();
+    });
     document.getElementById('customEmailsInput')?.addEventListener('input', updateRecipientPreview);
     document.querySelectorAll('input[name="send_option"]').forEach(radio => {
         radio.addEventListener('change', updateMessageSendButton);
@@ -4341,8 +4381,8 @@
             }
             if (type === 'specific' && Array.isArray(cfg.recipients)) {
                 const emails = new Set(cfg.recipients.map(r => (r.email || r).toLowerCase()));
-                document.querySelectorAll('#specificRecipientsSelect option').forEach(opt => {
-                    opt.selected = emails.has(opt.value.toLowerCase());
+                document.querySelectorAll('#specificRecipientsList .specific-recipient-cb').forEach(cb => {
+                    cb.checked = emails.has(cb.value.toLowerCase());
                 });
             }
             if (type === 'custom') {

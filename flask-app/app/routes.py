@@ -2558,14 +2558,20 @@ def pay_installment(installment_id):
     remaining_amount_cents = int(round(remaining_amount * 100))
 
     base_amount_cents = int(round(float(installment.amount or 0.0) * 100))
-    from app.payments import installment_has_other_unpaid
+    from app.payments import installment_display_label, installment_has_other_unpaid
     show_payoff = bool(
         remaining_amount_cents > 0
         and installment_has_other_unpaid(installment, all_installments)
     )
+    installment_label = installment_display_label(
+        installment,
+        post_deposit_count=sum(
+            1 for i in all_installments if (i.installment_number or 0) > 0
+        ),
+    )
     summary_items = [
         {
-            'label': f"Installment #{installment.installment_number if installment.installment_number > 0 else 'Deposit'}",
+            'label': installment_label,
             'amount_cents': base_amount_cents,
         }
     ]
@@ -2636,6 +2642,7 @@ def pay_installment(installment_id):
         'booking/installment_modal_page.html',
         booking=booking,
         installment=installment,
+        installment_label=installment_label,
         all_installments=all_installments,
         base_amount_cents=base_amount_cents,
         summary_items=summary_items,
@@ -4136,8 +4143,10 @@ def send_installment_confirmation_email(installment):
         funding = (payment.funding or '').capitalize()
         payment_method_summary = f"{brand} {funding}".strip()
 
+    from app.payments import installment_display_label
+    inst_label = installment_display_label(installment)
     line_items = [{
-        'label': f"Installment #{installment.installment_number}",
+        'label': inst_label,
         'amount': float(installment.amount or 0.0)
     }]
 
@@ -4163,7 +4172,7 @@ def send_installment_confirmation_email(installment):
         'total_amount': total_cents / 100.0,
         'discount_amount': 0,
         'discount_code': None,
-        'amount_charged_label': f'Installment #{installment.installment_number} charged',
+        'amount_charged_label': f'{inst_label} charged',
         'receipt_download_url': _receipt_public_download_url(booking.id),
         'email_logo_url': _email_brand_logo_url(),
     }

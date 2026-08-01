@@ -69,7 +69,7 @@
             <h3 class="text-lg font-medium text-zinc-800">Order Summary</h3>
             {% if payment_mode in ['installment', 'installment_payoff'] and installment %}
             <div class="space-y-2 pb-4 border-b border-zinc-200">
-                <div class="text-sm text-zinc-600">Installment #{{ installment.installment_number if installment.installment_number > 0 else 'Deposit' }}</div>
+                <div class="text-sm text-zinc-600">{{ installment_label or ('Deposit' if installment.installment_number == 0 else 'Installment #' ~ installment.installment_number) }}</div>
                 <div class="text-sm text-zinc-600">Due date: {{ installment.due_date.strftime("%Y-%m-%d") if installment.due_date else "N/A" }}</div>
                 <div class="text-sm text-zinc-600">Status: <span class="font-medium">{{ installment.status|capitalize }}</span></div>
             </div>

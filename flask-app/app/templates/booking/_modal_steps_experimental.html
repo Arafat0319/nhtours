@@ -52,9 +52,10 @@
                                         <span class="installment-schedule-date">Due Today</span>
                                         <span class="installment-schedule-amount" data-testid="option-deposit">${{ deposit_amt|format_price }}</span>
                                     </div>
-                                    {% for inst in (ppc.get('installments') or []) %}
+                                    {% set plan_installments = ppc.get('installments') or [] %}
+                                    {% for inst in plan_installments %}
                                     <div class="installment-schedule-item">
-                                        <span class="installment-schedule-label">Payment {{ loop.index }}</span>
+                                        <span class="installment-schedule-label">{% if plan_installments|length == 1 %}Final payment{% else %}Payment {{ loop.index }}{% endif %}</span>
                                         <span class="installment-schedule-date">{{ inst.get('date', '')|format_iso_date }}</span>
                                         <span class="installment-schedule-amount">${{ (inst.get('amount') or 0)|format_price }}</span>
                                     </div>

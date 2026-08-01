@@ -339,8 +339,32 @@ def payment_refundable_remaining(payment):
     return round(max(0.0, base - already), 2)
 
 
+def installment_display_label(installment=None, *, installment_number=None, booking_id=None,
+                              post_deposit_count=None):
+    """
+    客户/后台可见的分期名称。
+    定金后仅 1 期尾款时显示 Final payment；多期仍为 Installment #n。
+    """
+    num = installment_number
+    if num is None and installment is not None:
+        num = getattr(installment, 'installment_number', None)
+    if num is None or num == 0:
+        return 'Deposit'
+
+    count = post_deposit_count
+    if count is None:
+        bid = booking_id
+        if bid is None and installment is not None:
+            bid = getattr(installment, 'booking_id', None)
+        count = booking_post_deposit_installment_count(bid) if bid else 0
+
+    if count == 1:
+        return 'Final payment'
+    return f'Installment #{num}'
+
+
 def payment_step_label(payment):
-    """收据/Manage：Initial / Installment #n / Payoff。"""
+    """收据/Manage：Initial / Installment #n / Final payment / Payoff。"""
     meta = dict(payment.payment_metadata or {})
     step = (meta.get('payment_step') or '').strip().lower()
     if step == 'payoff':
@@ -349,7 +373,17 @@ def payment_step_label(payment):
         inst = getattr(payment, 'installment_payment', None)
         num = getattr(inst, 'installment_number', None) if inst else meta.get('installment_number')
         if num is not None and str(num) != '':
-            return f'Installment #{num}'
+            try:
+                num_int = int(num)
+            except (TypeError, ValueError):
+                return 'Installment'
+            bid = getattr(payment, 'booking_id', None) or (
+                getattr(inst, 'booking_id', None) if inst else None
+            )
+            return installment_display_label(
+                installment_number=num_int,
+                booking_id=bid,
+            )
         return 'Installment'
     if step in ('initial', '', 'booking'):
         return 'Initial'
@@ -542,6 +576,9 @@ def build_receipt_ledger_sections(booking):
         .order_by(InstallmentPayment.installment_number.asc(), InstallmentPayment.id.asc())
         .all()
     )
+    post_deposit_count = sum(
+        1 for inst in rows if (inst.installment_number or 0) > 0
+    )
     for inst in rows:
         note = None
         status_label = (inst.status or 'pending').replace('_', ' ').title()
@@ -559,9 +596,9 @@ def build_receipt_ledger_sections(booking):
             status_label = f'Deposit — {status_label}'
         installment_schedule.append({
             'number': inst.installment_number,
-            'label': (
-                'Deposit' if inst.installment_number == 0
-                else f'Installment #{inst.installment_number}'
+            'label': installment_display_label(
+                inst,
+                post_deposit_count=post_deposit_count,
             ),
             'amount': round(float(inst.amount or 0), 2),
             'due_date': inst.due_date,
@@ -690,6 +727,51 @@ def installment_has_other_unpaid(installment, all_installments=None):
         and (getattr(i, 'status', None) or '') in ('pending', 'overdue')
         for i in (all_installments or [])
     )
+
+
+def booking_post_deposit_installment_count(booking_id):
+    """定金之后的期数（installment_number > 0）。"""
+    from app.models import InstallmentPayment
+
+    if not booking_id:
+        return 0
+    return (
+        InstallmentPayment.query.filter(
+            InstallmentPayment.booking_id == booking_id,
+            InstallmentPayment.installment_number > 0,
+        ).count()
+    )
+
+
+def booking_is_multi_period_plan(booking_id):
+    """
+    真正的多期分期：定金后有 **大于 1 期** 尾款。
+    定金 + 单笔尾款（deposit + balance）不算 Installment Payments 分类。
+    """
+    return booking_post_deposit_installment_count(booking_id) > 1
+
+
+def multi_period_booking_ids(booking_ids=None):
+    """
+    返回「定金后 >1 期」的 booking_id 集合。
+    若传入 booking_ids 则限定范围；否则全库统计（Payments 列表用）。
+    """
+    from app import db
+    from app.models import InstallmentPayment
+    from sqlalchemy import func
+
+    q = (
+        db.session.query(InstallmentPayment.booking_id)
+        .filter(InstallmentPayment.installment_number > 0)
+        .group_by(InstallmentPayment.booking_id)
+        .having(func.count(InstallmentPayment.id) > 1)
+    )
+    if booking_ids is not None:
+        ids = list(booking_ids)
+        if not ids:
+            return set()
+        q = q.filter(InstallmentPayment.booking_id.in_(ids))
+    return {row[0] for row in q.all() if row[0] is not None}
 
 
 def cancel_unpaid_installments(booking):

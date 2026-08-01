@@ -15,7 +15,7 @@
     <div class="flex justify-between items-center">
         <div>
             <h2 class="text-2xl font-normal text-gray-500">Payments</h2>
-            <p class="text-sm text-gray-400 mt-1">Payment records and installment management</p>
+            <p class="text-sm text-gray-400 mt-1">Full = completed charges (one-time or deposit + balance). Installment = open schedules (unpaid balance / multi-period) for reminders.</p>
         </div>
         <div class="flex space-x-2">
             <a href="{{ url_for('admin.export_payments') }}"
@@ -61,9 +61,10 @@
                             <select name="status" class="admin-select px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-wetravel-cyan">
                                 <option value="">All Status</option>
                                 <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending</option>
-                                <option value="succeeded" {% if status_filter == 'succeeded' %}selected{% endif %}>Succeeded</option>
+                                <option value="succeeded" {% if status_filter == 'succeeded' or status_filter == 'paid' %}selected{% endif %}>Paid</option>
                                 <option value="failed" {% if status_filter == 'failed' %}selected{% endif %}>Failed</option>
                                 <option value="refunded" {% if status_filter == 'refunded' %}selected{% endif %}>Refunded</option>
+                                <option value="partially_refunded" {% if status_filter == 'partially_refunded' %}selected{% endif %}>Partially refunded</option>
                             </select>
                             <button type="submit" class="px-4 py-2 bg-wetravel-cyan text-white rounded hover:bg-wetravel-cyan-dark transition-colors">
                                 Filter
@@ -135,14 +136,18 @@
                                     {% endif %}
                                 </td>
                                 <td class="px-4 py-3 text-sm font-semibold">${{ (payment.amount or 0)|format_price }}</td>
-                                <td class="px-4 py-3 text-sm">
-                                    <span class="px-2 py-1 text-xs rounded-full
-                                        {% if payment.status == 'succeeded' %}bg-green-100 text-green-800
-                                        {% elif payment.status == 'pending' %}bg-yellow-100 text-yellow-800
-                                        {% elif payment.status == 'failed' %}bg-red-100 text-red-800
-                                        {% elif payment.status == 'refunded' %}bg-gray-100 text-gray-800
+                                <td class="px-4 py-3 text-sm whitespace-nowrap">
+                                    {% set st = payment.status or 'pending' %}
+                                    <span class="px-2 py-1 text-xs font-medium rounded-full
+                                        {% if st == 'succeeded' %}bg-green-100 text-green-800
+                                        {% elif st == 'pending' %}bg-yellow-100 text-yellow-800
+                                        {% elif st == 'failed' %}bg-red-100 text-red-800
+                                        {% elif st == 'refunded' %}bg-gray-100 text-gray-800
+                                        {% elif st == 'partially_refunded' %}bg-orange-100 text-orange-800
                                         {% else %}bg-gray-100 text-gray-800{% endif %}">
-                                        {{ payment.status or 'pending' }}
+                                        {% if st == 'succeeded' %}paid
+                                        {% elif st == 'partially_refunded' %}partially refunded
+                                        {% else %}{{ st }}{% endif %}
                                     </span>
                                 </td>
                                 <td class="px-4 py-3 text-sm text-gray-500">
@@ -199,7 +204,7 @@
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Order number</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Buyer</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Trip</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Installment #</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Installment #</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Due Date</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
@@ -214,7 +219,8 @@
                             {% set is_future = deposit.due_date and deposit.due_date > today %}
                             {% set is_due = deposit.due_date and deposit.due_date <= today and deposit.status != 'paid' %}
                             <!-- Deposit Row (Main Row) -->
-                            <tr class="hover:bg-gray-50 {% if group.others or group.payoff_payment %}cursor-pointer{% endif %}" 
+                            <tr class="hover:bg-gray-50 {% if group.others or group.payoff_payment %}cursor-pointer{% endif %}"
+                                {% if group.has_unpaid %}data-auto-expand="{{ group.booking_id }}"{% endif %}
                                 {% if group.others or group.payoff_payment %}onclick="toggleInstallments({{ group.booking_id }})"{% endif %}>
                                 <td class="px-4 py-3 text-sm text-gray-900">
                                     <div class="flex items-center">
@@ -269,13 +275,17 @@
                                         <span class="text-gray-400">-</span>
                                     {% endif %}
                                 </td>
-                                <td class="px-4 py-3 text-sm">
-                                    <span class="px-2 py-1 text-xs rounded-full
-                                        {% if deposit.status == 'paid' %}bg-green-100 text-green-800
-                                        {% elif deposit.status == 'overdue' %}bg-red-100 text-red-800
+                                <td class="px-4 py-3 text-sm whitespace-nowrap">
+                                    {% set row_status = (group.next_action_installment.status if group.next_action_installment else deposit.status) or 'pending' %}
+                                    <span class="px-2 py-1 text-xs font-medium rounded-full
+                                        {% if row_status == 'paid' %}bg-green-100 text-green-800
+                                        {% elif row_status == 'overdue' %}bg-red-100 text-red-800
                                         {% else %}bg-yellow-100 text-yellow-800{% endif %}">
-                                        {{ deposit.status or 'pending' }}
+                                        {{ row_status }}
                                     </span>
+                                    {% if group.next_action_installment and group.next_action_installment.id != deposit.id %}
+                                    <span class="block text-xs text-gray-400 mt-0.5">next unpaid</span>
+                                    {% endif %}
                                 </td>
                                 <td class="px-4 py-3 text-sm">
                                     {% if payment %}
@@ -301,12 +311,12 @@
                                         <div id="dropdown-{{ deposit.id }}" 
                                             class="hidden origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
                                             <div class="py-1" role="menu">
-                                                {% if deposit.status != 'paid' %}
-                                                <button onclick="sendReminder({{ deposit.id }})" 
+                                                {% if group.next_action_installment %}
+                                                <button onclick="sendReminder({{ group.next_action_installment.id }})" 
                                                     class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100" role="menuitem">
                                                     Send Reminder
                                                 </button>
-                                                <button onclick="markPaid({{ deposit.id }})" 
+                                                <button onclick="markPaid({{ group.next_action_installment.id }})" 
                                                     class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100" role="menuitem">
                                                     Mark Paid
                                                 </button>
@@ -371,8 +381,10 @@
                                 <td class="px-4 py-2.5 text-sm text-gray-400">-</td>
                                 <td class="px-4 py-2.5 text-sm text-gray-400">-</td>
                                 <td class="px-4 py-2.5 text-sm text-gray-400">-</td>
-                                <td class="px-4 py-2.5 text-sm">
-                                    <span class="text-indigo-700 font-medium">#{{ installment.installment_number }}</span>
+                                <td class="px-4 py-2.5 text-sm whitespace-nowrap">
+                                    <span class="text-indigo-700 font-medium">
+                                        {% if group.post_deposit_count == 1 %}Final payment{% else %}#{{ installment.installment_number }}{% endif %}
+                                    </span>
                                 </td>
                                 <td class="px-4 py-2.5 text-sm font-semibold text-gray-700">${{ (installment.amount or 0)|format_price }}</td>
                                 <td class="px-4 py-2.5 text-sm text-gray-600">
@@ -556,22 +568,23 @@
     });
 
     // 切换分期付款显示/隐藏
-    function toggleInstallments(bookingId) {
+    function toggleInstallments(bookingId, forceOpen) {
         const rows = document.querySelectorAll(`tr.installment-row-${bookingId}`);
         const icon = document.getElementById(`icon-${bookingId}`);
-        
+
         if (rows.length > 0) {
             const isHidden = rows[0].classList.contains('hidden');
+            const shouldOpen = forceOpen === true ? true : (forceOpen === false ? false : isHidden);
             rows.forEach(row => {
-                if (isHidden) {
+                if (shouldOpen) {
                     row.classList.remove('hidden');
                 } else {
                     row.classList.add('hidden');
                 }
             });
-            
+
             if (icon) {
-                if (isHidden) {
+                if (shouldOpen) {
                     icon.classList.add('rotate-180');
                 } else {
                     icon.classList.remove('rotate-180');
@@ -579,6 +592,12 @@
             }
         }
     }
+
+    // 有未付期数时默认展开，方便 Reminder / Mark Paid
+    document.querySelectorAll('tr[data-auto-expand]').forEach(row => {
+        const bookingId = row.getAttribute('data-auto-expand');
+        if (bookingId) toggleInstallments(bookingId, true);
+    });
 
     // 切换下拉菜单显示/隐藏
     function toggleDropdown(dropdownId) {

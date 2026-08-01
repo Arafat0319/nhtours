@@ -36,9 +36,8 @@ def _installment_payment_link(installment):
 
 
 def _installment_label(installment):
-    if installment.installment_number is None or installment.installment_number == 0:
-        return 'Deposit'
-    return f'Installment #{installment.installment_number}'
+    from app.payments import installment_display_label
+    return installment_display_label(installment)
 
 
 def _reminder_style(days_until_due=None, days_overdue=None):

@@ -2023,13 +2023,24 @@ def payments():
     today = date.today()
     search = request.args.get('search', '').strip()
     
-    # Tab 1: Payment Records（全款支付记录）
+    # Tab 1: Payment Records（全款 / 定金+单笔尾款；不含真正多期分期）
     if tab == 'records':
+        from app.payments import multi_period_booking_ids
+
+        multi_ids = multi_period_booking_ids()
         query = Payment.query.options(
             joinedload(Payment.booking),
             joinedload(Payment.client),
             joinedload(Payment.trip)
-        ).filter(Payment.installment_payment_id.is_(None))  # 只显示全款支付，排除分期付款
+        )
+        # 排除「定金后超过 1 期」订单上的付款（那些只进 Installment Payments）
+        if multi_ids:
+            query = query.filter(
+                or_(
+                    Payment.booking_id.is_(None),
+                    ~Payment.booking_id.in_(list(multi_ids)),
+                )
+            )
         
         # 搜索功能
         if search:
@@ -2296,64 +2307,95 @@ def payments():
                                 payments_map[installment.id] = []
                             payments_map[installment.id].append(matching_payment)
         
-        # 构建结构化的数据：只显示有 deposit 的 booking，deposit 作为主行，其他作为子项
+        # 构建结构化的数据：
+        # - 多期（定金后 >1）：始终列出
+        # - 定金 + 单笔尾款：仅当仍有未付（pending/overdue）时列出，便于 Reminder / Mark Paid
+        #   （已全部付清的定金+尾款只出现在 Full Payments）
+        def _installment_unpaid(inst):
+            return (getattr(inst, 'status', None) or '') in ('pending', 'overdue')
+
         installments_grouped = []
         for booking_id, group in grouped_installments.items():
-            if group['deposit']:
-                # 如果有 payoff payment，过滤掉被一次性结清的 pending 分期付款
-                others = group['others']
-                if group['payoff_payment']:
-                    # 找出被一次性结清的 installment（原本是 pending，现在被标记为 paid，但没有对应的 Payment 记录）
-                    payoff_payment = group['payoff_payment']
-                    payoff_date = payoff_payment.created_at.date() if payoff_payment.created_at else None
-                    
-                    # 过滤：隐藏那些被一次性结清的 installment
-                    # 被一次性结清的特征：
-                    # 1. status 是 'paid'
-                    # 2. 没有对应的 Payment 记录（不在 payments_map 中）
-                    # 3. paid_at 接近 payoff payment 的时间（同一天或之后）
-                    filtered_others = []
-                    for inst in others:
-                        # 检查是否有对应的 Payment 记录
-                        has_payment = inst.id in payments_map and len(payments_map[inst.id]) > 0
-                        
-                        # 如果 installment 有对应的 Payment 记录，显示（说明是单独支付的）
-                        if has_payment:
-                            filtered_others.append(inst)
-                        # 如果 installment 是 pending，显示（还未被结清）
-                        elif inst.status == 'pending':
-                            filtered_others.append(inst)
-                        # 如果 installment 是 paid 但没有 Payment 记录
-                        elif inst.status == 'paid':
-                            if inst.paid_at and payoff_date:
-                                # 检查 paid_at 是否接近 payoff 时间（同一天或之后）
-                                if isinstance(inst.paid_at, datetime):
-                                    inst_paid_date = inst.paid_at.date()
-                                else:
-                                    inst_paid_date = inst.paid_at
-                                
-                                # 如果 paid_at 在 payoff 当天或之后，说明是被一次性结清的，隐藏
-                                if inst_paid_date >= payoff_date:
-                                    # 被一次性结清的，不显示
-                                    pass
-                                else:
-                                    # 可能是手动标记的（在 payoff 之前），显示
-                                    filtered_others.append(inst)
+            if not group['deposit']:
+                continue
+            raw_others = group['others'] or []
+            is_multi_period = len(raw_others) > 1
+            if not is_multi_period and len(raw_others) == 0:
+                continue
+
+            # 如果有 payoff payment，过滤掉被一次性结清的 pending 分期付款
+            others = list(raw_others)
+            if group['payoff_payment']:
+                # 找出被一次性结清的 installment（原本是 pending，现在被标记为 paid，但没有对应的 Payment 记录）
+                payoff_payment = group['payoff_payment']
+                payoff_date = payoff_payment.created_at.date() if payoff_payment.created_at else None
+
+                # 过滤：隐藏那些被一次性结清的 installment
+                # 被一次性结清的特征：
+                # 1. status 是 'paid'
+                # 2. 没有对应的 Payment 记录（不在 payments_map 中）
+                # 3. paid_at 接近 payoff payment 的时间（同一天或之后）
+                filtered_others = []
+                for inst in others:
+                    # 检查是否有对应的 Payment 记录
+                    has_payment = inst.id in payments_map and len(payments_map[inst.id]) > 0
+
+                    # 如果 installment 有对应的 Payment 记录，显示（说明是单独支付的）
+                    if has_payment:
+                        filtered_others.append(inst)
+                    # 如果 installment 是 pending，显示（还未被结清）
+                    elif inst.status == 'pending':
+                        filtered_others.append(inst)
+                    # 如果 installment 是 paid 但没有 Payment 记录
+                    elif inst.status == 'paid':
+                        if inst.paid_at and payoff_date:
+                            # 检查 paid_at 是否接近 payoff 时间（同一天或之后）
+                            if isinstance(inst.paid_at, datetime):
+                                inst_paid_date = inst.paid_at.date()
                             else:
-                                # 没有 paid_at 或 payoff_date，可能是手动标记的，显示
+                                inst_paid_date = inst.paid_at
+
+                            # 如果 paid_at 在 payoff 当天或之后，说明是被一次性结清的，隐藏
+                            if inst_paid_date >= payoff_date:
+                                # 被一次性结清的，不显示
+                                pass
+                            else:
+                                # 可能是手动标记的（在 payoff 之前），显示
                                 filtered_others.append(inst)
                         else:
-                            # 其他情况（如 overdue 等），显示
+                            # 没有 paid_at 或 payoff_date，可能是手动标记的，显示
                             filtered_others.append(inst)
-                    
-                    others = filtered_others
-                
-                installments_grouped.append({
-                    'deposit': group['deposit'],
-                    'others': sorted(others, key=lambda x: x.installment_number),
-                    'payoff_payment': group['payoff_payment'],
-                    'booking_id': booking_id
-                })
+                    else:
+                        # 其他情况（如 overdue 等），显示
+                        filtered_others.append(inst)
+
+                others = filtered_others
+
+            others = sorted(others, key=lambda x: x.installment_number)
+            schedule = [group['deposit']] + others
+            unpaid = [i for i in schedule if i and _installment_unpaid(i)]
+            unpaid.sort(
+                key=lambda i: (
+                    i.due_date or date.max,
+                    i.installment_number if i.installment_number is not None else 999,
+                )
+            )
+            next_action = unpaid[0] if unpaid else None
+
+            # 定金+单笔尾款：全部付清则不进本 Tab
+            if not is_multi_period and next_action is None:
+                continue
+
+            installments_grouped.append({
+                'deposit': group['deposit'],
+                'others': others,
+                'payoff_payment': group['payoff_payment'],
+                'booking_id': booking_id,
+                'post_deposit_count': len(raw_others),
+                'is_multi_period': is_multi_period,
+                'has_unpaid': next_action is not None,
+                'next_action_installment': next_action,
+            })
         
         # 为每个 installment 添加对应的 Payment 记录到数据中
         for group in installments_grouped:
@@ -3790,11 +3832,21 @@ def manage_booking(trip_id, booking_id):
             deposit_reserved = booking_deposit_reserved(booking, deposit_hint=deposit_hint)
 
             # 获取分期付款记录
+            from app.payments import installment_display_label
+            inst_rows = (
+                InstallmentPayment.query.filter_by(booking_id=booking.id)
+                .order_by(InstallmentPayment.installment_number)
+                .all()
+            )
+            post_deposit_count = sum(1 for i in inst_rows if (i.installment_number or 0) > 0)
             installments = []
-            for inst in InstallmentPayment.query.filter_by(booking_id=booking.id).order_by(InstallmentPayment.installment_number).all():
+            for inst in inst_rows:
                 installments.append({
                     'id': inst.id,
                     'installment_number': inst.installment_number,
+                    'label': installment_display_label(
+                        inst, post_deposit_count=post_deposit_count
+                    ),
                     'amount': float(inst.amount) if inst.amount else 0.0,
                     'due_date': inst.due_date.strftime('%Y-%m-%d') if inst.due_date else None,
                     'status': inst.status,
