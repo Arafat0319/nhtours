@@ -138,6 +138,8 @@
                     {% else %}<span class="text-gray-400">-</span>{% endif %}
                 </td>
                 <td class="px-4 py-3 text-sm" onclick="event.stopPropagation();">
+                    {# 已付定金行不再催缴；未付时仅对本行（定金）操作 #}
+                    {% if row_status in ('pending', 'overdue') %}
                     <div class="relative inline-block text-left">
                         <button type="button"
                             class="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-wetravel-cyan"
@@ -150,21 +152,20 @@
                         <div id="dropdown-{{ deposit.id }}"
                             class="hidden origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
                             <div class="py-1" role="menu">
-                                {% if group.next_action_installment %}
-                                <button onclick="sendReminder({{ group.next_action_installment.id }})"
+                                <button onclick="sendReminder({{ deposit.id }})"
                                     class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100" role="menuitem">
                                     Send Reminder
                                 </button>
-                                <button onclick="markPaid({{ group.next_action_installment.id }})"
+                                <button onclick="markPaid({{ deposit.id }})"
                                     class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100" role="menuitem">
                                     Mark Paid
                                 </button>
-                                {% else %}
-                                <span class="block px-4 py-2 text-xs text-gray-400">No actions available</span>
-                                {% endif %}
                             </div>
                         </div>
                     </div>
+                    {% else %}
+                    <span class="text-xs text-gray-400">-</span>
+                    {% endif %}
                 </td>
             </tr>
 

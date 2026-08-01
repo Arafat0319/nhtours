@@ -2283,11 +2283,32 @@ def installment_payments_api():
 @bp.route('/payments/installments/<int:installment_id>/send-reminder', methods=['POST'])
 @admin_required
 def send_installment_reminder(installment_id):
-    """发送分期付款提醒邮件"""
+    """发送分期付款提醒邮件（已付清的期数不可催缴）"""
     installment = InstallmentPayment.query.get_or_404(installment_id)
     
     if not installment.booking:
         return jsonify({'success': False, 'error': 'Booking not found'}), 404
+
+    # 已付 / 已有成功收款：禁止 Send Reminder
+    if (installment.status or '') == 'paid':
+        return jsonify({
+            'success': False,
+            'error': 'This installment is already paid; cannot send reminder',
+        }), 400
+    succeeded_pay = Payment.query.filter_by(
+        installment_payment_id=installment.id,
+        status='succeeded',
+    ).first()
+    if succeeded_pay:
+        return jsonify({
+            'success': False,
+            'error': 'This installment already has a successful payment; cannot send reminder',
+        }), 400
+    if (installment.status or '') == 'cancelled':
+        return jsonify({
+            'success': False,
+            'error': 'This installment is cancelled; cannot send reminder',
+        }), 400
     
     try:
         from app.tasks import send_installment_reminder_email, send_overdue_reminder_email
@@ -2336,6 +2357,14 @@ def mark_installment_paid(installment_id):
         return jsonify({
             'success': False,
             'error': 'Installment already marked as paid'
+        }), 400
+    if Payment.query.filter_by(
+        installment_payment_id=installment.id,
+        status='succeeded',
+    ).first():
+        return jsonify({
+            'success': False,
+            'error': 'This installment already has a successful payment',
         }), 400
     
     try:
