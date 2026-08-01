@@ -66,7 +66,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 - File Upload：`POST /api/booking/upload`（UI：自定义 dropzone，见 `05` / `booking-modal.css`）
 - DOB 日历：月/年 Uiverse 下拉（同 Gender）；选月年不关日历；逻辑在 `trip_booking.html`
 - 付款后摘要 `GET /api/booking/<id>/summary`：须 `token` 或 `payment_intent_id`；`trip_total` 用套餐+附加**目录价**（$0 Payment 时勿用 `base_amount_cents`）
-- Download receipt（站内）：白底灰边（success / 报名弹窗 / 分期弹窗一致；见 `05`）
+- Download receipt（站内）：`.nh-receipt-download-btn`（`site-nav.css`；勿只靠 Tailwind 灰边类，见 `05`）
 - 静态 CSS/JS 部署后若样式「没变」：先 **Ctrl+F5**（无版本号时易缓存）
 
 ## 业务单号 Order number
@@ -146,7 +146,8 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 未完成速查 | 见 `08`：Stripe Live |
 | 后台角色 | `User.role`：`admin`（默认）/ `staff`；敏感操作 `@admin_required` |
 | 测试 | `pytest tests/`（门禁等）；全量冒烟 `local_tests/run_all.py` |
-| Download receipt | 站内白底灰边；邮件蓝钮；胶囊 CSS 仍保留未引用 || 支付门禁 | summary 须 token/PI；`/booking/payment` 须 token；discount apply 服务端重算；upload 须 `trip_id`+魔数；`/test/*` 仅 debug |
+| Download receipt | `.nh-receipt-download-btn`；本地预览弹窗：`/test/booking-success-preview`；邮件蓝钮 |
+| 支付门禁 | summary 须 token/PI；`/booking/payment` 须 token；discount apply 服务端重算；upload 须 `trip_id`+魔数；`/test/*` 仅 debug |
 
 ## Testimonials / Feedback
 

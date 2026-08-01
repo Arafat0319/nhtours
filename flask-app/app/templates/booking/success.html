@@ -32,7 +32,10 @@
         <div class="flex justify-center" style="margin-bottom: calc(var(--spacing) * 38);">
             <a href="{{ receipt_url }}"
                 download="NHTours-Order-{{ booking_id }}.pdf"
-                class="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium">
+                class="nh-receipt-download-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 21h12M12 3v14m0 0l5-5m-5 5l-5-5"/>
+                </svg>
                 Download receipt
             </a>
         </div>

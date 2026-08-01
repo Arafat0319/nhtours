@@ -229,3 +229,32 @@ body.home-preview-nav-body-lock {
 nav:has(> ol.flex.flex-wrap.items-center.space-x-2.text-lg.font-medium.text-amber-800) {
 	display: none !important;
 }
+
+/* Download receipt — 真实 CSS（beijing.css 未含 border-gray-300 / inline-flex 等工具类） */
+.nh-receipt-download-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	padding: 0.5rem 1rem;
+	border: 1px solid #d1d5db;
+	border-radius: 0.5rem;
+	background: #fff;
+	color: #374151;
+	font-size: 0.875rem;
+	font-weight: 500;
+	line-height: 1.25rem;
+	text-decoration: none;
+	box-sizing: border-box;
+	cursor: pointer;
+	transition: background-color 0.15s ease;
+}
+.nh-receipt-download-btn:hover {
+	background: #f9fafb;
+	color: #374151;
+}
+.nh-receipt-download-btn svg {
+	flex-shrink: 0;
+	width: 1.125rem;
+	height: 1.125rem;
+}

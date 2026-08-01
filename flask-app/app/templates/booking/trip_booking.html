@@ -860,7 +860,7 @@
 </div>
 
 {# ========== 报名 Modal ========== #}
-<div id="booking-modal" class="hidden fixed inset-0" style="background-color: rgba(39, 43, 43, 0.88); z-index: 10001; height: 100vh; border: none; outline: none;">
+<div id="booking-modal" class="hidden fixed inset-0" style="background-color: rgba(39, 43, 43, 0.88); z-index: 10001; height: 100vh; border: none; outline: none;"{% if preview_booking_success|default(false) %} data-preview-booking-success="1"{% endif %}>
     <a href="{{ url_for('main.index') }}" id="booking-modal-screen-logo" class="fixed z-[10002] flex items-center pointer-events-auto" style="left: 1.5rem; top: 1rem;" aria-label="Nexus Horizons Home">
         <img src="{{ url_for('static', filename='images/icons/logo-2-white.DyAUH4zT.svg') }}" alt="Nexus Horizons" style="width: 256px; height: 57.69px; object-fit: contain;">
     </a>
@@ -936,7 +936,12 @@
                                     <h2 class="text-2xl font-bold text-gray-900 text-center mb-3">Booking Confirmed!</h2>
                                     <p class="text-gray-600 text-center mb-6">Thank you for booking with Nexus Horizons. A confirmation email has been sent to your inbox.</p>
                                     <div id="booking-result-receipt-wrap" class="flex justify-center mb-6">
-                                        <a id="booking-result-receipt-link" href="#" target="_blank" rel="noopener" class="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium">Download receipt</a>
+                                        <a id="booking-result-receipt-link" href="#" target="_blank" rel="noopener" class="nh-receipt-download-btn">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 21h12M12 3v14m0 0l5-5m-5 5l-5-5"/>
+                                            </svg>
+                                            Download receipt
+                                        </a>
                                     </div>
                                     <button type="button" id="booking-result-close-btn" class="w-full rounded border font-normal mt-auto inline-flex items-center justify-center" style="height: 40px; min-height: 40px; font-size: 14px;">Close</button>
                                 </div>
@@ -1433,7 +1438,7 @@
     window.initFlatpickrOnDates = initFlatpickrOnDates;
 })();
 </script>
-<script src="{{ url_for('static', filename='js/booking.js') }}"></script>
+<script src="{{ url_for('static', filename='js/booking.js') }}?v=receipt-preview2"></script>
 <script src="{{ url_for('static', filename='js/booking-modal.js') }}"></script>
 <script src="https://js.stripe.com/v3/"></script>
 <script>

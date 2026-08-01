@@ -599,6 +599,23 @@
             } catch (e) {}
         })();
 
+        // DEBUG：真实行程页预览付款成功弹窗（服务端仅 debug 时打 data-preview-booking-success）
+        (function previewBookingSuccessModal() {
+            var m = document.getElementById('booking-modal');
+            if (!m || m.getAttribute('data-preview-booking-success') !== '1') return;
+            m.classList.remove('hidden');
+            document.documentElement.style.overflow = 'hidden';
+            document.body.style.overflow = 'hidden';
+            // booking_id 须为真值，否则收据按钮会被隐藏（与真实成功态同一分支）
+            showBookingModalResult('success', {
+                booking_id: 999001,
+                receipt_url: '#'
+            });
+            try {
+                history.replaceState({}, '', window.location.pathname + (window.location.hash || ''));
+            } catch (e) {}
+        })();
+
         // 桌面端弹窗内容区高度取左右最大：resize 时重新同步
         var syncMinHeightTimer = null;
         window.addEventListener('resize', function() {
@@ -2158,7 +2175,15 @@
         var discountInputSection = document.getElementById('discount-input-section');
         var discountApplied = document.getElementById('discount-applied');
         var discountAmountDisplay = document.getElementById('discount-amount-display');
-        if (bookingData.discount_code && discountAmount > 0) {
+        // 付款结果态（loading/success/failure）时整块折扣 UI 保持隐藏，勿被摘要刷新重新打开
+        var paymentResultActive = (function() {
+            var wrap = document.getElementById('booking-modal-result');
+            return !!(wrap && !wrap.classList.contains('hidden'));
+        })();
+        if (paymentResultActive) {
+            if (discountInputSection) discountInputSection.classList.add('hidden');
+            if (discountApplied) discountApplied.classList.add('hidden');
+        } else if (bookingData.discount_code && discountAmount > 0) {
             if (discountInputSection) discountInputSection.classList.add('hidden');
             if (discountApplied) discountApplied.classList.remove('hidden');
             if (discountAmountDisplay) discountAmountDisplay.textContent = '-$' + formatCurrency(discountAmount);
@@ -3001,15 +3026,16 @@
             if (failureEl) failureEl.classList.add('hidden');
             var amountPaidRow = document.getElementById('amount-paid-row');
             if (amountPaidRow) amountPaidRow.classList.add('hidden');
-            // 恢复折扣码输入（已应用则继续隐藏输入框，仅显示已应用行）
+            // 恢复折扣码（已应用则继续隐藏输入框，仅显示已应用行）
             var discountInputSection = document.getElementById('discount-input-section');
+            var discountApplied = document.getElementById('discount-applied');
             var removeDiscountBtn = document.getElementById('remove-discount-btn');
-            if (discountInputSection) {
-                if (bookingData && bookingData.discount_code) {
-                    discountInputSection.classList.add('hidden');
-                } else {
-                    discountInputSection.classList.remove('hidden');
-                }
+            if (bookingData && bookingData.discount_code) {
+                if (discountInputSection) discountInputSection.classList.add('hidden');
+                if (discountApplied) discountApplied.classList.remove('hidden');
+            } else {
+                if (discountInputSection) discountInputSection.classList.remove('hidden');
+                if (discountApplied) discountApplied.classList.add('hidden');
             }
             if (removeDiscountBtn) removeDiscountBtn.classList.remove('hidden');
             requestAnimationFrame(function() { syncBookingModalBodyMinHeight(); });
@@ -3024,11 +3050,13 @@
         if (successEl) successEl.classList.add('hidden');
         if (failureEl) failureEl.classList.add('hidden');
 
-        // 付款结果页不显示折扣码输入 / Remove
+        // 付款结果页：整块折扣 UI 不显示（输入 / 已应用 / Remove / 提示）
         var discountInputSection = document.getElementById('discount-input-section');
+        var discountApplied = document.getElementById('discount-applied');
         var discountMessage = document.getElementById('discount-message');
         var removeDiscountBtn = document.getElementById('remove-discount-btn');
         if (discountInputSection) discountInputSection.classList.add('hidden');
+        if (discountApplied) discountApplied.classList.add('hidden');
         if (discountMessage) discountMessage.classList.add('hidden');
         if (removeDiscountBtn) removeDiscountBtn.classList.add('hidden');
 

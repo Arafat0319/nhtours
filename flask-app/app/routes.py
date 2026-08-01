@@ -377,7 +377,10 @@ def trip_detail(slug):
                 custom_questions=custom_questions, package_spots_available=package_spots_available,
                 publishable_key=current_app.config.get('STRIPE_PUBLISHABLE_KEY'),
                 registration_open=registration_open, registration_date=trip.registration_date,
-                use_experimental_modal=True)
+                use_experimental_modal=True,
+                preview_booking_success=bool(
+                    current_app.debug and request.args.get('preview_booking_success') == '1'
+                ))
         # 使用 buyer_email 作为主要邮箱（优先于兼容字段 email）
         buyer_email = form.buyer_email.data or form.email.data
         
@@ -490,7 +493,10 @@ def trip_detail(slug):
                          publishable_key=current_app.config.get('STRIPE_PUBLISHABLE_KEY'),
                          registration_open=registration_open,
                          registration_date=trip.registration_date,
-                         use_experimental_modal=True)
+                         use_experimental_modal=True,
+                         preview_booking_success=bool(
+                             current_app.debug and request.args.get('preview_booking_success') == '1'
+                         ))
 
 
 def _trip_detail_context(trip):
@@ -2656,6 +2662,39 @@ def pay_installment(installment_id):
         remaining_amount_cents=remaining_amount_cents if show_payoff else 0,
         show_payoff=show_payoff,
         payoff_url=url_for('main.pay_installment_payoff', installment_id=installment.id, token=token) if show_payoff else None,
+    )
+
+
+@bp.route('/test/booking-success-preview')
+def test_booking_success_preview():
+    """
+    本地预览付款成功相关 UI，无需重新下单。仅 DEBUG。
+
+    - 默认 / ?view=modal → 真实行程页 #booking-modal 成功态
+    - ?view=already_paid → 邮件付款链接再次点击时的 Already Paid 全页
+    - ?view=page → Booking Confirmed 全页（少见路径）
+    """
+    if not current_app.debug:
+        abort(404)
+    view = (request.args.get('view') or 'modal').strip().lower()
+    if view in ('page', 'already_paid'):
+        return render_template(
+            'booking/success.html',
+            booking_id=999001,
+            booking=None,
+            payment_status='succeeded',
+            already_paid=(view == 'already_paid'),
+            receipt_url='#',
+            receipt_token=None,
+        )
+    trip = (
+        Trip.query.filter_by(status='published').order_by(Trip.id.desc()).first()
+        or Trip.query.order_by(Trip.id.desc()).first()
+    )
+    if not trip:
+        abort(404)
+    return redirect(
+        url_for('main.trip_detail', slug=trip.slug, preview_booking_success=1)
     )
 
 
