@@ -856,6 +856,33 @@ def booking_payments_plan_kind(booking_id):
     return 'one_time'
 
 
+def booking_payment_type_display(booking):
+    """
+    Manage Booking「Payment Type」展示（比 Full/Installment 更细）：
+    - Full：一次付清
+    - Deposit + Final：定金 + 单笔尾款
+    - Installment (N)：定金后 N 期尾款（N>1）
+    若尚无分期行但套餐选了 deposit_installment，显示 Installment（计划待生成）。
+    返回 dict: { key, label }；key 用于样式。
+    """
+    if not booking:
+        return {'key': 'full', 'label': 'Full'}
+    kind = booking_payments_plan_kind(booking.id)
+    n = booking_post_deposit_installment_count(booking.id)
+    if kind == 'multi':
+        return {'key': 'installment', 'label': f'Installment ({n})'}
+    if kind == 'deposit_balance':
+        return {'key': 'deposit_final', 'label': 'Deposit + Final'}
+    # one_time：看套餐是否声明了分期计划（Manual / 尚未建 schedule）
+    try:
+        packages = list(booking.booking_packages) if booking.booking_packages else []
+    except Exception:
+        packages = []
+    if any((getattr(bp, 'payment_plan_type', None) or '') == 'deposit_installment' for bp in packages):
+        return {'key': 'installment', 'label': 'Installment'}
+    return {'key': 'full', 'label': 'Full'}
+
+
 def cancel_unpaid_installments(booking):
     """
     订单取消后：未付分期（pending/overdue）标为 cancelled，并尽量取消关联 Stripe PI。

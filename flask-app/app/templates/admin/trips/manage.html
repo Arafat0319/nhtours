@@ -275,17 +275,13 @@
                                 {% endif %}
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
-                                {% set has_installment = namespace(value=false) %}
-                                {% for bp in booking.booking_packages %}
-                                    {% if bp.payment_plan_type == 'deposit_installment' %}
-                                        {% set has_installment.value = true %}
-                                    {% endif %}
-                                {% endfor %}
-                                {% if has_installment.value %}
-                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">Installment</span>
-                                {% else %}
-                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">Full</span>
-                                {% endif %}
+                                {% set ptype = booking_payment_types.get(booking.id, {'key': 'full', 'label': 'Full'}) %}
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                                    {% if ptype.key == 'installment' %}bg-purple-100 text-purple-800
+                                    {% elif ptype.key == 'deposit_final' %}bg-indigo-100 text-indigo-800
+                                    {% else %}bg-gray-100 text-gray-800{% endif %}">
+                                    {{ ptype.label }}
+                                </span>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <span id="status-badge-{{ booking.id }}" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 

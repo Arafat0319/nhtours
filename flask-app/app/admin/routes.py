@@ -490,7 +490,7 @@ def manage_trip(id):
     
     # Booking buyers for New Message (not participants)
     from app.messaging import collect_message_buyers, forced_reply_to_email, recipient_counts_for_trip
-    from app.payments import booking_payment_display_status
+    from app.payments import booking_payment_display_status, booking_payment_type_display
     message_buyers = collect_message_buyers(trip)
     buyer_count = len(message_buyers)
     message_recipient_counts = recipient_counts_for_trip(trip)
@@ -498,6 +498,9 @@ def manage_trip(id):
 
     booking_payment_statuses = {
         b.id: booking_payment_display_status(b) for b in bookings
+    }
+    booking_payment_types = {
+        b.id: booking_payment_type_display(b) for b in bookings
     }
 
     # Collect all participants with their booking and package info
@@ -602,6 +605,7 @@ def manage_trip(id):
                            booking_addons_summary=booking_addons_summary,
                            booking_balances=booking_balances,
                            booking_payment_statuses=booking_payment_statuses,
+                           booking_payment_types=booking_payment_types,
                            all_participants=all_participants,
                            total_participants_count=total_participants_count,
                            message_buyers=message_buyers,
