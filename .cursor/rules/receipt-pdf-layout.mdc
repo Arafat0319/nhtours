@@ -48,11 +48,16 @@ alwaysApply: true
 
 说明：
 
-- Due this time **固定指报名首笔应付**；下面 Includes 解释「这笔里都有什么」  
+- Due this time = **指定笔或默认最近一笔**成功收款的基础额；Includes 说明该笔是 Initial / Installment #n / Payoff / 多期 Catch-up（`Installment #1 $… + #2 $…`）等  
+
+- 后台 Manage → Payment History 行内 **Receipt** 传 `?payment_id=`；底部 **Generate Receipt** 省略则最近一笔；前台签名下载暂不开放任意 `payment_id`  
+- 页头日期随当笔；Total Expected / Amount Paid / Amount Remaining 仍为整单快照  
+- 首笔 Initial 时 Includes 仍可拆成 Deposit + Add-ons（报名口径）  
 - Due / Paid / Remaining **不含**卡手续费（Trip Total 基础口径）  
 - 定金已含在套餐总价里，不是 Expected 之外再加一笔  
 - 一次付全款：$0 无付款记录则省略实扣说明行  
 - 卡费明细：全款在第 1 页斜体行；定金/分期在 Payment History  
+- 完整付款记录仍在第 2 页 History（若有）
 
 ## 第 2 页 History（定金/分期/多笔）
 

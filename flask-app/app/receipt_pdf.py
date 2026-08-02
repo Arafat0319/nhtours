@@ -310,7 +310,8 @@ def build_booking_receipt_pdf(ctx_or_booking=None, trip=None, expected_amount=No
     amount_due_this_time = ctx.get("amount_due_this_time")
     if amount_due_this_time is None:
         if payment_history:
-            amount_due_this_time = float(payment_history[0].get("base") or 0)
+            # 当笔 = 最近一笔成功收款
+            amount_due_this_time = float(payment_history[-1].get("base") or 0)
         else:
             amount_due_this_time = min(
                 float(expected_amount or 0),

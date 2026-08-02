@@ -496,7 +496,11 @@ def manage_trip(id):
     
     # Booking buyers for New Message (not participants)
     from app.messaging import collect_message_buyers, forced_reply_to_email, recipient_counts_for_trip
-    from app.payments import booking_payment_display_status, booking_payment_type_display
+    from app.payments import (
+        booking_payment_display_status,
+        booking_payment_type_display,
+        booking_ids_with_payoff,
+    )
     message_buyers = collect_message_buyers(trip)
     buyer_count = len(message_buyers)
     message_recipient_counts = recipient_counts_for_trip(trip)
@@ -508,6 +512,7 @@ def manage_trip(id):
     booking_payment_types = {
         b.id: booking_payment_type_display(b) for b in bookings
     }
+    booking_payoff_ids = booking_ids_with_payoff([b.id for b in bookings])
 
     # Collect all participants with their booking and package info
     all_participants = []
@@ -594,6 +599,7 @@ def manage_trip(id):
                            booking_balances=booking_balances,
                            booking_payment_statuses=booking_payment_statuses,
                            booking_payment_types=booking_payment_types,
+                           booking_payoff_ids=booking_payoff_ids,
                            all_participants=all_participants,
                            total_participants_count=total_participants_count,
                            message_buyers=message_buyers,
@@ -3481,7 +3487,11 @@ def manage_booking(trip_id, booking_id):
                 booking_deposit_reserved,
                 booking_payment_display_status,
                 booking_balance_due,
+                payment_step_label,
+                payment_is_payoff,
+                booking_has_payoff,
             )
+            settled_via_payoff = False
             for payment in Payment.query.filter_by(booking_id=booking.id).order_by(Payment.created_at.desc()).all():
                 amt = payment_charged_amount(payment)
                 fee_dollars = payment_fee_amount(payment)
@@ -3490,6 +3500,9 @@ def manage_booking(trip_id, booking_id):
                 remaining = payment_refundable_remaining(payment)
                 # 实收：基础金额 − 已退（已为基础口径）
                 net_from_payment = round(max(0.0, base_dollars - refunded), 2)
+                is_payoff = payment_is_payoff(payment)
+                if is_payoff and payment.status in ('succeeded', 'partially_refunded', 'refunded'):
+                    settled_via_payoff = True
 
                 payments.append({
                     'id': payment.id,
@@ -3497,6 +3510,8 @@ def manage_booking(trip_id, booking_id):
                     'base_amount': base_dollars,
                     'fee_amount': fee_dollars,
                     'status': payment.status,
+                    'type_label': payment_step_label(payment),
+                    'is_payoff': is_payoff,
                     'paid_at': payment.paid_at.strftime('%Y-%m-%d %H:%M') if payment.paid_at else None,
                     'created_at': payment.created_at.strftime('%Y-%m-%d %H:%M') if payment.created_at else None,
                     'stripe_payment_intent_id': payment.stripe_payment_intent_id,
@@ -3634,7 +3649,8 @@ def manage_booking(trip_id, booking_id):
                     # 支付历史
                     'payments': payments,
                     # 分期付款记录
-                    'installments': installments
+                    'installments': installments,
+                    'settled_via_payoff': settled_via_payoff or booking_has_payoff(booking),
                 }
             })
     
@@ -3738,7 +3754,7 @@ def manage_booking(trip_id, booking_id):
 @bp.route('/trips/<int:trip_id>/bookings/<int:booking_id>/receipt')
 @login_required
 def generate_receipt(trip_id, booking_id):
-    """生成预订收据 PDF（默认下载）；?format=html 查看网页版。"""
+    """生成预订收据 PDF（默认下载）；?payment_id= 指定当笔；?format=html 查看网页版。"""
     from flask import make_response
     from app.receipt_pdf import build_booking_receipt_pdf
     from app.routes import _booking_receipt_context
@@ -3750,20 +3766,30 @@ def generate_receipt(trip_id, booking_id):
         flash('Booking does not belong to this trip', 'error')
         return redirect(url_for('admin.manage_trip', id=trip_id))
 
-    ctx = _booking_receipt_context(booking)
+    payment_id = request.args.get('payment_id', type=int)
+    ctx = _booking_receipt_context(booking, payment_id=payment_id)
     if not ctx:
-        flash('Unable to build receipt for this booking', 'error')
-        return redirect(url_for('admin.manage_trip', id=trip_id))
+        # Manage 用 fetch 下载；勿 flash+redirect（否则会把 HTML 当下 PDF）
+        msg = (
+            'Invalid payment for this booking receipt'
+            if payment_id is not None
+            else 'Unable to build receipt for this booking'
+        )
+        return jsonify({'success': False, 'message': msg}), 400
 
     if request.args.get('format') == 'html':
         return render_template('booking/receipt.html', **ctx)
 
     pdf_bytes = build_booking_receipt_pdf(ctx)
+    order_label = getattr(booking, 'order_number', None) or booking.id
+    focus_pid = ctx.get('receipt_payment_id') or payment_id
+    if focus_pid:
+        filename = f'NHTours-Order-{order_label}-Pay-{focus_pid}.pdf'
+    else:
+        filename = f'NHTours-Order-{order_label}.pdf'
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = (
-        f'attachment; filename="NHTours-Order-{getattr(booking, "order_number", None) or booking.id}.pdf"'
-    )
+    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
 
 

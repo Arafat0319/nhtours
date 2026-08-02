@@ -73,7 +73,7 @@
 |------|------|------|
 | `/admin/trips/<id>/bookings/add` | POST | 后台手动添加订单 |
 | `/admin/trips/<trip_id>/bookings/<booking_id>` | GET/POST | 订单详情 / 编辑 |
-| `/admin/trips/<trip_id>/bookings/<booking_id>/receipt` | GET | 生成收据 |
+| `/admin/trips/<trip_id>/bookings/<booking_id>/receipt` | GET | 生成收据 PDF；可选 `?payment_id=` 指定当笔（省略=最近成功笔）；`?format=html` |
 | `/admin/trips/<trip_id>/bookings/<booking_id>/cancel` | POST | 取消订单（不退款）；幂等；取消未付分期 |
 | `/admin/trips/<trip_id>/bookings/<booking_id>/refund` | POST | 退款：JSON `{ amount, reason, cancel_booking?, manual_only? }`；按 PI 调 Stripe |
 
@@ -331,8 +331,8 @@ stripe listen --forward-to localhost:8080/webhooks/stripe
 |------|------|------|
 | `/payment/pending` | GET | 支付处理中页面 |
 | `/booking/success` | GET | 支付成功页面 |
-| `/pay-installment/<id>` | GET | 分期付款弹窗页（query: token=，模板 installment_modal_page.html） |
-| `/pay-installment/<id>/payoff` | GET | 一次性付清页（query: token=） |
+| `/pay-installment/<id>` | GET | 分期付款弹窗页（query: token=）；**强制补齐**该期+此前未付/逾期；模板 installment_modal_page.html |
+| `/pay-installment/<id>/payoff` | GET | 一次性付清整单剩余（query: token=） |
 | `/test/installment-modal` | GET | 分期弹窗预览；**仅 debug**，生产 404 |
 | `/test/installment-payment-preview` | GET | 分期页预览；**仅 debug** |
 

@@ -45,6 +45,11 @@ from app.payments import (
     payment_charged_amount,
     payment_base_amount,
     stripe_refunded_as_base,
+    catch_up_amount_cents,
+    catch_up_summary_items,
+    catch_up_metadata_fields,
+    parse_catch_up_ids,
+    void_stale_pending_payments,
 )
 from datetime import datetime, date, timedelta
 
@@ -1219,7 +1224,10 @@ def api_payment_quote():
             else:
                 return jsonify({'error': 'installment_not_found'}), 404
         else:
-            base_amount_cents = int(round(float(installment.amount) * 100))
+            # 强制补齐：该期 + 此前未付/逾期
+            base_amount_cents = catch_up_amount_cents(installment)
+            if base_amount_cents <= 0:
+                return jsonify({'error': 'no_balance_due'}), 400
     elif booking_id:
         try:
             booking_id = int(booking_id) if isinstance(booking_id, str) and booking_id.isdigit() else booking_id
@@ -1369,8 +1377,10 @@ def api_payment_intent():
         if not installment:
             return jsonify({'error': 'installment_not_found'}), 404
         
-        # 使用 installment 的金额
-        base_amount_cents = int(round(float(installment.amount) * 100))
+        # 强制补齐合计（非单期金额）
+        base_amount_cents = catch_up_amount_cents(installment)
+        if base_amount_cents <= 0:
+            return jsonify({'error': 'no_balance_due'}), 400
         booking = installment.booking
         payment_plan = 'installment'
         
@@ -1387,7 +1397,7 @@ def api_payment_intent():
         payment_intent_id = payment.stripe_payment_intent_id
         
         current_app.logger.info(
-            f"Updating Payment Intent for installment_id={installment_id} with base_amount_cents={base_amount_cents}"
+            f"Updating Payment Intent for installment_id={installment_id} with catch-up base_amount_cents={base_amount_cents}"
         )
     
     elif booking_id:
@@ -1518,6 +1528,7 @@ def api_payment_intent():
                     'payment_intent_id': payment_intent_id,
                     'final_amount': final_amount_cents,
                 })
+        catch_meta = catch_up_metadata_fields(installment)
         quote_metadata = build_booking_metadata(installment.booking, {
             'payment_flow': 'installment',
             'payment_plan': 'installment',
@@ -1532,6 +1543,7 @@ def api_payment_intent():
             'final_amount': final_amount_cents,
             'payment_method_id': payment_method_id,
             'base_amount': base_amount_cents,
+            **catch_meta,
         })
 
     updated_intent = update_payment_intent_amount(
@@ -1769,7 +1781,7 @@ def _compute_due_at_booking_parts(booking):
 
 def _format_due_this_time_breakdown(parts):
     """
-    Due this time 下方说明：当次应付由哪些部分组成（定金 / 追缴分期 / 附加）。
+    报名首笔拆分说明：定金 / 追缴分期 / 附加。
     一次付全款不返回说明。
     """
     if not parts:
@@ -1790,6 +1802,33 @@ def _format_due_this_time_breakdown(parts):
     return 'Includes: ' + ' + '.join(bits)
 
 
+def _format_due_this_time_for_payment(booking, payment_row):
+    """
+    Due this time 对应当笔成功收款：金额 + Includes 说明。
+    payment_row 来自 build_receipt_ledger_sections.payment_history。
+    """
+    if not payment_row:
+        return None, None
+    base = round(float(payment_row.get('base') or 0), 2)
+    label = (payment_row.get('type_label') or 'Payment').strip()
+    label_l = label.lower()
+
+    if label_l in ('initial', 'deposit') or label_l.startswith('initial'):
+        breakdown = _format_due_this_time_breakdown(_compute_due_at_booking_parts(booking))
+        return base, breakdown
+
+    if label_l == 'payoff' or 'payoff' in label_l:
+        return base, f'Includes: Payoff ${base:,.2f} (remaining balance)'
+
+    # 强制补齐：metadata 已拆各期
+    catch_bd = (payment_row.get('catch_up_breakdown') or '').strip()
+    if catch_bd:
+        return base, f'Includes: {catch_bd}'
+
+    # Installment #n / Final payment 等
+    return base, f'Includes: {label} ${base:,.2f}'
+
+
 def _compute_due_at_booking_gross(booking):
     """
     报名当时应付（折扣前）：定金×数量 + 报名日已逾期分期×数量 + 附加项（+ 全款套餐）。
@@ -1798,8 +1837,12 @@ def _compute_due_at_booking_gross(booking):
     return _compute_due_at_booking_parts(booking)['total']
 
 
-def _booking_receipt_context(booking):
-    """Shared receipt amounts + participants for HTML/PDF/email attachment."""
+def _booking_receipt_context(booking, payment_id=None):
+    """
+    Shared receipt amounts + participants for HTML/PDF/email attachment.
+    payment_id: 可选；指定成功付款时，页头日期 / Due this time / Includes 对应该笔；
+    省略则用最近一笔成功付款。非法 payment_id 返回 None。
+    """
     from app.payments import build_receipt_ledger_sections
 
     trip = Trip.query.get(booking.trip_id) if booking.trip_id else None
@@ -1841,8 +1884,6 @@ def _booking_receipt_context(booking):
     amount_pending = round(max(0.0, expected_amount - amount_paid_net), 2)
 
     due_at_booking = _compute_due_at_booking_gross(booking)
-    due_parts = _compute_due_at_booking_parts(booking)
-    due_this_time_breakdown = _format_due_this_time_breakdown(due_parts)
 
     participants_info = []
     for participant in booking.participants:
@@ -1872,32 +1913,46 @@ def _booking_receipt_context(booking):
         2,
     )
 
-    # 这次应付：首笔成功付款的基础额（含折扣后 $0）；无付款记录时回退到报名口径
-    if ledger['payment_history']:
-        amount_due_this_time = round(float(ledger['payment_history'][0].get('base') or 0), 2)
+    history = ledger['payment_history'] or []
+    focus_row = None
+    if payment_id is not None:
+        try:
+            pid = int(payment_id)
+        except (TypeError, ValueError):
+            return None
+        focus_row = next((r for r in history if r.get('id') == pid), None)
+        if not focus_row:
+            return None
+    elif history:
+        focus_row = history[-1]
+
+    # Due this time / Includes / 页头日期 = 当笔（指定或最近成功收款）
+    due_this_time_breakdown = None
+    if focus_row:
+        amount_due_this_time, due_this_time_breakdown = _format_due_this_time_for_payment(
+            booking, focus_row
+        )
+        if amount_due_this_time is None:
+            amount_due_this_time = round(float(focus_row.get('base') or 0), 2)
+        header_ts = focus_row.get('date') or focus_row.get('at') or booking.created_at
     else:
         amount_due_this_time = round(
             min(expected_amount, max(0.0, float(due_at_booking or 0))),
             2,
         )
+        due_this_time_breakdown = _format_due_this_time_breakdown(
+            _compute_due_at_booking_parts(booking)
+        )
+        header_ts = booking.created_at
 
     # Due this time 已在 Trip Total 展示，不再重复长脚注
     due_at_booking_note = None
-
-    # 页头日期 = 最近一笔成功付款日（美西）；无付款记录则回退订单创建日
-    header_ts = None
-    for row in reversed(ledger['payment_history'] or []):
-        at = row.get('date') or row.get('at')
-        if at:
-            header_ts = at
-            break
-    if header_ts is None:
-        header_ts = booking.created_at
 
     return {
         'trip': trip,
         'booking': booking,
         'receipt_issued_at': format_pacific_date(header_ts) if header_ts else '',
+        'receipt_payment_id': focus_row.get('id') if focus_row else None,
         'expected_amount': round(expected_amount, 2),
         'packages_subtotal': round(packages_subtotal, 2),
         'addons_total': round(addons_total, 2),
@@ -1911,13 +1966,13 @@ def _booking_receipt_context(booking):
         'amount_paid_net': amount_paid_net,
         'amount_pending': amount_pending,
         'total_refunded': total_refunded,
-        'payment_history': ledger['payment_history'],
+        'payment_history': history,
         'installment_schedule': ledger['installment_schedule'],
         'refunds': ledger['refunds'],
         # 仅「一次付全款」无 History；定金/分期（有分期计划）或已付 ≥2 笔 → 第 2 页
         'show_history_page': (
             bool(ledger['installment_schedule'])
-            or len(ledger['payment_history']) > 1
+            or len(history) > 1
             or any(
                 ((bp.payment_plan_type or '').strip() == 'deposit_installment')
                 for bp in booking.booking_packages
@@ -2596,42 +2651,85 @@ def pay_installment(installment_id):
     remaining_amount = max((total_info['total'] or 0.0) - (booking.amount_paid or 0.0), 0.0)
     remaining_amount_cents = int(round(remaining_amount * 100))
 
-    base_amount_cents = int(round(float(installment.amount or 0.0) * 100))
     from app.payments import installment_display_label, installment_has_other_unpaid
+    post_deposit_count = sum(
+        1 for i in all_installments if (i.installment_number or 0) > 0
+    )
+    summary_items = catch_up_summary_items(
+        installment, post_deposit_count=post_deposit_count
+    )
+    base_amount_cents = sum(int(i.get('amount_cents') or 0) for i in summary_items)
+    if base_amount_cents <= 0:
+        return redirect(url_for(
+            'main.booking_success',
+            booking_id=booking.id,
+            already_paid=1,
+            token=generate_receipt_token(booking.id),
+        ))
+
+    catch_meta = catch_up_metadata_fields(installment, summary_items=summary_items)
+    payment_step = catch_meta.get('payment_step') or 'installment'
     show_payoff = bool(
         remaining_amount_cents > 0
         and installment_has_other_unpaid(installment, all_installments)
     )
     installment_label = installment_display_label(
         installment,
-        post_deposit_count=sum(
-            1 for i in all_installments if (i.installment_number or 0) > 0
-        ),
+        post_deposit_count=post_deposit_count,
     )
-    summary_items = [
-        {
-            'label': installment_label,
-            'amount_cents': base_amount_cents,
-        }
-    ]
+    if len(summary_items) > 1:
+        # 页头用补齐区间，避免只显示锚定期
+        labels = [i['label'] for i in summary_items]
+        first, last = labels[0], labels[-1]
+        if first.startswith('Installment #') and last.startswith('Installment #'):
+            installment_label = f'{first}–#{last.split("#")[-1]}'
+        else:
+            installment_label = ' + '.join(labels)
+
+    installment_metadata = build_booking_metadata(booking, {
+        'payment_flow': 'installment',
+        'payment_plan': 'installment',
+        'installment_due_date': installment.due_date.isoformat() if installment.due_date else None,
+        'source': 'installment_link',
+        'base_amount': base_amount_cents,
+        **catch_meta,
+    })
 
     payment_intent = None
     if installment.payment_intent_id:
         payment_intent = retrieve_payment_intent(installment.payment_intent_id)
+        # 旧单期 PI / 补齐集合变化 → 取消并重建（已含卡费的 PI 用 metadata.base_amount 比对）
+        if payment_intent is not None:
+            status = getattr(payment_intent, 'status', None) or ''
+            pi_meta = dict(getattr(payment_intent, 'metadata', None) or {})
+            need_rebuild = status in ('succeeded', 'canceled')
+            if not need_rebuild:
+                stored_base = pi_meta.get('base_amount')
+                stored_ids = (pi_meta.get('catch_up_ids') or '').strip()
+                want_ids = (catch_meta.get('catch_up_ids') or '').strip()
+                try:
+                    if stored_base is not None and int(stored_base) != int(base_amount_cents):
+                        need_rebuild = True
+                except (TypeError, ValueError):
+                    need_rebuild = True
+                if stored_ids != want_ids:
+                    need_rebuild = True
+                if stored_base is None:
+                    existing_amount = getattr(payment_intent, 'amount', None)
+                    if existing_amount is not None and int(existing_amount) != int(base_amount_cents):
+                        need_rebuild = True
+            if need_rebuild:
+                safe_cancel_payment_intent(
+                    getattr(payment_intent, 'id', None),
+                    reason=f'catch-up amount mismatch installment {installment.id}',
+                )
+                payment_intent = None
+                installment.payment_intent_id = None
+                installment.payment_link = None
 
     if not payment_intent:
-        installment_metadata = build_booking_metadata(booking, {
-            'payment_flow': 'installment',
-            'payment_plan': 'installment',
-            'installment_id': installment.id,
-            'installment_number': installment.installment_number,
-            'installment_due_date': installment.due_date.isoformat() if installment.due_date else None,
-            'source': 'installment_link',
-            'base_amount': base_amount_cents,
-        })
-
         payment_intent = create_payment_intent(
-            amount=installment.amount or 0.0,
+            amount=base_amount_cents / 100.0,
             currency='usd',
             metadata=installment_metadata
         )
@@ -2641,37 +2739,55 @@ def pay_installment(installment_id):
             installment.payment_link = getattr(payment_intent, 'client_secret', None)
             db.session.commit()
             current_app.logger.info(
-                "Payment intent created installment_id=%s pi=%s base=%s",
+                "Payment intent created installment_id=%s pi=%s catch_up_base=%s ids=%s",
                 installment.id,
                 getattr(payment_intent, 'id', None),
-                base_amount_cents
+                base_amount_cents,
+                catch_meta.get('catch_up_ids'),
             )
 
     if not payment_intent:
         abort(500)
 
+    pi_id = getattr(payment_intent, 'id', None)
     payment = Payment.query.filter_by(
         installment_payment_id=installment.id,
-        stripe_payment_intent_id=getattr(payment_intent, 'id', None)
+        stripe_payment_intent_id=pi_id,
     ).first()
     if not payment:
+        # 清理锚定期上金额不符的旧 pending Payment
+        for stale in Payment.query.filter_by(
+            installment_payment_id=installment.id,
+            status='pending',
+        ).all():
+            if stale.stripe_payment_intent_id and stale.stripe_payment_intent_id != pi_id:
+                safe_cancel_payment_intent(
+                    stale.stripe_payment_intent_id,
+                    reason=f'catch-up replace pending payment {stale.id}',
+                )
+                stale.status = 'failed'
         payment = Payment(
             booking_id=booking.id,
             client_id=booking.client_id,
             trip_id=booking.trip_id,
-            amount=float(installment.amount or 0.0),
-            stripe_payment_intent_id=getattr(payment_intent, 'id', None),
+            amount=base_amount_cents / 100.0,
+            stripe_payment_intent_id=pi_id,
             installment_payment_id=installment.id,
             status='pending',
             currency='usd',
-            payment_metadata=installment_metadata if 'installment_metadata' in locals() else None,
+            payment_metadata=installment_metadata,
             base_amount_cents=base_amount_cents,
-            final_amount_cents=base_amount_cents
+            final_amount_cents=base_amount_cents,
         )
         db.session.add(payment)
         db.session.commit()
+    else:
+        payment.amount = base_amount_cents / 100.0
+        payment.base_amount_cents = base_amount_cents
+        payment.final_amount_cents = base_amount_cents
+        payment.payment_metadata = installment_metadata
+        db.session.commit()
 
-    pi_id = getattr(payment_intent, 'id', None)
     success_url_same_page = (
         url_for('main.pay_installment', installment_id=installment.id, _external=True)
         + '?token=' + (token or '')
@@ -2685,13 +2801,17 @@ def pay_installment(installment_id):
         all_installments=all_installments,
         base_amount_cents=base_amount_cents,
         summary_items=summary_items,
+        catch_up_note=(
+            'This payment includes earlier unpaid installments.'
+            if len(summary_items) > 1 else None
+        ),
         publishable_key=current_app.config.get('STRIPE_PUBLISHABLE_KEY'),
         client_secret=getattr(payment_intent, 'client_secret', None),
         payment_intent_id=pi_id,
         success_url=success_url_same_page,
         payment_plan='installment',
         payment_mode='installment',
-        payment_step='installment',
+        payment_step=payment_step,
         remaining_amount_cents=remaining_amount_cents if show_payoff else 0,
         show_payoff=show_payoff,
         payoff_url=url_for('main.pay_installment_payoff', installment_id=installment.id, token=token) if show_payoff else None,
@@ -3754,7 +3874,7 @@ def handle_payment_intent_succeeded(payment_intent):
         current_app.logger.info(f"Payment for payment_intent {payment_intent_id} already succeeded (id={existing_payment.id}), skipping duplicate")
         return existing_payment
     
-    # 查找关联的 InstallmentPayment
+    # 查找关联的 InstallmentPayment（锚定期：链接上的那一期）
     installment = InstallmentPayment.query.filter_by(
         payment_intent_id=payment_intent_id
     ).first()
@@ -3766,37 +3886,62 @@ def handle_payment_intent_succeeded(payment_intent):
     if installment.status == 'paid':
         current_app.logger.info(f"InstallmentPayment {installment.id} already processed, skipping")
         return
-    
-    # 更新 InstallmentPayment 状态
-    installment.status = 'paid'
-    installment.paid_at = datetime.utcnow()
-    
-    # 更新 Booking - amount_paid 只记录基础金额（不含手续费）
+
+    paid_at = datetime.utcnow()
     booking = installment.booking
+    catch_ids = parse_catch_up_ids(metadata)
+    if not catch_ids:
+        catch_ids = [installment.id]
+
+    # 强制补齐：将覆盖集合内未付分期全部标 paid（一笔 Payment）
+    covered = (
+        InstallmentPayment.query.filter(
+            InstallmentPayment.booking_id == booking.id,
+            InstallmentPayment.id.in_(catch_ids),
+            InstallmentPayment.status.in_(('pending', 'overdue')),
+        )
+        .order_by(InstallmentPayment.installment_number.asc())
+        .all()
+    )
+    if not covered:
+        covered = [installment]
+
+    for inst in covered:
+        inst.status = 'paid'
+        inst.paid_at = paid_at
+        # 被覆盖期上残留的单期 PI（非本次）取消
+        other_pi = getattr(inst, 'payment_intent_id', None)
+        if other_pi and other_pi != payment_intent_id:
+            safe_cancel_payment_intent(
+                other_pi,
+                reason=f'catch-up covered installment {inst.id}',
+            )
+            inst.payment_intent_id = payment_intent_id
+
+    # 锚定期确保指向本次 PI
+    installment.payment_intent_id = payment_intent_id
+
+    # 更新 Booking - amount_paid 只记录基础金额（不含手续费）
     booking.amount_paid = (booking.amount_paid or 0.0) + base_amount
     
     # 检查是否所有分期都已完成
     total_info = calculate_booking_total(booking)
     if booking.amount_paid >= total_info['total']:
         booking.status = 'fully_paid'
-        # 更新所有 BookingPackage 状态
         for bp in booking.booking_packages:
             bp.status = 'fully_paid'
-        
-        # 如果全款已付清，取消所有未支付的 installment
-        for inst in booking.installments.filter(InstallmentPayment.status != 'paid').all():
-            inst.status = 'cancelled'
-            current_app.logger.info(f"Cancelled installment {inst.id} (booking {booking.id}) - booking fully paid")
+        from app.payments import cancel_unpaid_installments
+        cancel_unpaid_installments(booking)
     
-    # 创建或更新 Payment 记录 - amount 记录总金额（含手续费）
-    # 如果存在 pending 状态的 Payment 记录，更新它；否则创建新记录
+    # 创建或更新 Payment 记录 - amount 记录总金额（含手续费）；只一笔
     if existing_payment and existing_payment.status == 'pending':
         payment = existing_payment
         payment.amount = total_amount
         payment.status = 'succeeded'
-        payment.paid_at = datetime.utcnow()
+        payment.paid_at = paid_at
         payment.currency = payment_intent.get('currency', 'usd').upper()
-        payment.payment_metadata = payment_intent.get('metadata') or None
+        payment.payment_metadata = metadata or None
+        payment.installment_payment_id = installment.id
         current_app.logger.info(f"Updating existing pending Payment {payment.id} to succeeded")
     else:
         payment = Payment(
@@ -3807,9 +3952,9 @@ def handle_payment_intent_succeeded(payment_intent):
             stripe_payment_intent_id=payment_intent_id,
             installment_payment_id=installment.id,
             status='succeeded',
-            paid_at=datetime.utcnow(),
+            paid_at=paid_at,
             currency=payment_intent.get('currency', 'usd').upper(),
-            payment_metadata=payment_intent.get('metadata') or None
+            payment_metadata=metadata or None
         )
         db.session.add(payment)
     
@@ -3829,16 +3974,23 @@ def handle_payment_intent_succeeded(payment_intent):
     charge_id = extract_stripe_charge_id(payment_intent)
     if charge_id and not payment.stripe_charge_id:
         payment.stripe_charge_id = charge_id
+
+    # 清理本单其他 pending Payment（被覆盖期打开过付款页）
+    void_stale_pending_payments(booking, except_payment_intent_id=payment_intent_id)
     
     db.session.commit()
     
-    # 发送确认邮件
+    # 发送确认邮件（锚定期）
     try:
         send_installment_confirmation_email(installment)
     except Exception as e:
         current_app.logger.error(f"Failed to send installment confirmation email: {str(e)}")
     
-    current_app.logger.info(f"Successfully processed installment payment {installment.id}")
+    current_app.logger.info(
+        "Successfully processed installment payment installment_id=%s catch_up_ids=%s",
+        installment.id,
+        catch_ids,
+    )
 
 
 def handle_payment_intent_failed(payment_intent):

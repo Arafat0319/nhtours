@@ -287,6 +287,7 @@
                                 </span>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex flex-wrap items-center gap-1">
                                 <span id="status-badge-{{ booking.id }}" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
                                     {% if pay_status == 'fully_paid' %}bg-green-100 text-green-800
                                     {% elif pay_status == 'deposit_paid' %}bg-blue-100 text-blue-800
@@ -299,6 +300,10 @@
                                     {% elif pay_status == 'fully_refunded' or pay_status == 'refunded' %}Fully Refunded
                                     {% else %}{{ pay_status|replace('_', ' ')|title }}{% endif %}
                                 </span>
+                                {% if booking.id in booking_payoff_ids %}
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800" title="Settled remaining balance via Payoff">Payoff</span>
+                                {% endif %}
+                                </div>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm font-mono" id="paid-cell-{{ booking.id }}">
                                 {% if booking.status == 'cancelled' %}
@@ -2250,24 +2255,46 @@
             
             // Generate payment history HTML
             let paymentsHtml = '';
+            const settledViaPayoff = !!booking.settled_via_payoff;
             if (booking.payments && booking.payments.length > 0) {
                 paymentsHtml = booking.payments.map(payment => {
                     const statusClass = payment.status === 'succeeded' ? 'bg-green-100 text-green-800' : 
                                         payment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
+                                        payment.status === 'partially_refunded' ? 'bg-orange-100 text-orange-800' :
                                         'bg-red-100 text-red-800';
                     const feeText = payment.fee_cents ? ` (Fee: $${(payment.fee_cents / 100).toFixed(2)})` : '';
                     const cardInfo = payment.brand ? `${payment.brand.toUpperCase()}` : '';
-                    return `<div class="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
+                    const typeLabel = payment.type_label || '';
+                    const isPayoff = !!payment.is_payoff || (typeLabel || '').toLowerCase() === 'payoff';
+                    const typeBadge = typeLabel
+                        ? (isPayoff
+                            ? `<span class="mr-2 px-1.5 py-0.5 text-xs rounded font-medium bg-purple-100 text-purple-800">${typeLabel}</span>`
+                            : `<span class="text-xs font-medium text-gray-600 mr-2">${typeLabel}</span>`)
+                        : '';
+                    const canReceipt = ['succeeded', 'partially_refunded'].indexOf(payment.status) >= 0;
+                    const receiptLink = canReceipt
+                        ? `<button type="button" class="payment-receipt-btn text-xs font-medium text-wetravel-cyan hover:underline ml-3" data-payment-id="${payment.id}">Receipt</button>`
+                        : '';
+                    return `<div class="flex justify-between items-center py-2 border-b border-gray-100 last:border-0${isPayoff ? ' bg-purple-50/50' : ''}">
                         <div>
-                            <span class="text-sm text-gray-900">$${payment.amount.toFixed(2)}${feeText}</span>
+                            ${typeBadge}
+                            <span class="text-sm text-gray-900">$${Number(payment.amount || 0).toFixed(2)}${feeText}</span>
                             ${cardInfo ? `<span class="ml-2 text-xs text-gray-500">${cardInfo}</span>` : ''}
                             <span class="ml-2 px-1.5 py-0.5 text-xs rounded ${statusClass}">${payment.status}</span>
                         </div>
-                        <span class="text-xs text-gray-500">${payment.paid_at || '-'}</span>
+                        <div class="flex items-center shrink-0">
+                            <span class="text-xs text-gray-500">${payment.paid_at || '-'}</span>
+                            ${receiptLink}
+                        </div>
                     </div>`;
                 }).join('');
             } else {
                 paymentsHtml = '<p class="text-sm text-gray-500 italic">No payment records</p>';
+            }
+            if (settledViaPayoff) {
+                paymentsHtml = `<div class="mb-3 px-3 py-2 rounded-md bg-purple-50 border border-purple-200 text-xs text-purple-800">
+                    Settled via <span class="font-semibold">Payoff</span> — remaining balance paid in one payment; unpaid installments were cancelled.
+                </div>` + paymentsHtml;
             }
             
             // Generate installment schedule HTML
@@ -2283,6 +2310,9 @@
                                                     inst.status === 'cancelled' ? 'bg-gray-100 text-gray-600' :
                                                     'bg-yellow-100 text-yellow-800';
                                 const label = inst.label || (inst.installment_number === 0 ? 'Deposit' : `Installment #${inst.installment_number}`);
+                                const statusText = (inst.status === 'cancelled' && settledViaPayoff)
+                                    ? 'cancelled (payoff)'
+                                    : inst.status;
                                 return `<div class="flex justify-between items-center py-1.5 px-3 bg-gray-50 rounded">
                                     <div>
                                         <span class="text-sm text-gray-900">${label}</span>
@@ -2290,7 +2320,7 @@
                                     </div>
                                     <div class="flex items-center space-x-2">
                                         <span class="text-sm font-medium text-gray-900">$${inst.amount.toFixed(2)}</span>
-                                        <span class="px-1.5 py-0.5 text-xs rounded ${statusClass}">${inst.status}</span>
+                                        <span class="px-1.5 py-0.5 text-xs rounded ${statusClass}">${statusText}</span>
                                     </div>
                                 </div>`;
                             }).join('')}
@@ -3063,40 +3093,69 @@
             });
         }
 
-        // Generate Receipt：blob 下载（避免 window.open 被拦截 / 附件无感）
-        if (generateReceiptBtn) {
-            generateReceiptBtn.addEventListener('click', async function() {
-                if (!currentBookingId) return;
-                const url = `/admin/trips/{{ trip.id }}/bookings/${currentBookingId}/receipt`;
-                const prevHtml = generateReceiptBtn.innerHTML;
-                generateReceiptBtn.disabled = true;
-                generateReceiptBtn.innerHTML = 'Generating…';
-                try {
-                    const resp = await fetch(url, { credentials: 'same-origin' });
-                    if (!resp.ok) {
-                        throw new Error('HTTP ' + resp.status);
-                    }
-                    const blob = await resp.blob();
-                    let filename = 'NHTours-Order-' + currentBookingId + '.pdf';
-                    const cd = resp.headers.get('Content-Disposition') || '';
-                    const m = /filename=\"?([^\";]+)\"?/i.exec(cd);
-                    if (m && m[1]) filename = m[1];
-                    const objectUrl = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = objectUrl;
-                    a.download = filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    setTimeout(function() { URL.revokeObjectURL(objectUrl); }, 1000);
-                } catch (e) {
-                    alert('Failed to generate receipt. Please try again.');
-                } finally {
-                    generateReceiptBtn.disabled = false;
-                    generateReceiptBtn.innerHTML = prevHtml;
+        // Generate Receipt / 行内 Receipt：blob 下载（避免 window.open 被拦截）
+        async function downloadBookingReceipt(paymentId, triggerBtn) {
+            if (!currentBookingId) return;
+            let url = `/admin/trips/{{ trip.id }}/bookings/${currentBookingId}/receipt`;
+            if (paymentId) url += `?payment_id=${encodeURIComponent(paymentId)}`;
+            const prevHtml = triggerBtn ? triggerBtn.innerHTML : '';
+            if (triggerBtn) {
+                triggerBtn.disabled = true;
+                if (triggerBtn === generateReceiptBtn) {
+                    triggerBtn.innerHTML = 'Generating…';
+                } else {
+                    triggerBtn.textContent = '…';
                 }
+            }
+            try {
+                const resp = await fetch(url, { credentials: 'same-origin' });
+                if (!resp.ok) {
+                    let detail = 'HTTP ' + resp.status;
+                    try {
+                        const errBody = await resp.json();
+                        if (errBody && errBody.message) detail = errBody.message;
+                    } catch (_) { /* ignore */ }
+                    throw new Error(detail);
+                }
+                const blob = await resp.blob();
+                let filename = 'NHTours-Order-' + currentBookingId + '.pdf';
+                const cd = resp.headers.get('Content-Disposition') || '';
+                const m = /filename=\"?([^\";]+)\"?/i.exec(cd);
+                if (m && m[1]) filename = m[1];
+                const objectUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = objectUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(function() { URL.revokeObjectURL(objectUrl); }, 1000);
+            } catch (e) {
+                alert('Failed to generate receipt. ' + (e && e.message ? e.message : 'Please try again.'));
+            } finally {
+                if (triggerBtn) {
+                    triggerBtn.disabled = false;
+                    triggerBtn.innerHTML = prevHtml;
+                }
+            }
+        }
+
+        if (generateReceiptBtn) {
+            generateReceiptBtn.addEventListener('click', function() {
+                downloadBookingReceipt(null, generateReceiptBtn);
             });
         }
+
+        // Payment History 行内 Receipt（事件委托，详情每次重绘）
+        const bookingDetailRoot = document.getElementById('manageBookingContent') || document.body;
+        bookingDetailRoot.addEventListener('click', function(e) {
+            const btn = e.target && e.target.closest ? e.target.closest('.payment-receipt-btn') : null;
+            if (!btn) return;
+            e.preventDefault();
+            const pid = btn.getAttribute('data-payment-id');
+            if (!pid) return;
+            downloadBookingReceipt(pid, btn);
+        });
 
         const cancelOrderBtn = document.getElementById('cancelOrderBtn');
         if (cancelOrderBtn) {

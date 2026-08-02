@@ -264,6 +264,9 @@
 						<h2 class="text-center px-3 line-clamp-2 m-0" style="font-size: 1.25rem; font-weight: 700; line-height: 1.35; color: #1f2937;">{{ booking.trip.title }}</h2>
 						{% endif %}
 						<p class="text-sm font-medium" style="color: #6b7280;">{% if installment_label %}{{ installment_label }}{% else %}Installment Payment{% endif %}</p>
+						{% if catch_up_note %}
+						<p class="text-xs text-center px-4" style="color: #92400e;">{{ catch_up_note }}</p>
+						{% endif %}
 					</div>
 				</header>
 				<div id="booking-modal-scroll" class="booking-modal-body flex flex-col lg:flex-row flex-shrink-0" style="border-bottom-left-radius: 0.5rem;">

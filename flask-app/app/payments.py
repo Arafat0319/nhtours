@@ -383,12 +383,126 @@ def installment_display_label(installment=None, *, installment_number=None, book
     return f'Installment #{num}'
 
 
+def unpaid_installments_through(installment):
+    """
+    强制补齐：本单中 status 为 pending/overdue、且 installment_number ≤ 锚定期 的行（升序）。
+    打开 #N 链接时应付 = 这些行金额之和。
+    """
+    from app.models import InstallmentPayment
+
+    if not installment:
+        return []
+    booking_id = getattr(installment, 'booking_id', None)
+    anchor_num = getattr(installment, 'installment_number', None)
+    if not booking_id or anchor_num is None:
+        return []
+    rows = (
+        InstallmentPayment.query.filter(
+            InstallmentPayment.booking_id == booking_id,
+            InstallmentPayment.status.in_(('pending', 'overdue')),
+            InstallmentPayment.installment_number <= int(anchor_num),
+        )
+        .order_by(InstallmentPayment.installment_number.asc(), InstallmentPayment.id.asc())
+        .all()
+    )
+    return rows
+
+
+def catch_up_summary_items(installment, *, post_deposit_count=None):
+    """付款页 summary_items：每期一行 {label, amount_cents}。"""
+    rows = unpaid_installments_through(installment)
+    if not rows:
+        return []
+    bid = getattr(installment, 'booking_id', None)
+    count = post_deposit_count
+    if count is None and bid:
+        count = booking_post_deposit_installment_count(bid)
+    items = []
+    for inst in rows:
+        amt = float(getattr(inst, 'amount', None) or 0.0)
+        items.append({
+            'label': installment_display_label(
+                inst, post_deposit_count=count, booking_id=bid
+            ),
+            'amount_cents': int(round(amt * 100)),
+            'installment_id': getattr(inst, 'id', None),
+            'installment_number': getattr(inst, 'installment_number', None),
+            'amount': round(amt, 2),
+        })
+    return items
+
+
+def catch_up_amount_cents(installment):
+    """补齐应付基础金额（分）。"""
+    return sum(int(i.get('amount_cents') or 0) for i in catch_up_summary_items(installment))
+
+
+def catch_up_metadata_fields(installment, *, summary_items=None):
+    """
+    写入 PI / Payment metadata 的补齐字段。
+    payment_step: 多期为 catch_up，单期为 installment。
+    """
+    items = summary_items if summary_items is not None else catch_up_summary_items(installment)
+    ids = [str(i['installment_id']) for i in items if i.get('installment_id')]
+    breakdown_bits = [
+        f"{i['label']} ${float(i.get('amount') or 0):,.2f}" for i in items
+    ]
+    multi = len(items) > 1
+    return {
+        'payment_step': 'catch_up' if multi else 'installment',
+        'installment_id': getattr(installment, 'id', None),
+        'installment_number': getattr(installment, 'installment_number', None),
+        'catch_up_ids': ','.join(ids),
+        'catch_up_breakdown': ' + '.join(breakdown_bits) if breakdown_bits else '',
+    }
+
+
+def parse_catch_up_ids(metadata):
+    """从 metadata 解析覆盖的 InstallmentPayment id 列表。"""
+    meta = dict(metadata or {})
+    raw = (meta.get('catch_up_ids') or '').strip()
+    if not raw:
+        return []
+    out = []
+    for part in raw.split(','):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            out.append(int(part))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def payment_step_label(payment):
-    """收据/Manage：Initial / Installment #n / Final payment / Payoff。"""
+    """收据/Manage：Initial / Installment #n / Catch-up 区间 / Payoff。"""
     meta = dict(payment.payment_metadata or {})
     step = (meta.get('payment_step') or '').strip().lower()
     if step == 'payoff':
         return 'Payoff'
+
+    # 多期补齐：优先用 metadata 展示 Installment #1–#2
+    catch_ids = parse_catch_up_ids(meta)
+    if step == 'catch_up' or len(catch_ids) > 1:
+        breakdown = (meta.get('catch_up_breakdown') or '').strip()
+        # 从 breakdown 抽标签区间；否则用锚定期号
+        labels = []
+        for bit in breakdown.split(' + ') if breakdown else []:
+            lab = bit.rsplit(' $', 1)[0].strip() if ' $' in bit else bit.strip()
+            if lab:
+                labels.append(lab)
+        if len(labels) >= 2:
+            first, last = labels[0], labels[-1]
+            if first.startswith('Installment #') and last.startswith('Installment #'):
+                return f'{first}–#{last.split("#")[-1]}'
+            if first != last:
+                return f'{first} + {last}' if len(labels) == 2 else f'{first}–{last}'
+            return first
+        if labels:
+            return labels[0]
+        return 'Catch-up'
+
     if step == 'installment':
         inst = getattr(payment, 'installment_payment', None)
         num = getattr(inst, 'installment_number', None) if inst else meta.get('installment_number')
@@ -547,6 +661,50 @@ def booking_payment_display_status(booking, today=None):
     return stored
 
 
+def payment_is_payoff(payment):
+    """该笔成功收款是否为 Payoff（看 payment_metadata.payment_step）。"""
+    if not payment:
+        return False
+    meta = dict(getattr(payment, 'payment_metadata', None) or {})
+    step = (meta.get('payment_step') or '').strip().lower()
+    if step == 'payoff':
+        return True
+    # 兼容旧数据 / 其它字段
+    return (meta.get('payment_type') or '').strip().lower() == 'payoff'
+
+
+def booking_has_payoff(booking):
+    """订单是否有过成功的 Payoff 收款。"""
+    if not booking or not getattr(booking, 'id', None):
+        return False
+    from app.models import Payment
+
+    for payment in Payment.query.filter(
+        Payment.booking_id == booking.id,
+        Payment.status.in_(('succeeded', 'partially_refunded', 'refunded')),
+    ).all():
+        if payment_is_payoff(payment):
+            return True
+    return False
+
+
+def booking_ids_with_payoff(booking_ids):
+    """批量：有成功 Payoff 的 booking_id 集合。"""
+    from app.models import Payment
+
+    ids = [int(i) for i in (booking_ids or []) if i is not None]
+    if not ids:
+        return set()
+    out = set()
+    for payment in Payment.query.filter(
+        Payment.booking_id.in_(ids),
+        Payment.status.in_(('succeeded', 'partially_refunded', 'refunded')),
+    ).all():
+        if payment_is_payoff(payment):
+            out.add(payment.booking_id)
+    return out
+
+
 def reconcile_booking_ledger(booking):
     """
     只读核对：amount_paid 是否等于 Σ(base − refunded)。
@@ -604,6 +762,7 @@ def build_receipt_ledger_sections(booking):
         raw_refunded = round(float(payment.refunded_amount or 0.0), 2)
         net = round(max(0.0, base - refunded), 2)
         paid_at = payment.paid_at or payment.created_at
+        meta = dict(payment.payment_metadata or {})
         payment_history.append({
             'id': payment.id,
             'date': paid_at,
@@ -614,8 +773,9 @@ def build_receipt_ledger_sections(booking):
             'refunded': refunded,
             'net': net,
             'status': payment.status,
+            'catch_up_breakdown': (meta.get('catch_up_breakdown') or '').strip() or None,
+            'catch_up_ids': (meta.get('catch_up_ids') or '').strip() or None,
         })
-        meta = dict(payment.payment_metadata or {})
         history = list(meta.get('refund_history') or [])
         if history:
             for entry in history:
@@ -645,6 +805,18 @@ def build_receipt_ledger_sections(booking):
             })
 
     book_date = booking.created_at.date() if getattr(booking, 'created_at', None) else None
+    # 被补齐覆盖、但非 Payment 锚定期的分期 → schedule 备注
+    covered_non_anchor_ids = set()
+    for payment in ledger_payments_for_booking(booking):
+        meta = dict(payment.payment_metadata or {})
+        catch_ids = parse_catch_up_ids(meta)
+        if len(catch_ids) < 2:
+            continue
+        anchor = getattr(payment, 'installment_payment_id', None)
+        for cid in catch_ids:
+            if anchor is None or cid != anchor:
+                covered_non_anchor_ids.add(cid)
+
     installment_schedule = []
     rows = (
         InstallmentPayment.query.filter_by(booking_id=booking.id)
@@ -667,6 +839,9 @@ def build_receipt_ledger_sections(booking):
         ):
             note = 'Included in initial payment'
             status_label = 'Paid (in initial)'
+        elif inst.id in covered_non_anchor_ids and inst.status == 'paid':
+            note = 'Included in catch-up payment'
+            status_label = 'Paid (in catch-up)'
         elif inst.installment_number == 0:
             status_label = f'Deposit — {status_label}'
         installment_schedule.append({

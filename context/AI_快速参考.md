@@ -135,7 +135,8 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 域名脚本 | `deploy/setup-domain.sh`；DNS 验证 `deploy/verify-dns.ps1` |
 | Stripe Webhook | `https://nhtours.com/webhooks/stripe`（**仅沙盒** Test mode；Live 延后） |
 | 邮件 SES | **生产已配置**（`nhtours.com` / `us-west-2`，已出沙箱）；详见 `06` / `08` |
-| 收据邮件 | HTML+PDF；日期美西；全款：Expected→实扣斜体→Paid（无 Due/Remaining）；定稿 `.cursor/rules/receipt-pdf-layout.mdc` |
+| 收据邮件 | HTML+PDF；Due this time=指定笔或最近成功笔；Manage History 行内 Receipt；定稿 `.cursor/rules/receipt-pdf-layout.mdc` |
+| 分期付款 | 打开某期链接 **强制补齐**此前未付；Payoff=整单剩余；Manage 显示 Payoff 徽标 |
 | 退款 / 取消 | **不自动发客户邮件**；退款走 Stripe/账本；需通知请用 Messages |
 | 分期催款 | 美西日历；每天美西 9:00；**仅 1 个 Gunicorn worker 跑 APScheduler**（文件锁防重复发） |
 | Payments 标签 | 以 order 分类：Full=全款或定金+单笔尾款；Installment=定金后>1期 |
