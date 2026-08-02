@@ -486,7 +486,6 @@ def payment_step_label(payment):
     catch_ids = parse_catch_up_ids(meta)
     if step == 'catch_up' or len(catch_ids) > 1:
         breakdown = (meta.get('catch_up_breakdown') or '').strip()
-        # 从 breakdown 抽标签区间；否则用锚定期号
         labels = []
         for bit in breakdown.split(' + ') if breakdown else []:
             lab = bit.rsplit(' $', 1)[0].strip() if ' $' in bit else bit.strip()
@@ -503,14 +502,33 @@ def payment_step_label(payment):
             return labels[0]
         return 'Catch-up'
 
-    if step == 'installment':
-        inst = getattr(payment, 'installment_payment', None)
-        num = getattr(inst, 'installment_number', None) if inst else meta.get('installment_number')
+    # 关联分期行时按期号标（含 failed；勿因 metadata 空/误写 initial 显示成 Initial）
+    inst = getattr(payment, 'installment_payment', None)
+    if inst is None and getattr(payment, 'installment_payment_id', None):
+        try:
+            from app.models import InstallmentPayment
+            inst = InstallmentPayment.query.get(payment.installment_payment_id)
+        except Exception:
+            inst = None
+
+    num = getattr(inst, 'installment_number', None) if inst is not None else None
+    if num is None:
+        num = meta.get('installment_number')
+
+    linked_installment = (
+        inst is not None
+        or step == 'installment'
+        or (meta.get('payment_flow') or '').strip().lower() == 'installment'
+        or meta.get('installment_id') not in (None, '', 0, '0')
+    )
+    if linked_installment:
         if num is not None and str(num) != '':
             try:
                 num_int = int(num)
             except (TypeError, ValueError):
                 return 'Installment'
+            if num_int == 0:
+                return 'Initial' if step in ('initial', 'booking', '') else 'Deposit'
             bid = getattr(payment, 'booking_id', None) or (
                 getattr(inst, 'booking_id', None) if inst else None
             )
@@ -519,6 +537,7 @@ def payment_step_label(payment):
                 booking_id=bid,
             )
         return 'Installment'
+
     if step in ('initial', '', 'booking'):
         return 'Initial'
     return step.replace('_', ' ').title() or 'Payment'

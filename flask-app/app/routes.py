@@ -1840,8 +1840,9 @@ def _compute_due_at_booking_gross(booking):
 def _booking_receipt_context(booking, payment_id=None):
     """
     Shared receipt amounts + participants for HTML/PDF/email attachment.
-    payment_id: 可选；指定成功付款时，页头日期 / Due this time / Includes 对应该笔；
-    省略则用最近一笔成功付款。非法 payment_id 返回 None。
+    payment_id: 可选；指定成功付款时，页头日期 / Due this time / Includes /
+    Amount Paid / Remaining / History 均为「付完该笔当时」；省略则用最近一笔。
+    非法 payment_id 返回 None。
     """
     from app.payments import build_receipt_ledger_sections
 
@@ -1878,11 +1879,6 @@ def _booking_receipt_context(booking, payment_id=None):
     if not has_packages:
         expected_amount = float(booking.amount_paid) if booking.amount_paid is not None else 0.0
 
-    # 净基础已付：收据展示以 Booking.amount_paid 为准（与 Manage 一致）。
-    # 脏 refunded_amount 钳制只影响 Payment History / Reconcile 行。
-    amount_paid_net = round(float(booking.amount_paid or 0.0), 2)
-    amount_pending = round(max(0.0, expected_amount - amount_paid_net), 2)
-
     due_at_booking = _compute_due_at_booking_gross(booking)
 
     participants_info = []
@@ -1908,23 +1904,48 @@ def _booking_receipt_context(booking, payment_id=None):
         discount_code = booking.discount_code.code
 
     ledger = build_receipt_ledger_sections(booking)
-    total_refunded = round(
-        sum(float(r.get('amount') or 0) for r in ledger['refunds']),
-        2,
-    )
-
-    history = ledger['payment_history'] or []
+    full_history = ledger['payment_history'] or []
     focus_row = None
     if payment_id is not None:
         try:
             pid = int(payment_id)
         except (TypeError, ValueError):
             return None
-        focus_row = next((r for r in history if r.get('id') == pid), None)
+        focus_row = next((r for r in full_history if r.get('id') == pid), None)
         if not focus_row:
             return None
-    elif history:
-        focus_row = history[-1]
+    elif full_history:
+        focus_row = full_history[-1]
+
+    # 当笔收据 =「付完该笔当时」：History / Paid / Remaining 截到该笔（含）
+    history = list(full_history)
+    if focus_row:
+        trimmed = []
+        for row in full_history:
+            trimmed.append(row)
+            if row.get('id') == focus_row.get('id'):
+                break
+        history = trimmed
+
+    focus_ids = {r.get('id') for r in history if r.get('id') is not None}
+    refunds = [
+        r for r in (ledger['refunds'] or [])
+        if r.get('payment_id') in focus_ids or not focus_ids
+    ]
+    total_refunded = round(
+        sum(float(r.get('amount') or 0) for r in refunds),
+        2,
+    )
+
+    if history:
+        # 累计净已付（截至当笔）；不用当前 Booking.amount_paid 整单快照
+        amount_paid_net = round(
+            sum(float(r.get('net') if r.get('net') is not None else r.get('base') or 0) for r in history),
+            2,
+        )
+    else:
+        amount_paid_net = round(float(booking.amount_paid or 0.0), 2)
+    amount_pending = round(max(0.0, expected_amount - amount_paid_net), 2)
 
     # Due this time / Includes / 页头日期 = 当笔（指定或最近成功收款）
     due_this_time_breakdown = None
@@ -1944,6 +1965,20 @@ def _booking_receipt_context(booking, payment_id=None):
             _compute_due_at_booking_parts(booking)
         )
         header_ts = booking.created_at
+
+    # 分期表按当笔时点回放：当时尚未付的（含后来 Payoff 取消的）显示为 pending
+    focus_ts = None
+    if focus_row:
+        focus_ts = focus_row.get('date') or focus_row.get('at')
+    installment_schedule = _receipt_installment_schedule_as_of(
+        ledger.get('installment_schedule') or [],
+        focus_ts=focus_ts,
+        is_latest=(
+            not focus_row
+            or not full_history
+            or focus_row.get('id') == full_history[-1].get('id')
+        ),
+    )
 
     # Due this time 已在 Trip Total 展示，不再重复长脚注
     due_at_booking_note = None
@@ -1967,11 +2002,11 @@ def _booking_receipt_context(booking, payment_id=None):
         'amount_pending': amount_pending,
         'total_refunded': total_refunded,
         'payment_history': history,
-        'installment_schedule': ledger['installment_schedule'],
-        'refunds': ledger['refunds'],
+        'installment_schedule': installment_schedule,
+        'refunds': refunds,
         # 仅「一次付全款」无 History；定金/分期（有分期计划）或已付 ≥2 笔 → 第 2 页
         'show_history_page': (
-            bool(ledger['installment_schedule'])
+            bool(installment_schedule)
             or len(history) > 1
             or any(
                 ((bp.payment_plan_type or '').strip() == 'deposit_installment')
@@ -1979,6 +2014,41 @@ def _booking_receipt_context(booking, payment_id=None):
             )
         ),
     }
+
+
+def _receipt_installment_schedule_as_of(schedule_rows, focus_ts=None, is_latest=True):
+    """
+    非最近一笔的收据：分期状态回放到 focus_ts 当时
+    （后来才付清 / Payoff 取消的期 → pending）。
+    """
+    if is_latest or not schedule_rows:
+        return list(schedule_rows or [])
+
+    out = []
+    for raw in schedule_rows:
+        item = dict(raw)
+        paid_at = item.get('paid_at')
+        paid_by_then = False
+        if paid_at and focus_ts:
+            try:
+                paid_by_then = paid_at <= focus_ts
+            except TypeError:
+                paid_by_then = False
+
+        if paid_by_then:
+            item['status'] = 'paid'
+            if not item.get('note'):
+                item['status_label'] = 'Paid'
+        else:
+            # 当时尚未结清（含后来 cancelled）
+            item['status'] = 'pending'
+            item['status_label'] = 'Pending'
+            item['note'] = None
+            item['paid_at'] = None
+            if (item.get('number') or 0) == 0:
+                item['status_label'] = 'Deposit — Pending'
+        out.append(item)
+    return out
 
 
 @bp.route('/booking/<int:booking_id>/receipt')

@@ -3492,7 +3492,12 @@ def manage_booking(trip_id, booking_id):
                 booking_has_payoff,
             )
             settled_via_payoff = False
-            for payment in Payment.query.filter_by(booking_id=booking.id).order_by(Payment.created_at.desc()).all():
+            for payment in (
+                Payment.query.options(joinedload(Payment.installment_payment))
+                .filter_by(booking_id=booking.id)
+                .order_by(Payment.created_at.desc())
+                .all()
+            ):
                 amt = payment_charged_amount(payment)
                 fee_dollars = payment_fee_amount(payment)
                 base_dollars = payment_base_amount(payment)
