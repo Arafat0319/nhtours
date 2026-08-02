@@ -50,7 +50,7 @@ alwaysApply: true
 
 - Due this time = **指定笔或默认最近一笔**成功收款的基础额；Includes 说明该笔是 Initial / Installment #n / Payoff / 多期 Catch-up（`Installment #1 $… + #2 $…`）等  
 
-- 后台 Manage → Payment History 行内 **Receipt** 传 `?payment_id=`；底部 **Generate Receipt** 省略则最近一笔；前台签名下载暂不开放任意 `payment_id`  
+- 后台 Manage → Payment History 行内 **Receipt** 传 `?payment_id=`（已去掉底部 Generate Receipt）；前台签名下载暂不开放任意 `payment_id`  
 - 页头日期 / Due this time / Includes / **Amount Paid / Remaining / History** = **付完该笔当时**（不是订单当前整单快照）；Packages / Total Expected 仍为订单结构  
 - 非最近一笔时，分期表状态回放到当时（后来 Payoff 取消的期显示 Pending）  
 - 首笔 Initial 时 Includes 仍可拆成 Deposit + Add-ons（报名口径）  

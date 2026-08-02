@@ -851,13 +851,7 @@
         <!-- Footer -->
         <div class="p-5 border-t bg-gray-50 rounded-b-md flex justify-between items-center">
             <div class="flex space-x-3">
-                <button type="button" id="generateReceiptBtn" class="px-4 py-2 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none flex items-center">
-                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                    </svg>
-                    Generate Receipt
-                </button>
-                <button type="button" id="cancelOrderBtn" class="px-4 py-2 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none">
+                <button type="button" id="cancelOrderBtn" class="px-4 py-2 border border-blue-300 rounded text-sm font-medium text-blue-700 hover:bg-blue-50 focus:outline-none">
                     Cancel order
                 </button>
                 <button type="button" id="refundBookingBtn" class="px-4 py-2 border border-orange-300 rounded text-sm font-medium text-orange-700 hover:bg-orange-50 focus:outline-none flex items-center">
@@ -969,8 +963,15 @@
             <div class="text-center">
                 <h3 class="text-lg font-medium text-gray-900 mb-2">Delete Booking</h3>
                 <p class="text-sm text-gray-500 mb-4">
-                    Are you sure you want to delete order <span id="deleteBookingLabel" class="font-medium"></span>? This action cannot be undone.
+                    Permanently delete order <span id="deleteBookingLabel" class="font-medium"></span>? This cannot be undone.
                 </p>
+                <label class="block text-left text-sm font-medium text-gray-700 mb-1">
+                    Type the order number to confirm
+                </label>
+                <input type="text" id="deleteConfirmInput" autocomplete="off"
+                    class="block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-red-500 sm:text-sm"
+                    placeholder="Order number">
+                <p id="deleteConfirmHint" class="mt-1 text-left text-xs text-gray-500"></p>
             </div>
             
             <div class="mt-6 flex justify-end space-x-3">
@@ -2095,7 +2096,6 @@
         const sendEmailTab = document.getElementById('sendEmailTab');
         const emailContent = document.getElementById('emailContent');
         const sendEmailBtn = document.getElementById('sendEmailBtn');
-        const generateReceiptBtn = document.getElementById('generateReceiptBtn');
         let currentBookingId = null;
         let currentBookingData = null;
 
@@ -3094,19 +3094,14 @@
             });
         }
 
-        // Generate Receipt / 行内 Receipt：blob 下载（避免 window.open 被拦截）
+        // Payment History 行内 Receipt：blob 下载（避免 window.open 被拦截）
         async function downloadBookingReceipt(paymentId, triggerBtn) {
-            if (!currentBookingId) return;
-            let url = `/admin/trips/{{ trip.id }}/bookings/${currentBookingId}/receipt`;
-            if (paymentId) url += `?payment_id=${encodeURIComponent(paymentId)}`;
+            if (!currentBookingId || !paymentId) return;
+            const url = `/admin/trips/{{ trip.id }}/bookings/${currentBookingId}/receipt?payment_id=${encodeURIComponent(paymentId)}`;
             const prevHtml = triggerBtn ? triggerBtn.innerHTML : '';
             if (triggerBtn) {
                 triggerBtn.disabled = true;
-                if (triggerBtn === generateReceiptBtn) {
-                    triggerBtn.innerHTML = 'Generating…';
-                } else {
-                    triggerBtn.textContent = '…';
-                }
+                triggerBtn.textContent = '…';
             }
             try {
                 const resp = await fetch(url, { credentials: 'same-origin' });
@@ -3141,13 +3136,6 @@
             }
         }
 
-        if (generateReceiptBtn) {
-            generateReceiptBtn.addEventListener('click', function() {
-                downloadBookingReceipt(null, generateReceiptBtn);
-            });
-        }
-
-        // Payment History 行内 Receipt（事件委托，详情每次重绘）
         const bookingDetailRoot = document.getElementById('manageBookingContent') || document.body;
         bookingDetailRoot.addEventListener('click', function(e) {
             const btn = e.target && e.target.closest ? e.target.closest('.payment-receipt-btn') : null;
@@ -3158,6 +3146,21 @@
             downloadBookingReceipt(pid, btn);
         });
 
+        /** 危险操作最终确认（优先项目弹窗，否则浏览器 confirm） */
+        async function confirmBookingAction(title, message, options) {
+            if (typeof showMessageConfirm === 'function') {
+                return showMessageConfirm(title, message, options || {});
+            }
+            return window.confirm(title + '\n\n' + message);
+        }
+
+        function currentOrderLabel() {
+            if (currentBookingData && currentBookingData.order_number) {
+                return currentBookingData.order_number;
+            }
+            return currentBookingId ? ('#' + currentBookingId) : '';
+        }
+
         const cancelOrderBtn = document.getElementById('cancelOrderBtn');
         if (cancelOrderBtn) {
             cancelOrderBtn.addEventListener('click', async function() {
@@ -3166,17 +3169,16 @@
                     showToast('This order is already cancelled', 'warning');
                     return;
                 }
-                const label = (currentBookingData && currentBookingData.order_number)
-                    ? currentBookingData.order_number
-                    : ('#' + currentBookingId);
-                if (!confirm(
+                const label = currentOrderLabel();
+                const ok = await confirmBookingAction(
+                    'Cancel order?',
                     'Cancel order ' + label + '?\n\n'
                     + 'This marks the booking as Cancelled and stops unpaid installments.\n'
                     + 'It does NOT refund money — use Refund if needed.\n'
-                    + 'No email is sent to the customer.'
-                )) {
-                    return;
-                }
+                    + 'No email is sent to the customer.',
+                    { confirmText: 'Yes, cancel order', cancelText: 'Go back', danger: true }
+                );
+                if (!ok) return;
                 cancelOrderBtn.disabled = true;
                 const prevText = cancelOrderBtn.innerText;
                 cancelOrderBtn.innerText = 'Cancelling...';
@@ -3456,6 +3458,24 @@
                 } else {
                     setRefundAmountError('');
                 }
+
+                const label = currentOrderLabel();
+                let confirmMsg = 'Process refund for order ' + label + '?\n\n';
+                if (amountToSend > 0.001) {
+                    confirmMsg += 'Amount: $' + amountToSend.toFixed(2)
+                        + (manualOnly ? ' (manual only — no Stripe)' : ' (via Stripe)') + '\n';
+                } else {
+                    confirmMsg += 'Amount: $0 (cancel-only / no money movement)\n';
+                }
+                confirmMsg += 'Reason: ' + reason + '\n';
+                if (cancelBooking) confirmMsg += '\nAlso cancel the booking after refund.';
+                confirmMsg += '\n\nThis cannot be easily undone.';
+                const okRefund = await confirmBookingAction(
+                    'Confirm refund?',
+                    confirmMsg,
+                    { confirmText: 'Yes, process refund', cancelText: 'Go back', danger: true }
+                );
+                if (!okRefund) return;
                 
                 confirmRefundBtn.disabled = true;
                 confirmRefundBtn.innerText = 'Processing...';
@@ -3514,28 +3534,49 @@
         if (deleteBookingBtn) {
             deleteBookingBtn.addEventListener('click', function() {
                 if (!currentBookingId) return;
-                const delLabel = (currentBookingData && currentBookingData.order_number)
-                    ? currentBookingData.order_number
-                    : ('#' + currentBookingId);
+                const delLabel = currentOrderLabel();
                 const delLabelEl = document.getElementById('deleteBookingLabel');
                 if (delLabelEl) delLabelEl.textContent = delLabel;
+                const delInput = document.getElementById('deleteConfirmInput');
+                const delHint = document.getElementById('deleteConfirmHint');
+                if (delInput) delInput.value = '';
+                if (delHint) delHint.textContent = 'Expected: ' + delLabel;
                 deleteModal.classList.remove('hidden');
+                if (delInput) setTimeout(function() { delInput.focus(); }, 50);
             });
         }
 
         // Close Delete Modal
         function closeDeleteModal() {
             deleteModal.classList.add('hidden');
+            const delInput = document.getElementById('deleteConfirmInput');
+            if (delInput) delInput.value = '';
         }
 
         if (closeDeleteModalBtn) {
             closeDeleteModalBtn.addEventListener('click', closeDeleteModal);
         }
 
-        // Confirm Delete
+        // Confirm Delete：须输入订单号 + 最终确认弹窗
         if (confirmDeleteBtn) {
             confirmDeleteBtn.addEventListener('click', async function() {
                 if (!currentBookingId) return;
+                const delLabel = currentOrderLabel();
+                const delInput = document.getElementById('deleteConfirmInput');
+                const typed = ((delInput && delInput.value) || '').trim();
+                if (!typed || typed.toLowerCase() !== String(delLabel).toLowerCase()) {
+                    showToast('Type the exact order number (' + delLabel + ') to confirm delete.', 'warning');
+                    if (delInput) delInput.focus();
+                    return;
+                }
+
+                const okDelete = await confirmBookingAction(
+                    'Delete this order?',
+                    'Permanently delete order ' + delLabel + '?\n\n'
+                    + 'This removes the booking and related records. This cannot be undone.',
+                    { confirmText: 'Yes, delete forever', cancelText: 'Go back', danger: true }
+                );
+                if (!okDelete) return;
                 
                 confirmDeleteBtn.disabled = true;
                 confirmDeleteBtn.innerText = 'Deleting...';
@@ -3553,7 +3594,7 @@
                         showToast('Booking deleted successfully!', 'success');
                         closeDeleteModal();
                         closeManageBookingModal();
-                        reloadManagePage('bookings'); // Reload to update list
+                        reloadManagePage('bookings');
                     } else {
                         showToast('Error: ' + (data.message || 'Failed to delete booking'), 'error');
                         confirmDeleteBtn.disabled = false;
@@ -3835,7 +3876,7 @@
 </div>
 
 <!-- Confirm dialog (project style, replaces native window.confirm) -->
-<div id="messageConfirmModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden z-[60] flex items-center justify-center p-4">
+<div id="messageConfirmModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden z-[70] flex items-center justify-center p-4">
     <div class="bg-white rounded-lg shadow-lg w-full max-w-md" role="dialog" aria-modal="true" aria-labelledby="messageConfirmTitle">
         <div class="p-6">
             <div class="flex items-start gap-3">
@@ -3846,7 +3887,7 @@
                 </div>
                 <div class="min-w-0 flex-1">
                     <h3 class="text-lg font-medium text-gray-900" id="messageConfirmTitle">Confirm</h3>
-                    <p class="mt-2 text-sm text-gray-600" id="messageConfirmMessage"></p>
+                    <p class="mt-2 text-sm text-gray-600" id="messageConfirmMessage" style="white-space:pre-line;"></p>
                 </div>
             </div>
         </div>
