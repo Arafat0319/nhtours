@@ -1,6 +1,7 @@
 """Security gates (use existing DB; no drop_all)."""
+import pytest
 from app.models import Booking, User, db
-from app.utils import generate_receipt_token
+from app.utils import generate_receipt_token, load_receipt_token
 
 
 def test_user_role_property():
@@ -8,6 +9,15 @@ def test_user_role_property():
     staff = User(username="y", role="staff")
     assert admin.is_admin is True
     assert staff.is_admin is False
+
+
+def test_receipt_token_optional_payment_id(app):
+    with app.app_context():
+        tok = generate_receipt_token(1)
+        assert load_receipt_token(tok, 1) == {'booking_id': 1}
+        tok2 = generate_receipt_token(1, payment_id=7)
+        assert load_receipt_token(tok2, 1) == {'booking_id': 1, 'payment_id': 7}
+        assert load_receipt_token(tok2, 2) is None
 
 
 def test_summary_requires_token_or_pi(client, app):

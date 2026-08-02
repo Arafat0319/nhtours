@@ -19,6 +19,7 @@ from app.utils import (
     verify_installment_token,
     generate_receipt_token,
     verify_receipt_token,
+    load_receipt_token,
     save_booking_upload,
     format_pacific_date,
 )
@@ -1697,6 +1698,15 @@ def api_booking_summary(booking_id):
         fee_dollars = 0.0
         due_at_booking = float(booking.amount_paid or 0.0)
 
+    receipt_pay = (
+        Payment.query.filter(
+            Payment.booking_id == booking_id,
+            Payment.status.in_(('succeeded', 'partially_refunded', 'refunded')),
+        )
+        .order_by(Payment.paid_at.desc(), Payment.id.desc())
+        .first()
+    )
+
     return jsonify({
         'trip_total': trip_total_display,
         'fee': round(fee_dollars, 2),
@@ -1705,7 +1715,10 @@ def api_booking_summary(booking_id):
         'order_number': booking.order_number or str(booking.id),
         'order_summary_lines': lines,
         'discount_amount': round(discount, 2),
-        'receipt_url': _receipt_public_download_url(booking.id),
+        'receipt_url': _receipt_public_download_url(
+            booking.id,
+            payment_id=receipt_pay.id if receipt_pay else None,
+        ),
     })
 
 
@@ -2053,11 +2066,15 @@ def _receipt_installment_schedule_as_of(schedule_rows, focus_ts=None, is_latest=
 
 @bp.route('/booking/<int:booking_id>/receipt')
 def booking_receipt(booking_id):
-    """客户下载收据 PDF（默认）；须带签名 token；?format=html 可查看网页版。"""
+    """
+    客户下载收据 PDF（默认）；须带签名 token；?format=html 可查看网页版。
+    payment_id 仅认 token 内绑定（忽略 query，防枚举）；旧 token 无 payment_id → 最近一笔。
+    """
     from flask import make_response
 
     token = request.args.get('token')
-    if not verify_receipt_token(token, booking_id):
+    payload = load_receipt_token(token, booking_id)
+    if not payload:
         # 不区分「无单 / token 无效」，避免枚举 booking id
         abort(404)
 
@@ -2070,8 +2087,9 @@ def booking_receipt(booking_id):
     if not booking:
         abort(404)
 
+    payment_id = payload.get('payment_id')
     try:
-        ctx = _booking_receipt_context(booking)
+        ctx = _booking_receipt_context(booking, payment_id=payment_id)
     except Exception as e:
         current_app.logger.exception(f'receipt: context for booking {booking_id} failed: {e}')
         abort(500)
@@ -2100,11 +2118,14 @@ def booking_receipt(booking_id):
 
     order_label = getattr(booking, 'order_number', None) or booking.id
     safe_name = ''.join(c if c.isalnum() or c in '-_' else '-' for c in str(order_label))
+    focus_pid = ctx.get('receipt_payment_id') or payment_id
+    if focus_pid:
+        filename = f'NHTours-Order-{safe_name}-Pay-{focus_pid}.pdf'
+    else:
+        filename = f'NHTours-Order-{safe_name}.pdf'
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = (
-        f'attachment; filename="NHTours-Order-{safe_name}.pdf"'
-    )
+    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
 
 
@@ -2294,7 +2315,9 @@ def api_payment_status():
     if payment.status == 'succeeded' and payment.booking_id:
         redirect_url = url_for('main.booking_success', booking_id=payment.booking_id, _external=True)
         if payment_intent_id:
-            receipt_url = _receipt_public_download_url(payment.booking_id)
+            receipt_url = _receipt_public_download_url(
+                payment.booking_id, payment_id=payment.id
+            )
 
     status_payload = {
         'status': payment.status or 'pending',
@@ -4282,10 +4305,10 @@ def create_installment_payments(booking, booking_package, payment_plan_config):
             continue
 
 
-def _receipt_public_download_url(booking_id):
-    """客户收据 PDF 链接：签名 token，无法仅凭 booking id 枚举下载。"""
+def _receipt_public_download_url(booking_id, payment_id=None):
+    """客户收据 PDF 链接：签名 token（可绑定 payment_id），无法仅凭 id 枚举下载。"""
     base = (current_app.config.get('BASE_URL') or '').rstrip('/') or 'https://nhtours.com'
-    token = generate_receipt_token(booking_id)
+    token = generate_receipt_token(booking_id, payment_id=payment_id)
     return f'{base}/booking/{int(booking_id)}/receipt?token={token}'
 
 
@@ -4295,18 +4318,23 @@ def _email_brand_logo_url():
     return f'{base}/static/images/icons/nexus-horizons-email.png'
 
 
-def _receipt_pdf_attachment(booking):
-    """生成收据 PDF 附件；失败返回 None（邮件仍可发，仅无附件）。"""
+def _receipt_pdf_attachment(booking, payment_id=None):
+    """生成收据 PDF 附件（可指定当笔）；失败返回 None（邮件仍可发，仅无附件）。"""
     try:
         from app.receipt_pdf import build_booking_receipt_pdf
-        ctx = _booking_receipt_context(booking)
+        ctx = _booking_receipt_context(booking, payment_id=payment_id)
         if not ctx:
             return None
         pdf_bytes = build_booking_receipt_pdf(ctx)
         order_label = getattr(booking, 'order_number', None) or booking.id
         safe_name = ''.join(c if c.isalnum() or c in '-_' else '-' for c in str(order_label))
+        focus_pid = ctx.get('receipt_payment_id') or payment_id
+        if focus_pid:
+            filename = f'NHTours-Order-{safe_name}-Pay-{focus_pid}.pdf'
+        else:
+            filename = f'NHTours-Order-{safe_name}.pdf'
         return {
-            'filename': f'NHTours-Order-{safe_name}.pdf',
+            'filename': filename,
             'content': pdf_bytes,
             'mime_subtype': 'pdf',
         }
@@ -4419,7 +4447,9 @@ def send_booking_confirmation_email(booking, is_full_payment):
         'discount_amount': discount_amount,
         'discount_code': discount_code,
         'amount_charged_label': 'Amount charged today',
-        'receipt_download_url': _receipt_public_download_url(booking.id),
+        'receipt_download_url': _receipt_public_download_url(
+            booking.id, payment_id=payment.id if payment else None
+        ),
         'email_logo_url': _email_brand_logo_url(),
     }
 
@@ -4427,7 +4457,9 @@ def send_booking_confirmation_email(booking, is_full_payment):
     text_body = render_template('emails/receipt.txt', **context)
 
     attachments = []
-    pdf_att = _receipt_pdf_attachment(booking)
+    pdf_att = _receipt_pdf_attachment(
+        booking, payment_id=payment.id if payment else None
+    )
     if pdf_att:
         attachments.append(pdf_att)
 
@@ -4497,7 +4529,9 @@ def send_installment_confirmation_email(installment):
         'discount_amount': 0,
         'discount_code': None,
         'amount_charged_label': f'{inst_label} charged',
-        'receipt_download_url': _receipt_public_download_url(booking.id),
+        'receipt_download_url': _receipt_public_download_url(
+            booking.id, payment_id=payment.id if payment else None
+        ),
         'email_logo_url': _email_brand_logo_url(),
     }
 
@@ -4505,7 +4539,9 @@ def send_installment_confirmation_email(installment):
     text_body = render_template('emails/receipt.txt', **context)
 
     attachments = []
-    pdf_att = _receipt_pdf_attachment(booking)
+    pdf_att = _receipt_pdf_attachment(
+        booking, payment_id=payment.id if payment else None
+    )
     if pdf_att:
         attachments.append(pdf_att)
 

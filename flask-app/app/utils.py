@@ -717,19 +717,29 @@ def _receipt_token_serializer():
     return URLSafeTimedSerializer(secret_key, salt='booking-receipt-download')
 
 
-def generate_receipt_token(booking_id):
-    """客户收据下载链接签名（与分期付款链接同机制）。"""
+def generate_receipt_token(booking_id, payment_id=None):
+    """
+    客户收据下载链接签名（与分期付款链接同机制）。
+    payment_id 可选：写入 token 后，下载固定为该笔 as-of 收据（防明文枚举）。
+    """
     serializer = _receipt_token_serializer()
-    return serializer.dumps({'booking_id': int(booking_id)})
+    payload = {'booking_id': int(booking_id)}
+    if payment_id is not None:
+        try:
+            payload['payment_id'] = int(payment_id)
+        except (TypeError, ValueError):
+            pass
+    return serializer.dumps(payload)
 
 
-def verify_receipt_token(token, booking_id, max_age_seconds=None):
+def load_receipt_token(token, booking_id, max_age_seconds=None):
     """
     校验收据 token 是否对应该 booking_id。
-    默认有效期 2 年（行程结束后客户仍可能下载）；可用 RECEIPT_TOKEN_MAX_AGE_SECONDS 覆盖。
+    成功返回 dict：{booking_id, payment_id?}；失败返回 None。
+    旧邮件无 payment_id 的 token 仍有效（下载时回退最近一笔）。
     """
     if not token:
-        return False
+        return None
     if max_age_seconds is None:
         max_age_seconds = current_app.config.get(
             'RECEIPT_TOKEN_MAX_AGE_SECONDS', 60 * 60 * 24 * 730
@@ -738,11 +748,25 @@ def verify_receipt_token(token, booking_id, max_age_seconds=None):
     try:
         data = serializer.loads(token, max_age=max_age_seconds)
     except (BadSignature, SignatureExpired):
-        return False
+        return None
     try:
-        return int(data.get('booking_id')) == int(booking_id)
+        if int(data.get('booking_id')) != int(booking_id):
+            return None
     except (TypeError, ValueError):
-        return False
+        return None
+    out = {'booking_id': int(booking_id)}
+    raw_pid = data.get('payment_id')
+    if raw_pid is not None and str(raw_pid).strip() != '':
+        try:
+            out['payment_id'] = int(raw_pid)
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
+def verify_receipt_token(token, booking_id, max_age_seconds=None):
+    """校验收据 token 是否对应该 booking_id（布尔）。"""
+    return load_receipt_token(token, booking_id, max_age_seconds=max_age_seconds) is not None
 
 
 def _export_token_serializer():

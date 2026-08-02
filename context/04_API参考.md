@@ -122,7 +122,7 @@
 | `/api/booking/upload` | POST | 报名文件上传；multipart `file` + **`trip_id`（必填）**；魔数校验；落盘 `uploads/booking/trip_<id>/` |
 | `/api/booking/<id>/summary` | GET | 付款后订单摘要；**须** `token`（收据签名）或 `payment_intent_id`（匹配该单），否则 403；含 `receipt_url` |
 | `/booking/payment/<id>` | GET | 独立支付页；**须** receipt `token`；已取消/已全额付则跳转 success |
-| `/booking/<id>/receipt` | GET | 客户收据：**须 `?token=`**；默认 PDF（页脚 logo + **Due at booking**）；`?format=html` 网页；无 token → 404 |
+| `/booking/<id>/receipt` | GET | 客户收据：**须 `?token=`**（可含绑定的 `payment_id`，明文 query 无效）；默认 PDF as-of 该笔/最近笔；`?format=html`；无 token → 404 |
 
 #### POST /api/payment/intent
 
