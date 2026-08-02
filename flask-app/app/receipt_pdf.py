@@ -343,7 +343,10 @@ def build_booking_receipt_pdf(ctx_or_booking=None, trip=None, expected_amount=No
     order_no = getattr(booking, "order_number", None) or booking.id
     from app.utils import format_pacific_date
 
-    order_date = format_pacific_date(booking.created_at) if booking.created_at else ""
+    # 优先用 context 的页头日期（最近成功付款日）；勿写死 booking.created_at
+    order_date = (ctx.get("receipt_issued_at") or "").strip()
+    if not order_date:
+        order_date = format_pacific_date(booking.created_at) if booking.created_at else ""
     order_label = f"Order number: {order_no}\n{order_date}"
 
     pdf = ReceiptPDF(format="Letter")

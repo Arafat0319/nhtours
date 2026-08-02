@@ -65,14 +65,15 @@ alwaysApply: true
 - 左：竖版 **NHTOURS** logo（`nexus-horizons-receipt-header.png`，蓝 `rgb(0,54,112)`，与页脚同色）  
 - 旁：标题「Nexus Horizons Tours」+ 副标题（见上表）  
 - 右：Order number + **日期（美西 `America/Los_Angeles`）** — 库内仍存 UTC，展示用 `format_pacific_date`  
+- **页头日期** = **最近一笔成功付款**的日期（`paid_at` / History 末笔）；尚无成功付款时回退 `booking.created_at`  
 - **下底边对齐**：logo、左侧文字块、右侧 Order meta  
 - 比例：logo 宽约 **17mm**，标题约 **18pt**（用户确认的 smaller logo / larger title 版）
 
 ## 日期时区
 
-- 收据上的 **订单日 / Issued / Payment History 付款时间 / 退款时间**：按美西展示  
+- 收据页头日期、Payment History 付款时间、退款时间：按美西展示  
 - **行程 Dates、分期 due date**（纯日历日）：不换时区  
-- 实现：`app.utils.format_pacific_date`；Jinja `|format_pacific`；PDF `_fmt_ts`
+- 实现：`app.utils.format_pacific_date`；Jinja `|format_pacific`；PDF `_fmt_ts`；页头取自 `_booking_receipt_context.receipt_issued_at`
 
 ## 页脚（每页）
 

@@ -905,7 +905,7 @@ def booking_payment_type_display(booking):
 
 def cancel_unpaid_installments(booking):
     """
-    订单取消后：未付分期（pending/overdue）标为 cancelled，并尽量取消关联 Stripe PI。
+    订单取消 / Payoff 后：未付分期（pending/overdue）标为 cancelled，并尽量取消关联 Stripe PI。
     已付分期不动。调用方负责 commit。
     """
     from app.models import InstallmentPayment
@@ -924,6 +924,31 @@ def cancel_unpaid_installments(booking):
             )
         inst.status = 'cancelled'
     return len(rows)
+
+
+def void_stale_pending_payments(booking, except_payment_intent_id=None):
+    """
+    结清（Payoff / 全款）后清理残留 pending Payment（如打开分期页未完成付款）。
+    取消关联 Stripe PI，本地标 failed。调用方负责 commit。
+    """
+    from app.models import Payment
+
+    if not booking or not getattr(booking, 'id', None):
+        return 0
+    rows = Payment.query.filter_by(booking_id=booking.id, status='pending').all()
+    n = 0
+    for payment in rows:
+        pi = payment.stripe_payment_intent_id
+        if except_payment_intent_id and pi == except_payment_intent_id:
+            continue
+        if pi:
+            safe_cancel_payment_intent(
+                pi,
+                reason=f'booking {booking.id} void stale pending payment {payment.id}',
+            )
+        payment.status = 'failed'
+        n += 1
+    return n
 
 
 def apply_refund_to_ledger(payment, booking, refund_amount, reason=None, stripe_refund_id=None,

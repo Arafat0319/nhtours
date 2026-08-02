@@ -1884,10 +1884,20 @@ def _booking_receipt_context(booking):
     # Due this time 已在 Trip Total 展示，不再重复长脚注
     due_at_booking_note = None
 
+    # 页头日期 = 最近一笔成功付款日（美西）；无付款记录则回退订单创建日
+    header_ts = None
+    for row in reversed(ledger['payment_history'] or []):
+        at = row.get('date') or row.get('at')
+        if at:
+            header_ts = at
+            break
+    if header_ts is None:
+        header_ts = booking.created_at
+
     return {
         'trip': trip,
         'booking': booking,
-        'receipt_issued_at': format_pacific_date(booking.created_at) if booking.created_at else '',
+        'receipt_issued_at': format_pacific_date(header_ts) if header_ts else '',
         'expected_amount': round(expected_amount, 2),
         'packages_subtotal': round(packages_subtotal, 2),
         'addons_total': round(addons_total, 2),
@@ -3682,11 +3692,19 @@ def handle_booking_payment_intent_succeeded(payment_intent):
                 if config and config.get('enabled'):
                     create_installment_payments(booking, bp, config)
     
-    # Payoff 支付成功：取消所有未支付的 installment
-    if metadata.get('payment_step') == 'payoff':
-        for inst in booking.installments.filter(InstallmentPayment.status != 'paid').all():
-            inst.status = 'cancelled'
-            current_app.logger.info(f"Cancelled installment {inst.id} (booking {booking.id}) due to payoff payment")
+    # Payoff / 全款结清：取消未付分期，并清理打开分期页留下的 pending Payment
+    if metadata.get('payment_step') == 'payoff' or is_full_payment:
+        from app.payments import cancel_unpaid_installments, void_stale_pending_payments
+        n_inst = cancel_unpaid_installments(booking)
+        n_pay = void_stale_pending_payments(booking, except_payment_intent_id=payment_intent_id)
+        if n_inst or n_pay:
+            current_app.logger.info(
+                "Booking %s settled (%s): cancelled %s installment(s), voided %s pending payment(s)",
+                booking.id,
+                metadata.get('payment_step') or 'full',
+                n_inst,
+                n_pay,
+            )
 
     db.session.commit()
 
