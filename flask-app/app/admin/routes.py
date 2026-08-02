@@ -411,15 +411,27 @@ def manage_trip(id):
     )
     
     # Financial Calculations
-    # amount_paid 是客户实际支付的基础金额（不含 Stripe 手续费）
-    total_paid = sum(b.amount_paid or 0.0 for b in bookings)
     total_gross = 0.0  # 原价总额（未扣除折扣）
     total_discount = 0.0  # 折扣总额
     total_expected = 0.0  # 净应收金额（扣除折扣后）
     booking_balances = {}  # booking_id -> pending balance (None = cancelled / n/a)
-    from app.payments import booking_balance_due, booking_refunded_total
+    from app.payments import (
+        booking_balance_due,
+        booking_refunded_total,
+        computed_booking_amount_paid,
+        ledger_payments_for_booking,
+    )
 
+    booking_paid_display = {}
     for b in bookings:
+        # 列表 Paid 与弹窗一致：有 Payment 账本时用 Σ(base−refunded)
+        if ledger_payments_for_booking(b):
+            booking_paid_display[b.id] = computed_booking_amount_paid(b)
+        else:
+            booking_paid_display[b.id] = round(
+                float(b.amount_paid) if b.amount_paid is not None else 0.0, 2
+            )
+
         booking_gross = 0.0  # 该订单原价
         has_packages = False
         seen_addon_ids = set()
@@ -466,6 +478,7 @@ def manage_trip(id):
         # 退款不计入欠款：due = expected − paid − refunded
         booking_balances[b.id] = booking_balance_due(b, expected=booking_expected)
 
+    total_paid = round(sum(booking_paid_display.values()), 2)
     total_pending = round(sum(v for v in booking_balances.values() if v is not None), 2)
     total_refunded = round(sum(booking_refunded_total(b) for b in bookings), 2)
 
@@ -597,6 +610,7 @@ def manage_trip(id):
                            bookings=bookings,
                            booking_addons_summary=booking_addons_summary,
                            booking_balances=booking_balances,
+                           booking_paid_display=booking_paid_display,
                            booking_payment_statuses=booking_payment_statuses,
                            booking_payment_types=booking_payment_types,
                            booking_payoff_ids=booking_payoff_ids,
@@ -2020,7 +2034,6 @@ def payments():
         build_one_time_order_groups,
         build_schedule_order_groups,
     )
-    from app.payments import multi_period_booking_ids, single_balance_booking_ids
 
     tab = request.args.get('tab', 'records')
     search = request.args.get('search', '').strip()
@@ -2028,17 +2041,17 @@ def payments():
 
     if tab == 'records':
         # Full：定金+单笔尾款（可展开看 Final payment）+ 一次付全款
+        # 只排除本页已展示的 schedule 行，避免全局 multi/single 集合把「未进 limit」的单从 one-time 也踢掉
         schedule_groups, today = build_schedule_order_groups(
             plan_kinds={'deposit_balance'},
             search=search,
             status_filter=status_filter,
         )
         schedule_ids = {g['booking_id'] for g in schedule_groups}
-        exclude = schedule_ids | multi_period_booking_ids() | single_balance_booking_ids()
         one_time_groups, _ = build_one_time_order_groups(
             search=search,
             status_filter=status_filter,
-            exclude_booking_ids=exclude,
+            exclude_booking_ids=schedule_ids,
         )
         orders_grouped = schedule_groups + one_time_groups
         orders_grouped.sort(
@@ -2315,8 +2328,9 @@ def send_installment_reminder(installment_id):
     
     try:
         from app.tasks import send_installment_reminder_email, send_overdue_reminder_email
+        from app.utils import pacific_today
 
-        today = date.today()
+        today = pacific_today()
         due = installment.due_date
         if due and due < today:
             ok = send_overdue_reminder_email(installment, (today - due).days)
@@ -2353,13 +2367,18 @@ def send_installment_reminder(installment_id):
 @bp.route('/payments/installments/<int:installment_id>/mark-paid', methods=['POST'])
 @admin_required
 def mark_installment_paid(installment_id):
-    """手动标记分期付款为已支付（用于线下支付）"""
+    """手动标记分期付款为已支付（线下）：写 Payment 账本，并禁止跳期。"""
     installment = InstallmentPayment.query.get_or_404(installment_id)
     
     if installment.status == 'paid':
         return jsonify({
             'success': False,
             'error': 'Installment already marked as paid'
+        }), 400
+    if (installment.status or '') == 'cancelled':
+        return jsonify({
+            'success': False,
+            'error': 'This installment is cancelled',
         }), 400
     if Payment.query.filter_by(
         installment_payment_id=installment.id,
@@ -2369,9 +2388,33 @@ def mark_installment_paid(installment_id):
             'success': False,
             'error': 'This installment already has a successful payment',
         }), 400
+
+    # 与客户侧 catch-up 一致：须先付清更早未付期
+    earlier_unpaid = (
+        InstallmentPayment.query.filter(
+            InstallmentPayment.booking_id == installment.booking_id,
+            InstallmentPayment.status.in_(('pending', 'overdue')),
+            InstallmentPayment.installment_number < (installment.installment_number or 0),
+        )
+        .order_by(InstallmentPayment.installment_number.asc())
+        .first()
+    )
+    if earlier_unpaid:
+        return jsonify({
+            'success': False,
+            'error': (
+                f'Mark earlier installment #{earlier_unpaid.installment_number} '
+                'paid first (or use catch-up payment link).'
+            ),
+        }), 400
     
     try:
-        from app.payments import calculate_booking_total, safe_cancel_payment_intent
+        from app.payments import (
+            calculate_booking_total,
+            cancel_unpaid_installments,
+            safe_cancel_payment_intent,
+            void_stale_pending_payments,
+        )
         
         if getattr(installment, 'payment_intent_id', None):
             safe_cancel_payment_intent(
@@ -2379,25 +2422,57 @@ def mark_installment_paid(installment_id):
                 reason=f'admin mark-paid installment {installment.id}',
             )
 
+        paid_at = datetime.utcnow()
         installment.status = 'paid'
-        installment.paid_at = datetime.utcnow()
+        installment.paid_at = paid_at
         
-        # 更新 Booking
         booking = installment.booking
-        booking.amount_paid = (booking.amount_paid or 0.0) + (installment.amount or 0.0)
+        amount = round(float(installment.amount or 0.0), 2)
+        cents = int(round(amount * 100))
+        step = 'initial' if (installment.installment_number or 0) == 0 else 'installment'
+        payment = Payment(
+            booking_id=booking.id,
+            client_id=booking.client_id,
+            trip_id=booking.trip_id,
+            amount=amount,
+            currency='usd',
+            status='succeeded',
+            installment_payment_id=installment.id,
+            paid_at=paid_at,
+            base_amount_cents=cents,
+            fee_cents=0,
+            tax_amount_cents=0,
+            final_amount_cents=cents,
+            payment_method_type='manual',
+            payment_metadata={
+                'payment_step': step,
+                'payment_plan': 'installment',
+                'source': 'admin_mark_paid',
+                'manual': True,
+                'installment_id': installment.id,
+                'installment_number': installment.installment_number,
+            },
+        )
+        db.session.add(payment)
+
+        booking.amount_paid = round((booking.amount_paid or 0.0) + amount, 2)
         
-        # 检查是否所有分期都已完成
         total_info = calculate_booking_total(booking)
-        if booking.amount_paid >= total_info['total']:
+        if booking.amount_paid + 0.001 >= float(total_info.get('total') or 0.0):
             booking.status = 'fully_paid'
             for bp in booking.booking_packages:
                 bp.status = 'fully_paid'
+            cancel_unpaid_installments(booking)
+            void_stale_pending_payments(booking)
+        elif booking.status == 'pending':
+            booking.status = 'deposit_paid'
         
         db.session.commit()
         
         return jsonify({
             'success': True,
-            'message': 'Installment marked as paid'
+            'message': 'Installment marked as paid',
+            'payment_id': payment.id,
         })
     except Exception as e:
         db.session.rollback()
@@ -2437,7 +2512,7 @@ def export_payments():
             bottom=Side(style='thin', color='E5E7EB'),
         )
         money_format = '#,##0.00'
-        money_cols = {5, 6, 7}  # Amount, Refunded, Net
+        money_cols = {5, 6, 7, 8, 9}  # Base / Fee / Charged / Refunded / Net
         dash = '-'
 
         headers = [
@@ -2445,9 +2520,11 @@ def export_payments():
             'Client Name',
             'Client Email',
             'Trip Title',
-            'Amount',
-            'Refunded',
-            'Net',
+            'Base Amount',
+            'Card Fee',
+            'Charged',
+            'Refunded (base)',
+            'Net (base)',
             'Status',
             'Refund Reason',
             'Paid At',
@@ -2462,6 +2539,13 @@ def export_payments():
             cell.alignment = header_align
             cell.border = thin
 
+        from app.payments import (
+            payment_base_amount,
+            payment_charged_amount,
+            payment_fee_amount,
+            payment_refunded_clamped,
+        )
+
         payments = Payment.query.options(
             joinedload(Payment.client),
             joinedload(Payment.trip),
@@ -2474,9 +2558,11 @@ def export_payments():
                 (booking.order_number if booking else None)
                 or (f'#{payment.booking_id}' if payment.booking_id else dash)
             )
-            amount = round(float(payment.amount or 0.0), 2)
-            refunded = round(float(payment.refunded_amount or 0.0), 2)
-            net = round(max(0.0, amount - refunded), 2)
+            base = payment_base_amount(payment)
+            fee = payment_fee_amount(payment)
+            charged = payment_charged_amount(payment)
+            refunded = payment_refunded_clamped(payment)
+            net = round(max(0.0, base - refunded), 2)
             reason = (payment.refund_reason or '').strip()
             if not reason:
                 reason = dash
@@ -2485,7 +2571,9 @@ def export_payments():
                 payment.client.name if payment.client else dash,
                 payment.client.email if payment.client else dash,
                 payment.trip.title if payment.trip else dash,
-                amount,
+                base,
+                fee,
+                charged,
                 refunded if refunded else dash,
                 net,
                 (payment.status or 'pending').replace('_', ' '),
@@ -3594,6 +3682,12 @@ def manage_booking(trip_id, booking_id):
                     'value': booking.discount_code.amount,
                     'discount_amount': float(booking.discount_amount) if booking.discount_amount else 0.0
                 }
+
+            pending_amount = (
+                booking_balance_due(booking, expected=expected_amount)
+                if booking.status != 'cancelled'
+                else 0.0
+            )
             
             return jsonify({
                 'success': True,
@@ -3632,15 +3726,14 @@ def manage_booking(trip_id, booking_id):
                     'addons_total': addons_total,
                     # 折扣信息
                     'discount': discount_info,
-                    # 金额信息
+                    # 金额信息（amount_paid 与 display 同源，避免 Save 冲掉账本）
                     'status': booking.status,
                     'payment_status': booking_payment_display_status(booking),
-                    'amount_paid': float(booking.amount_paid) if booking.amount_paid else 0.0,
+                    'amount_paid': amount_paid_display,
                     'amount_paid_display': amount_paid_display,
                     'expected_amount': expected_amount,
-                    'pending_amount': booking_balance_due(
-                        booking, expected=expected_amount
-                    ) if booking.status != 'cancelled' else 0.0,
+                    'pending_amount': pending_amount,
+                    'total_refunded': total_refunded,
                     'payment_summary': payment_summary,
                     'deposit_hint': deposit_hint,
                     'deposit_reserved': deposit_reserved,

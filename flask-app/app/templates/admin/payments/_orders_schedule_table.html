@@ -208,6 +208,9 @@
                     <span class="text-indigo-700 font-medium">
                         {% if group.post_deposit_count == 1 %}Final payment{% else %}#{{ installment.installment_number }}{% endif %}
                     </span>
+                    {% if item.covered_by_catch_up %}
+                    <span class="block text-xs text-gray-500 mt-0.5">Included in catch-up</span>
+                    {% endif %}
                 </td>
                 <td class="px-4 py-2.5 text-sm font-semibold text-gray-700">${{ (installment.amount or 0)|format_price }}</td>
                 <td class="px-4 py-2.5 text-sm text-gray-600">
@@ -233,7 +236,9 @@
                     </span>
                 </td>
                 <td class="px-4 py-2.5 text-sm">
-                    {% if inst_payment %}
+                    {% if item.covered_by_catch_up %}
+                    <span class="text-gray-400 text-xs">Catch-up</span>
+                    {% elif inst_payment %}
                     <a href="{{ url_for('admin.payment_detail', payment_id=inst_payment.id) }}"
                         class="text-wetravel-cyan hover:underline" onclick="event.stopPropagation();">View</a>
                     {% elif booking and booking.trip_id %}

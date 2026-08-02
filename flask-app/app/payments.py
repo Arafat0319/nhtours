@@ -632,6 +632,18 @@ def booking_balance_due(booking, expected=None):
     return round(max(0.0, float(expected) - paid - refunded), 2)
 
 
+def booking_payoff_due(booking):
+    """
+    Payoff / 结清应付（基础美元）。
+    与 Manage Balance due / calculate_booking_total.amount_due 一致：不追回已退金额。
+    切勿用 total − amount_paid（退款后 amount_paid 已扣减，会把退款额再收一遍）。
+    """
+    due = booking_balance_due(booking)
+    if due is None:
+        return 0.0
+    return round(float(due), 2)
+
+
 def booking_has_overdue_amount(booking, today=None):
     """
     当前仍有应付，且存在已过 due_date 的未付分期。
@@ -1191,14 +1203,15 @@ def apply_refund_to_ledger(payment, booking, refund_amount, reason=None, stripe_
     # 基础金额退款，直接扣 Booking.amount_paid
     booking.amount_paid = max(0.0, round(float(booking.amount_paid or 0.0) - refund_amount, 2))
 
-    if cancel_booking or booking.amount_paid <= 0.001:
-        if booking.amount_paid <= 0.001:
-            booking.amount_paid = 0.0
-        if cancel_booking or booking.amount_paid == 0.0:
-            booking.status = 'cancelled'
-            cancel_unpaid_installments(booking)
+    if booking.amount_paid <= 0.001:
+        booking.amount_paid = 0.0
+
+    # 仅在显式勾选 Cancel booking 时取消；全额退完不自动 cancelled
+    if cancel_booking:
+        booking.status = 'cancelled'
+        cancel_unpaid_installments(booking)
     elif booking.status == 'fully_paid':
-        booking.status = 'deposit_paid'
+        booking.status = 'deposit_paid' if booking.amount_paid > 0.001 else 'pending'
 
     return {
         'refund_amount': refund_amount,

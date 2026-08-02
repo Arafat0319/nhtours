@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import datetime
 
 from sqlalchemy.orm import joinedload
 
 from app.models import Booking, InstallmentPayment, Payment
+from app.utils import pacific_today
 
 
 def _installment_unpaid(inst):
@@ -30,10 +31,12 @@ def booking_discount_info(booking):
     }
 
 
-def _line_display_status(inst, payment=None):
+def _line_display_status(inst, payment=None, *, covered_by_catch_up=False):
     """
     列表展示用状态：若已有成功收款 Payment，即使 installment 行仍为 pending 也显示 paid。
     """
+    if covered_by_catch_up:
+        return 'paid'
     if payment is not None:
         pst = (payment.status or '').lower()
         if pst == 'succeeded':
@@ -80,7 +83,8 @@ def _filter_by_schedule_status(group, status_filter):
     return True
 
 
-def _attach_payments_and_sub_items(groups, payments_map):
+def _attach_payments_and_sub_items(groups, payments_map, *, covered_ids=None):
+    covered_ids = covered_ids or set()
     for group in groups:
         deposit = group.get('deposit')
         if deposit:
@@ -91,7 +95,9 @@ def _attach_payments_and_sub_items(groups, payments_map):
                 deposit_payments[0] if deposit_payments else None,
             )
             group['deposit_payment'] = deposit_payment
-            group['deposit_display_status'] = _line_display_status(deposit, deposit_payment)
+            group['deposit_display_status'] = _line_display_status(
+                deposit, deposit_payment, covered_by_catch_up=deposit.id in covered_ids
+            )
         else:
             group['deposit_payment'] = group.get('primary_payment')
             group['deposit_display_status'] = _line_display_status(
@@ -99,6 +105,7 @@ def _attach_payments_and_sub_items(groups, payments_map):
             )
 
         group['others_payments'] = {}
+        group['others_covered'] = {}
         for inst in group.get('others') or []:
             inst_payments = payments_map.get(inst.id, [])
             inst_payment = next(
@@ -106,6 +113,7 @@ def _attach_payments_and_sub_items(groups, payments_map):
                 inst_payments[0] if inst_payments else None,
             )
             group['others_payments'][inst.id] = inst_payment
+            group['others_covered'][inst.id] = inst.id in covered_ids
 
         # 未付判断：展示态为 paid/refunded 的不算未付（避免库内 installment 未同步）
         schedule = []
@@ -119,12 +127,14 @@ def _attach_payments_and_sub_items(groups, payments_map):
                 if deposit and inst.id == deposit.id
                 else group['others_payments'].get(inst.id)
             )
-            return _line_display_status(inst, pay) in ('pending', 'overdue')
+            return _line_display_status(
+                inst, pay, covered_by_catch_up=inst.id in covered_ids
+            ) in ('pending', 'overdue')
 
         unpaid = [i for i in schedule if i and _still_unpaid(i)]
         unpaid.sort(
             key=lambda i: (
-                i.due_date or date.max,
+                i.due_date or datetime.max.date(),
                 i.installment_number if i.installment_number is not None else 999,
             )
         )
@@ -140,9 +150,11 @@ def _attach_payments_and_sub_items(groups, payments_map):
                 'payment_time': payoff.paid_at or payoff.created_at or datetime.max,
                 'installment': None,
                 'display_status': 'paid',
+                'covered_by_catch_up': False,
             })
         for inst in group.get('others') or []:
             payment = group['others_payments'].get(inst.id)
+            covered = bool(group['others_covered'].get(inst.id))
             if payment and payment.paid_at:
                 payment_time = payment.paid_at
             elif inst.paid_at:
@@ -154,7 +166,10 @@ def _attach_payments_and_sub_items(groups, payments_map):
                 'payment': payment,
                 'payment_time': payment_time,
                 'installment': inst,
-                'display_status': _line_display_status(inst, payment),
+                'display_status': _line_display_status(
+                    inst, payment, covered_by_catch_up=covered
+                ),
+                'covered_by_catch_up': covered,
             })
 
         def sort_key(item):
@@ -170,28 +185,58 @@ def build_schedule_order_groups(*, plan_kinds, search='', status_filter='', limi
     """
     按付款计划组装可展开的 order 行。
     plan_kinds: {'deposit_balance'} 或 {'multi'} 或两者。
-    """
-    from app.payments import booking_payments_plan_kind
 
-    query = InstallmentPayment.query.options(
-        joinedload(InstallmentPayment.booking).joinedload(Booking.trip),
-        joinedload(InstallmentPayment.booking).joinedload(Booking.client),
-        joinedload(InstallmentPayment.booking).joinedload(Booking.discount_code),
+    按 booking 分页（不再对 InstallmentPayment 全局 limit*4，避免丢单）。
+    """
+    from app.payments import (
+        multi_period_booking_ids,
+        parse_catch_up_ids,
+        payment_is_payoff,
+        single_balance_booking_ids,
     )
+
+    today = pacific_today()
+    candidate_ids = set()
+    if 'multi' in plan_kinds:
+        candidate_ids |= multi_period_booking_ids()
+    if 'deposit_balance' in plan_kinds:
+        candidate_ids |= single_balance_booking_ids()
+    if not candidate_ids:
+        return [], today
+
+    bookings_q = (
+        Booking.query.options(
+            joinedload(Booking.trip),
+            joinedload(Booking.client),
+            joinedload(Booking.discount_code),
+        )
+        .filter(Booking.id.in_(candidate_ids))
+        .order_by(Booking.created_at.desc())
+    )
+    # 先多取一些再按 search 过滤，避免搜索时结果过少
+    fetch_cap = max(limit * 5, limit)
+    bookings = bookings_q.limit(fetch_cap).all()
+    if search:
+        bookings = [b for b in bookings if _matches_search(b, search)]
+    bookings = bookings[:limit]
+    booking_ids = [b.id for b in bookings]
+    if not booking_ids:
+        return [], today
+
+    booking_by_id = {b.id: b for b in bookings}
+
     all_installments = (
-        query.order_by(InstallmentPayment.booking_id, InstallmentPayment.installment_number)
-        .limit(limit * 4)
+        InstallmentPayment.query.filter(InstallmentPayment.booking_id.in_(booking_ids))
+        .order_by(InstallmentPayment.booking_id, InstallmentPayment.installment_number)
         .all()
     )
 
-    payoff_payments = Payment.query.filter(
-        Payment.booking_id.isnot(None),
-        Payment.status == 'succeeded',
-    ).all()
     booking_payoff_payments = {}
-    for payment in payoff_payments:
-        metadata = payment.payment_metadata or {}
-        if metadata.get('payment_step') == 'payoff' and payment.booking_id:
+    for payment in Payment.query.filter(
+        Payment.booking_id.in_(booking_ids),
+        Payment.status.in_(('succeeded', 'partially_refunded', 'refunded')),
+    ).all():
+        if payment_is_payoff(payment):
             booking_payoff_payments.setdefault(payment.booking_id, []).append(payment)
 
     grouped = defaultdict(lambda: {'deposit': None, 'others': [], 'payoff_payment': None})
@@ -216,63 +261,32 @@ def build_schedule_order_groups(*, plan_kinds, search='', status_filter='', limi
         ).all():
             payments_map.setdefault(payment.installment_payment_id, []).append(payment)
 
-    booking_ids = list(grouped.keys())
+    # Catch-up：被覆盖的非锚定期不再启发式错挂 Payment；仅标记 covered
+    covered_ids = set()
     if booking_ids:
-        booking_payments = Payment.query.filter(
+        for payment in Payment.query.filter(
             Payment.booking_id.in_(booking_ids),
-            Payment.status == 'succeeded',
-            Payment.installment_payment_id.is_(None),
-        ).all()
-        booking_payments_map = defaultdict(list)
-        for payment in booking_payments:
-            booking_payments_map[payment.booking_id].append(payment)
+            Payment.status.in_(('succeeded', 'partially_refunded', 'refunded')),
+        ).all():
+            meta = dict(payment.payment_metadata or {})
+            catch_ids = parse_catch_up_ids(meta)
+            if len(catch_ids) < 2:
+                continue
+            anchor = getattr(payment, 'installment_payment_id', None)
+            for cid in catch_ids:
+                if anchor is None or cid != anchor:
+                    covered_ids.add(cid)
 
-        for installment in all_installments:
-            if installment.id in payments_map:
-                continue
-            # 库内仍为 pending 但 booking 已有成功收款时，也尝试挂到定金行
-            if installment.status not in ('paid', 'pending', 'overdue'):
-                continue
-            candidates = [
-                p for p in (booking_payments_map.get(installment.booking_id) or [])
-                if (p.status or '') == 'succeeded'
-            ]
-            if not candidates:
-                continue
-            matching_payment = None
-            if installment.installment_number == 0:
-                # 定金：取该单最早一笔成功收款
-                matching_payment = min(
-                    candidates, key=lambda p: p.created_at or datetime.max
-                )
-            elif installment.paid_at:
-                inst_paid_date = (
-                    installment.paid_at.date()
-                    if isinstance(installment.paid_at, datetime)
-                    else installment.paid_at
-                )
-                for payment in candidates:
-                    if not payment.created_at:
-                        continue
-                    payment_date = (
-                        payment.created_at.date()
-                        if isinstance(payment.created_at, datetime)
-                        else payment.created_at
-                    )
-                    if payment_date >= inst_paid_date:
-                        if matching_payment is None or payment.created_at < matching_payment.created_at:
-                            matching_payment = payment
-            if matching_payment:
-                payments_map.setdefault(installment.id, []).append(matching_payment)
+    from app.payments import booking_payments_plan_kind
 
-    today = date.today()
     result = []
-    for booking_id, raw in grouped.items():
-        deposit = raw['deposit']
-        if not deposit or not deposit.booking:
+    for booking_id in booking_ids:
+        raw = grouped.get(booking_id)
+        if not raw:
             continue
-        booking = deposit.booking
-        if not _matches_search(booking, search):
+        deposit = raw['deposit']
+        booking = booking_by_id.get(booking_id) or (deposit.booking if deposit else None)
+        if not deposit or not booking:
             continue
 
         kind = booking_payments_plan_kind(booking_id)
@@ -320,7 +334,7 @@ def build_schedule_order_groups(*, plan_kinds, search='', status_filter='', limi
         })
 
     # 先挂 Payment / 校正展示态，再按 status 筛选
-    _attach_payments_and_sub_items(result, payments_map)
+    _attach_payments_and_sub_items(result, payments_map, covered_ids=covered_ids)
     if status_filter:
         result = [g for g in result if _filter_by_schedule_status(g, status_filter)]
     result.sort(
@@ -333,6 +347,7 @@ def build_schedule_order_groups(*, plan_kinds, search='', status_filter='', limi
 def build_one_time_order_groups(*, search='', status_filter='', limit=100, exclude_booking_ids=None):
     """一次付全款等：无定金后分期的 order，以 booking 为行。"""
     exclude_booking_ids = set(exclude_booking_ids or ())
+    today = pacific_today()
 
     # 有成功/进行中收款、且不在分期计划集合中的 booking
     pay_q = (
@@ -393,7 +408,7 @@ def build_one_time_order_groups(*, search='', status_filter='', limit=100, exclu
 
     if status_filter == 'overdue':
         # one-time 无分期 overdue 概念
-        return [], date.today()
+        return [], today
 
     result = list(by_booking.values())
     result.sort(
@@ -404,4 +419,4 @@ def build_one_time_order_groups(*, search='', status_filter='', limit=100, exclu
         ),
         reverse=True,
     )
-    return result[:limit], date.today()
+    return result[:limit], today

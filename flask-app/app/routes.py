@@ -1257,9 +1257,9 @@ def api_payment_quote():
                     break
             
             if payment_step == 'payoff':
-                # Payoff模式：计算剩余余额
-                total_info = calculate_booking_total(booking)
-                remaining_amount = max((total_info['total'] or 0.0) - (booking.amount_paid or 0.0), 0.0)
+                # Payoff：与 Balance due 一致（不追回已退）
+                from app.payments import booking_payoff_due
+                remaining_amount = booking_payoff_due(booking)
                 if remaining_amount <= 0:
                     return jsonify({'error': 'no_balance_due'}), 400
                 base_amount_cents = int(round(remaining_amount * 100))
@@ -1414,9 +1414,8 @@ def api_payment_intent():
                 break
         
         if payment_step == 'payoff':
-            # Payoff模式：计算剩余余额
-            total_info = calculate_booking_total(booking)
-            remaining_amount = max((total_info['total'] or 0.0) - (booking.amount_paid or 0.0), 0.0)
+            from app.payments import booking_payoff_due
+            remaining_amount = booking_payoff_due(booking)
             if remaining_amount <= 0:
                 return jsonify({'error': 'no_balance_due'}), 400
             base_amount_cents = int(round(remaining_amount * 100))
@@ -1854,8 +1853,8 @@ def _booking_receipt_context(booking, payment_id=None):
     """
     Shared receipt amounts + participants for HTML/PDF/email attachment.
     payment_id: 可选；指定成功付款时，页头日期 / Due this time / Includes /
-    Amount Paid / Remaining / History 均为「付完该笔当时」；省略则用最近一笔。
-    非法 payment_id 返回 None。
+    Amount Paid(=当笔净付) / Remaining(=付完该笔后整单余额) / History 截到该笔；
+    省略则用最近一笔。非法 payment_id 返回 None。
     """
     from app.payments import build_receipt_ledger_sections
 
@@ -1930,7 +1929,7 @@ def _booking_receipt_context(booking, payment_id=None):
     elif full_history:
         focus_row = full_history[-1]
 
-    # 当笔收据 =「付完该笔当时」：History / Paid / Remaining 截到该笔（含）
+    # History 截到当笔（含）；Paid=当笔净付；Remaining=付完该笔后整单余额
     history = list(full_history)
     if focus_row:
         trimmed = []
@@ -1950,15 +1949,40 @@ def _booking_receipt_context(booking, payment_id=None):
         2,
     )
 
-    if history:
-        # 累计净已付（截至当笔）；不用当前 Booking.amount_paid 整单快照
+    cumulative_paid = round(
+        sum(
+            float(r.get('net') if r.get('net') is not None else r.get('base') or 0)
+            for r in history
+        ),
+        2,
+    ) if history else round(float(booking.amount_paid or 0.0), 2)
+
+    if focus_row:
+        # Amount Paid = 当笔实付（净基础），不是累计
         amount_paid_net = round(
-            sum(float(r.get('net') if r.get('net') is not None else r.get('base') or 0) for r in history),
+            float(
+                focus_row.get('net')
+                if focus_row.get('net') is not None
+                else focus_row.get('base') or 0
+            ),
             2,
         )
     else:
-        amount_paid_net = round(float(booking.amount_paid or 0.0), 2)
-    amount_pending = round(max(0.0, expected_amount - amount_paid_net), 2)
+        amount_paid_net = cumulative_paid
+
+    # Remaining：历史 as-of = expected − 截至该笔累计净付；
+    # 最新一笔对齐 Manage Balance due（退款不追回，不把已退额显示成「还欠」）
+    is_latest_focus = (
+        not focus_row
+        or not full_history
+        or focus_row.get('id') == full_history[-1].get('id')
+    )
+    if is_latest_focus:
+        from app.payments import booking_balance_due
+        due = booking_balance_due(booking, expected=expected_amount)
+        amount_pending = round(float(due if due is not None else 0.0), 2)
+    else:
+        amount_pending = round(max(0.0, expected_amount - cumulative_paid), 2)
 
     # Due this time / Includes / 页头日期 = 当笔（指定或最近成功收款）
     due_this_time_breakdown = None
@@ -2740,11 +2764,14 @@ def pay_installment(installment_id):
         booking_id=booking.id
     ).order_by(InstallmentPayment.installment_number).all()
 
-    total_info = calculate_booking_total(booking)
-    remaining_amount = max((total_info['total'] or 0.0) - (booking.amount_paid or 0.0), 0.0)
+    from app.payments import (
+        booking_payoff_due,
+        installment_display_label,
+        installment_has_other_unpaid,
+    )
+    remaining_amount = booking_payoff_due(booking)
     remaining_amount_cents = int(round(remaining_amount * 100))
 
-    from app.payments import installment_display_label, installment_has_other_unpaid
     post_deposit_count = sum(
         1 for i in all_installments if (i.installment_number or 0) > 0
     )
@@ -3239,8 +3266,8 @@ def pay_installment_payoff(installment_id):
             token=generate_receipt_token(booking.id),
         ))
 
-    total_info = calculate_booking_total(booking)
-    remaining_amount = max((total_info['total'] or 0.0) - (booking.amount_paid or 0.0), 0.0)
+    from app.payments import booking_payoff_due
+    remaining_amount = booking_payoff_due(booking)
     if remaining_amount <= 0:
         return redirect(url_for(
             'main.booking_success',

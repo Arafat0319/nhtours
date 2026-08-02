@@ -265,9 +265,9 @@
         <!-- Footer notes (above brand footer, mirrors PDF) -->
         <div class="border-t border-gray-200 pt-4 mt-2 mb-4 space-y-2">
             {% if show_history_page %}
-            <p class="text-xs text-gray-500 leading-relaxed italic">Paid / Remaining are trip base amounts (package + add-ons − discount). Card processing fees are not included. Due this time is the amount required for the booking charge (after discount); a line below may list what that charge includes. Payment history is listed above when available.</p>
+            <p class="text-xs text-gray-500 leading-relaxed italic">Due this time and Amount Paid are this payment (trip base, no card fee). Amount Remaining is the trip balance after this payment (refunds are not treated as still owed). Payment history is listed above when available.</p>
             {% else %}
-            <p class="text-xs text-gray-500 leading-relaxed italic">Amount Paid is the trip base amount (package + add-ons − discount). Card processing fees are shown in the italic charge detail above when applicable.</p>
+            <p class="text-xs text-gray-500 leading-relaxed italic">Amount Paid is this payment (trip base, package + add-ons − discount). Card processing fees are shown in the italic charge detail above when applicable.</p>
             {% endif %}
             {% if due_at_booking_note %}
             <p class="text-xs text-gray-500 leading-relaxed italic">{{ due_at_booking_note }}</p>

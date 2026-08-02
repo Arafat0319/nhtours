@@ -310,7 +310,7 @@
                                 {% if booking.status == 'cancelled' %}
                                 <span class="text-gray-400">-</span>
                                 {% else %}
-                                <span class="text-gray-900">${{ (booking.amount_paid or 0)|format_price }}</span>
+                                <span class="text-gray-900">${{ (booking_paid_display.get(booking.id, booking.amount_paid) or 0)|format_price }}</span>
                                 {% endif %}
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm font-mono" id="balance-cell-{{ booking.id }}">
@@ -2488,7 +2488,7 @@
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">Pending Amount</label>
-                                <p id="bookingPendingAmount" class="text-sm font-medium ${pendingAmount > 0 ? 'text-red-600' : 'text-green-600'}" data-expected="${booking.expected_amount}">$${pendingAmount.toFixed(2)}</p>
+                                <p id="bookingPendingAmount" class="text-sm font-medium ${pendingAmount > 0 ? 'text-red-600' : 'text-green-600'}" data-expected="${booking.expected_amount}" data-refunded="${Number(booking.total_refunded) || 0}">$${pendingAmount.toFixed(2)}</p>
                             </div>
                         </div>
                         
@@ -2731,7 +2731,7 @@
                 }
             }, 10);
         }
-        // Real-time update of pending amount
+        // Real-time update of pending amount（与 balance_due 一致：减已退）
         function updatePendingAmount() {
             const amountPaidInput = document.getElementById('bookingAmountPaid');
             const pendingAmountEl = document.getElementById('bookingPendingAmount');
@@ -2740,7 +2740,8 @@
             
             const amountPaid = parseFloat(amountPaidInput.value) || 0;
             const expectedAmount = parseFloat(pendingAmountEl.getAttribute('data-expected')) || 0;
-            const pendingAmount = expectedAmount - amountPaid;
+            const refunded = parseFloat(pendingAmountEl.getAttribute('data-refunded')) || 0;
+            const pendingAmount = Math.max(0, expectedAmount - amountPaid - refunded);
             
             pendingAmountEl.textContent = '$' + pendingAmount.toFixed(2);
             pendingAmountEl.classList.remove('text-red-600', 'text-green-600');

@@ -364,13 +364,14 @@ def build_booking_receipt_pdf(ctx_or_booking=None, trip=None, expected_amount=No
 
     if show_history_page:
         footer_notes = [
-            "Paid / Remaining are trip base amounts (package + add-ons - discount). "
-            "Card processing fees are not included. Due this time is the amount required "
-            "for the booking charge (after discount). Payment history is on page 2.",
+            "Due this time and Amount Paid are this payment (trip base, no card fee). "
+            "Amount Remaining is the trip balance after this payment "
+            "(refunds are not treated as still owed). "
+            "Payment history is on page 2.",
         ]
     else:
         footer_notes = [
-            "Amount Paid is the trip base amount (package + add-ons - discount). "
+            "Amount Paid is this payment (trip base, package + add-ons - discount). "
             "Card processing fees are shown in the italic charge detail above when applicable.",
         ]
     if due_at_booking_note:
