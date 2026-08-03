@@ -49,7 +49,7 @@ def send_security_alert(subject, body, *, alert_key=None, html_body=None):
     sender = (
         current_app.config.get("SENDER_EMAIL")
         or current_app.config.get("RECIPIENT_EMAIL")
-        or "noreply@nhtours.com"
+        or "nhtours-noreply@nhtours.com"
     )
 
     region = current_app.config.get("AWS_REGION", "")

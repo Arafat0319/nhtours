@@ -46,7 +46,7 @@ def render_branded_customer_message(
     from markupsafe import Markup
 
     contact = (contact_email or current_app.config.get('REPLY_TO_EMAIL') or 'info@nhtours.com').strip()
-    if contact.lower().startswith('noreply@'):
+    if is_noreply_sender(contact):
         contact = 'info@nhtours.com'
 
     return render_template(
@@ -74,6 +74,23 @@ def _email_domain(addr):
     if not addr or '@' not in addr:
         return ''
     return addr.rsplit('@', 1)[-1].strip().lower()
+
+
+def _email_local_part(addr):
+    raw = (addr or '').strip()
+    if '<' in raw and '>' in raw:
+        raw = raw.split('<', 1)[1].split('>', 1)[0].strip()
+    if '@' not in raw:
+        return raw.lower()
+    return raw.rsplit('@', 1)[0].strip().lower()
+
+
+def is_noreply_sender(addr):
+    """
+    是否为不接收回复的发件地址（页脚引导写 info@）。
+    匹配 noreply@…、nhtours-noreply@… 等 local 含 noreply 的地址。
+    """
+    return 'noreply' in _email_local_part(addr)
 
 
 def _normalize_reply_to(from_email, reply_to):
@@ -105,9 +122,9 @@ def _email_brand_footer(from_email, reply_to):
     brand = current_app.config.get('SENDER_DISPLAY_NAME', 'Nexus Horizons Tours')
     site = (current_app.config.get('BASE_URL') or '').rstrip('/') or 'https://nhtours.com'
     contact = (reply_to or '').strip()
-    if not contact or contact.lower().startswith('noreply@'):
+    if not contact or is_noreply_sender(contact):
         contact = (current_app.config.get('REPLY_TO_EMAIL') or '').strip()
-    if contact.lower().startswith('noreply@'):
+    if is_noreply_sender(contact):
         contact = ''
     if not contact:
         contact = 'info@nhtours.com'
@@ -115,7 +132,7 @@ def _email_brand_footer(from_email, reply_to):
     from_addr = (from_email or '').strip()
     if '<' in from_addr and '>' in from_addr:
         from_addr = from_addr.split('<', 1)[1].split('>', 1)[0].strip()
-    from_is_noreply = from_addr.lower().startswith('noreply@')
+    from_is_noreply = is_noreply_sender(from_addr)
 
     lines = ['', '--']
     if from_is_noreply:
@@ -200,6 +217,9 @@ def send_email_via_ses(
         if not email_addr and sender:
             email_addr = sender.strip()
             display_name = ''
+        # 裸邮箱发信时补上品牌显示名（否则收件箱常只显示 noreply / nhtours-noreply）
+        if email_addr and not (display_name or '').strip():
+            display_name = (current_app.config.get('SENDER_DISPLAY_NAME') or '').strip()
         from_header = formataddr((display_name, email_addr)) if email_addr else sender
         domain = _email_domain(email_addr) or 'localhost'
 

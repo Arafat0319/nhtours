@@ -595,7 +595,7 @@ def manage_trip(id):
     draft_messages = Message.query.filter_by(trip_id=trip.id, status='draft').order_by(Message.created_at.desc()).all()
     
     # Get sender email from config (SES verified From address)
-    sender_email = current_app.config.get('SENDER_EMAIL', 'noreply@nhtours.com')
+    sender_email = current_app.config.get('SENDER_EMAIL', 'nhtours-noreply@nhtours.com')
     # Display name in customer inbox (not admin username)
     sender_name = current_app.config.get('SENDER_DISPLAY_NAME', 'Nexus Horizons Tours')
     # Messages Reply-To：工作邮箱（与 RECIPIENT_EMAIL 解耦）
@@ -4278,7 +4278,8 @@ def send_booking_email(trip_id, booking_id):
     order_label = booking.order_number or ('#' + str(booking.id))
     client_name = (booking.client.name if booking.client else '') or 'Customer'
     contact = (current_app.config.get('REPLY_TO_EMAIL') or 'info@nhtours.com').strip()
-    if contact.lower().startswith('noreply@'):
+    from app.utils import is_noreply_sender
+    if is_noreply_sender(contact):
         contact = 'info@nhtours.com'
     html_body = render_branded_customer_message(
         subject_line=subject,

@@ -8,7 +8,11 @@ from flask import current_app
 
 from app import db
 from app.models import InstallmentPayment, Message
-from app.utils import send_email_via_ses, render_branded_customer_message
+from app.utils import (
+    is_noreply_sender,
+    render_branded_customer_message,
+    send_email_via_ses,
+)
 
 
 ALLOWED_RECIPIENT_TYPES = frozenset({
@@ -351,7 +355,7 @@ def send_message_emails(message, recipients):
     text_body = message.body_text or ''
     trip_title = (message.trip.title if message.trip else '') or 'Nexus Horizons Tours'
     contact = (current_app.config.get('REPLY_TO_EMAIL') or 'info@nhtours.com').strip()
-    if contact.lower().startswith('noreply@'):
+    if is_noreply_sender(contact):
         contact = 'info@nhtours.com'
     html_body = render_branded_customer_message(
         subject_line=message.subject or trip_title,

@@ -54,7 +54,7 @@
 
    - `AWS_REGION`、`AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY`
 
-   - `SENDER_EMAIL=noreply@nhtours.com`（与 SES 已验证身份一致；**不要用个人 Gmail 当地址**，否则易进垃圾箱）
+   - `SENDER_EMAIL=nhtours-noreply@nhtours.com`（与 SES 已验证域名一致；**不要用个人 Gmail 当地址**，否则易进垃圾箱）
 
    - `REPLY_TO_EMAIL=info@nhtours.com`（客户点回复进工作邮箱）
 

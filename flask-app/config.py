@@ -42,7 +42,7 @@ class Config:
     # 邮件配置
     # RECIPIENT_EMAIL：站内通知/咨询落到何处（本地常设成个人邮箱方便测）
     RECIPIENT_EMAIL = os.environ.get('RECIPIENT_EMAIL', 'info@nhtours.com')
-    SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'noreply@nhtours.com')
+    SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'nhtours-noreply@nhtours.com')
     # Messages 群发 Reply-To：客户点「回复」进工作邮箱（与 RECIPIENT_EMAIL 解耦，避免本地测试邮箱污染 UI）
     REPLY_TO_EMAIL = os.environ.get('REPLY_TO_EMAIL', 'info@nhtours.com')
     # Messages / 群发：客户收件箱 From 显示名（可改）

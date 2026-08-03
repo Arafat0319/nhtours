@@ -123,7 +123,7 @@ def _send_installment_notice_email(installment, *, subject, urgency_text, footer
     sender = (
         current_app.config.get('SENDER_EMAIL')
         or current_app.config.get('RECIPIENT_EMAIL')
-        or 'noreply@nhtours.com'
+        or 'nhtours-noreply@nhtours.com'
     )
     success, detail = send_email_via_ses(
         sender,
