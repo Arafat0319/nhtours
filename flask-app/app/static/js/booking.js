@@ -1502,8 +1502,6 @@
                         <option value="" disabled selected hidden></option>
                         <option value="Male">Male</option>
                         <option value="Female">Female</option>
-                        <option value="Other">Other</option>
-                        <option value="Prefer not to say">Prefer not to say</option>
                     </select>
                 </div>
                 <div class="flex flex-col">
@@ -1630,7 +1628,7 @@
                                     </div>
                                     <p class="participant-file-idle-title">Upload a file</p>
                                     <p class="participant-file-idle-hint">JPG, PNG, WEBP or PDF · max 10MB</p>
-                                    <button type="button" class="participant-file-browse-btn">Choose file</button>
+                                    <label for="${fileInputId}" class="participant-file-browse-btn">Choose file</label>
                                 </div>
                                 <div class="participant-file-selected hidden">
                                     <div class="participant-file-selected-main">
@@ -1755,7 +1753,10 @@
             if (e) e.preventDefault();
             if (fileInput && !fileInput.disabled) fileInput.click();
         }
-        if (browseBtn) browseBtn.addEventListener('click', openPicker);
+        // Choose file 用 label[for]，浏览器原生就会打开选文件；勿再 click() 以免双弹窗
+        if (browseBtn && browseBtn.tagName !== 'LABEL') {
+            browseBtn.addEventListener('click', openPicker);
+        }
         if (changeBtn) changeBtn.addEventListener('click', openPicker);
         if (clearBtn) {
             clearBtn.addEventListener('click', function(e) {

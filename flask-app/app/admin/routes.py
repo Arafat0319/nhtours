@@ -31,15 +31,29 @@ from app.security_audit import (
 )
 
 
-def get_trip_counts():
-    """计算各类型行程的数量，用于侧边栏导航"""
-    today = date.today()
-    return {
-        'upcoming': Trip.query.filter(Trip.status == 'published', Trip.end_date >= today).count(),
-        'past': Trip.query.filter(Trip.status == 'published', Trip.end_date < today).count(),
-        'draft': Trip.query.filter(Trip.status == 'draft').count(),
-        'deactivated': Trip.query.filter(Trip.status == 'deactivated').count()
-    }
+from app.trip_status import (
+    active_booking_count,
+    check_trip_completion,
+    copy_trip_status,
+    get_trip_counts,
+    get_trip_publish_gaps,
+    gap_labels,
+    migrate_legacy_trip_statuses,
+    publish_trip,
+    resolve_trips_filter,
+    sync_trip_lifecycle,
+    trip_list_bucket,
+    unpublish_trip,
+)
+
+
+@bp.context_processor
+def inject_trip_counts_nav():
+    """侧栏五栏计数（My Trips 导航）。"""
+    try:
+        return {'trip_counts': get_trip_counts()}
+    except Exception:
+        return {}
 
 
 @bp.context_processor
@@ -53,7 +67,11 @@ def inject_trip_builder_publish_gaps():
     trip = Trip.query.get(trip_id)
     if not trip:
         return {}
-    return {'publish_gaps': get_trip_publish_gaps(trip)}
+    return {
+        'publish_gaps': get_trip_publish_gaps(trip),
+        'trip_bucket': trip_list_bucket(trip),
+        'active_booking_count': active_booking_count(trip) if trip else 0,
+    }
 
 def _prefetch_booking_finance_graph(trip_id):
     """一次拉齐行程订单套餐/附加，避免 trips 列表 stats 的 dynamic N+1。"""
@@ -195,50 +213,7 @@ def calculate_trip_stats(trip):
         'amount_available': amount_available
     }
 
-def _trip_description_text(description):
-    """Quill 空内容常为 <p><br></p>，需去掉 HTML 后才算有效描述。"""
-    if not description:
-        return ''
-    text = re.sub(r'<[^>]+>', ' ', description)
-    return ' '.join(unescape(text).split())
-
-
-def get_trip_publish_gaps(trip):
-    """返回尚未满足自动发布条件的字段名列表。"""
-    gaps = []
-    if not (trip.title or '').strip():
-        gaps.append('title')
-    if not trip.start_date:
-        gaps.append('start_date')
-    if not trip.end_date:
-        gaps.append('end_date')
-    if not (trip.destination_text or '').strip():
-        gaps.append('destination')
-    if not _trip_description_text(trip.description):
-        gaps.append('description')
-    if trip.packages.count() == 0:
-        gaps.append('packages')
-    return gaps
-
-
-def check_trip_completion(trip):
-    """
-    检查行程是否完成了所有必需步骤的设置
-    如果完成，自动将 status 更新为 published
-    """
-    gaps = get_trip_publish_gaps(trip)
-    if gaps:
-        return False
-
-    if trip.status == 'draft':
-        trip.status = 'published'
-        trip.is_published = True
-        db.session.commit()
-
-    return True
-
 # Force reload
-
 
 
 from wtforms import StringField, PasswordField, BooleanField, SubmitField, FloatField, DateField, TextAreaField, SelectMultipleField
@@ -298,46 +273,42 @@ def dashboard():
 @bp.route('/trips')
 @login_required
 def trips():
-    filter_type = request.args.get('filter', 'upcoming')
+    from app.utils import pacific_today
+
+    filter_type = resolve_trips_filter(request.args.get('filter', 'future'))
     query = Trip.query
-    today = date.today()
-    
-    # Check and update trip status for all draft trips (ensure data consistency)
-    draft_trips = Trip.query.filter(Trip.status == 'draft').all()
-    for trip in draft_trips:
-        check_trip_completion(trip)
-    
-    # Base Query
-    # status filtering
-    if filter_type == 'upcoming':
-        # Published AND (Future or Ongoing)
-        # Assuming end_date is always present. If not, fallback to start_date.
-        query = query.filter(Trip.status == 'published', Trip.end_date >= today)
+    today = pacific_today()
+
+    # Repair legacy deactivated → unpublished/draft (never auto-publish)
+    migrate_legacy_trip_statuses(commit=True)
+
+    if filter_type == 'future':
+        query = query.filter(Trip.status == 'published', Trip.start_date > today)
+        default_sort = Trip.start_date.asc()
+    elif filter_type == 'in_progress':
+        query = query.filter(
+            Trip.status == 'published',
+            Trip.start_date <= today,
+            Trip.end_date >= today,
+        )
         default_sort = Trip.start_date.asc()
     elif filter_type == 'past':
-        # Published AND Past
         query = query.filter(Trip.status == 'published', Trip.end_date < today)
         default_sort = Trip.start_date.desc()
     elif filter_type == 'draft':
-        # Draft (unpublished, incomplete)
         query = query.filter(Trip.status == 'draft')
         default_sort = Trip.updated_at.desc()
-    elif filter_type == 'deactivated':
-        # Deactivated (manually deactivated)
-        query = query.filter(Trip.status == 'deactivated')
+    elif filter_type == 'unpublished':
+        query = query.filter(Trip.status.in_(('unpublished', 'deactivated')))
         default_sort = Trip.updated_at.desc()
     else:
-        # Fallback
         default_sort = Trip.created_at.desc()
 
-    # Search Logic
     search_query = request.args.get('q')
     if search_query:
         query = query.filter(Trip.title.ilike(f'%{search_query}%'))
 
-    # Sort Logic
     sort_by = request.args.get('sort')
-    
     if sort_by == 'created_asc':
         query = query.order_by(Trip.created_at.asc())
     elif sort_by == 'created_desc':
@@ -349,24 +320,17 @@ def trips():
     elif sort_by == 'title_asc':
         query = query.order_by(Trip.title.asc())
     else:
-        # Apply default sort based on filter_type if no explicit sort
         query = query.order_by(default_sort)
 
     trips = query.all()
     count = len(trips)
-    
-    # Calculate counts for sidebar navigation
     trip_counts = get_trip_counts()
-    
-    # Calculate stats for each trip (participants count, amounts)
-    trip_stats = {}
-    for trip in trips:
-        trip_stats[trip.id] = calculate_trip_stats(trip)
-    
+    trip_stats = {trip.id: calculate_trip_stats(trip) for trip in trips}
+
     view_type = request.args.get('view', 'list')
     if view_type == 'calendar':
         return render_template('admin/trips/calendar.html', title='行程日历', filter_type=filter_type, count=count, trip_counts=trip_counts)
-    
+
     return render_template('admin/trips/list_card.html', title='行程管理', trips=trips, filter_type=filter_type, count=count, trip_counts=trip_counts, trip_stats=trip_stats)
 
 
@@ -668,14 +632,14 @@ def trip_builder(id, step):
             trip.title = request.form.get('title') or trip.title or ''
             trip.slug = request.form.get('slug') or trip.slug or ''
             trip.destination_text = request.form.get('destination_text') or trip.destination_text or ''
-            from app.order_numbers import ensure_unique_trip_abbr, parse_trip_abbr_input, suggest_trip_abbr
-            abbr_raw = request.form.get('trip_abbr')
-            if abbr_raw is not None and str(abbr_raw).strip():
-                cleaned = parse_trip_abbr_input(abbr_raw)
-                if 2 <= len(cleaned) <= 4:
-                    trip.trip_abbr = ensure_unique_trip_abbr(cleaned, exclude_trip_id=trip.id)
-            elif not trip.trip_abbr and trip.title:
-                trip.trip_abbr = suggest_trip_abbr(trip.title, exclude_trip_id=trip.id)
+            from app.order_numbers import apply_trip_abbr_from_input, reset_trip_abbr
+            # Title first so reset/suggest uses the latest title
+            if request.form.get('trip_abbr_reset') == '1':
+                reset_trip_abbr(trip)
+            else:
+                apply_trip_abbr_from_input(
+                    trip, request.form.get('trip_abbr'), suggest_if_missing=True
+                )
             for f in ('start_date', 'end_date', 'registration_date'):
                 v = request.form.get(f)
                 if v:
@@ -743,13 +707,15 @@ def trip_builder(id, step):
             trip.min_capacity = form.min_capacity.data
             trip.color = form.color.data
 
-            from app.order_numbers import ensure_unique_trip_abbr, parse_trip_abbr_input, suggest_trip_abbr
-            if form.trip_abbr.data:
-                trip.trip_abbr = ensure_unique_trip_abbr(
-                    parse_trip_abbr_input(form.trip_abbr.data), exclude_trip_id=trip.id
+            from app.order_numbers import apply_trip_abbr_from_input, reset_trip_abbr
+            if request.form.get('trip_abbr_reset') == '1':
+                reset_trip_abbr(trip)
+            else:
+                apply_trip_abbr_from_input(
+                    trip,
+                    form.trip_abbr.data,
+                    suggest_if_missing=True,
                 )
-            elif not trip.trip_abbr:
-                trip.trip_abbr = suggest_trip_abbr(trip.title or '', exclude_trip_id=trip.id)
             
             db.session.commit()
             # Check if trip is complete and update status
@@ -759,15 +725,26 @@ def trip_builder(id, step):
                 flash('Cover photo removed.', 'success')
                 return redirect(url_for('admin.trip_builder', id=trip.id, step='basics'))
             return redirect(url_for('admin.trip_builder', id=trip.id, step='description'))
-        # Prefill abbr: show YYMM+code in the input when start_date is set
+        # Prefill abbr: input holds letters only; YYMM shown as read-only prefix in UI
+        abbr_follows_title = True
         if request.method == 'GET':
-            from app.order_numbers import suggest_trip_abbr
-            letters = trip.trip_abbr or suggest_trip_abbr(trip.title or '', exclude_trip_id=trip.id)
-            if trip.start_date and letters:
-                form.trip_abbr.data = trip.start_date.strftime('%y%m') + letters
-            else:
-                form.trip_abbr.data = letters
-        return render_template('admin/trips/builder/step_basics.html', title='Trip Basics', trip=trip, form=form, current_step='basics', min_date=date.today().isoformat(), trip_counts=trip_counts)
+            from app.order_numbers import sanitize_stored_trip_abbr, trip_abbr_follows_title
+            letters = sanitize_stored_trip_abbr(trip)
+            if letters != (trip.trip_abbr or ''):
+                trip.trip_abbr = letters
+                db.session.commit()
+            form.trip_abbr.data = letters
+            abbr_follows_title = trip_abbr_follows_title(trip)
+        return render_template(
+            'admin/trips/builder/step_basics.html',
+            title='Trip Basics',
+            trip=trip,
+            form=form,
+            current_step='basics',
+            min_date=date.today().isoformat(),
+            trip_counts=trip_counts,
+            abbr_follows_title=abbr_follows_title,
+        )
     
     elif step == 'description':
         form = TripDescriptionForm(obj=trip)
@@ -917,19 +894,18 @@ def trip_builder(id, step):
                 # Check if trip is complete and update status
                 if not check_trip_completion(trip):
                     gaps = get_trip_publish_gaps(trip)
-                    labels = {
-                        'title': 'title',
-                        'start_date': 'start date',
-                        'end_date': 'end date',
-                        'destination': 'destination',
-                        'description': 'About this Trip (Description)',
-                        'packages': 'at least one package',
-                    }
-                    missing = ', '.join(labels.get(g, g) for g in gaps)
+                    missing = ', '.join(gap_labels(gaps))
                     flash(
-                        f'Trip saved as draft. Still needed to publish: {missing}.',
+                        f'Trip saved as Draft. Still needed before it is ready to publish: {missing}.',
                         'warning'
                     )
+                else:
+                    db.session.refresh(trip)
+                    if trip.status == 'unpublished':
+                        flash(
+                            'Trip is ready. Find it under Unpublished Trips and click Publish when you want it live.',
+                            'success',
+                        )
                 return redirect(url_for('admin.trip_builder', id=trip.id, step='addons'))
 
             except ValueError as e:
@@ -1217,23 +1193,7 @@ def trip_builder(id, step):
                 
                 flash('Trip configuration saved successfully!', 'success')
                 
-                # Determine redirect based on trip status and date
-                today = date.today()
-                if trip.status == 'draft':
-                    return redirect(url_for('admin.trips', filter='draft'))
-                elif trip.status == 'published':
-                    if trip.end_date and trip.end_date >= today:
-                        return redirect(url_for('admin.trips', filter='upcoming'))
-                    elif trip.end_date and trip.end_date < today:
-                        return redirect(url_for('admin.trips', filter='past'))
-                    else:
-                        # If no end_date, default to upcoming
-                        return redirect(url_for('admin.trips', filter='upcoming'))
-                elif trip.status == 'deactivated':
-                    return redirect(url_for('admin.trips', filter='deactivated'))
-                else:
-                    # Fallback to draft
-                    return redirect(url_for('admin.trips', filter='draft'))
+                return redirect(url_for('admin.trips', filter=trip_list_bucket(trip)))
             
             except ValueError as e:
                 flash(f"Invalid JSON data for coupons: {str(e)}", "error")
@@ -1262,22 +1222,21 @@ def delete_trip(id):
     Message.query.filter_by(trip_id=trip.id).delete(synchronize_session=False)
     db.session.delete(trip)
     db.session.commit()
-    flash('行程已删除')
+    flash('Trip deleted.')
     return redirect(url_for('admin.trips'))
 
 
 @bp.route('/trips/<int:id>/copy', methods=['POST'])
 @login_required
 def copy_trip(id):
-    from datetime import datetime
     import time
-    
+
     trip = Trip.query.get_or_404(id)
-    # Generate unique slug using timestamp
     timestamp = int(time.time())
+    new_status = copy_trip_status(trip)
     new_trip = Trip(
         title=f"Copy of {trip.title}",
-        slug=f"{trip.slug}-copy-{timestamp}", # Simple unique slug
+        slug=f"{trip.slug}-copy-{timestamp}",
         price=trip.price,
         start_date=trip.start_date,
         end_date=trip.end_date,
@@ -1285,69 +1244,76 @@ def copy_trip(id):
         hero_image=trip.hero_image,
         highlight_image=trip.highlight_image,
         capacity=trip.capacity,
-        status='draft', # New copies should be draft
-        color=trip.color
+        destination_text=trip.destination_text,
+        trip_includes=trip.trip_includes,
+        trip_excludes=trip.trip_excludes,
+        status=new_status,
+        is_published=False,
+        color=trip.color,
     )
     db.session.add(new_trip)
     db.session.commit()
-    flash('Travel copied successfully')
-    return redirect(url_for('admin.trips'))
+    # Draft copies stay Draft even if fields are complete (until next save/sync).
+    target = 'draft' if new_status == 'draft' else 'unpublished'
+    flash(
+        'Trip copied as Draft.'
+        if target == 'draft'
+        else 'Trip copied as Unpublished (not live). Publish when ready.'
+    )
+    return redirect(url_for('admin.trips', filter=target))
 
 
+@bp.route('/trips/<int:id>/publish', methods=['POST'])
+@login_required
+def publish_trip_route(id):
+    trip = Trip.query.get_or_404(id)
+    ok, msg = publish_trip(trip)
+    db.session.commit()
+    flash(msg, 'success' if ok else 'warning')
+    return redirect(url_for('admin.trips', filter=trip_list_bucket(trip)))
+
+
+@bp.route('/trips/<int:id>/unpublish', methods=['POST'])
+@login_required
+def unpublish_trip_route(id):
+    trip = Trip.query.get_or_404(id)
+    ok, msg = unpublish_trip(trip)
+    db.session.commit()
+    flash(msg, 'success' if ok else 'warning')
+    return redirect(url_for('admin.trips', filter=trip_list_bucket(trip)))
+
+
+# Back-compat aliases (old menus / bookmarks)
 @bp.route('/trips/<int:id>/deactivate', methods=['POST'])
 @login_required
 def deactivate_trip(id):
-    trip = Trip.query.get_or_404(id)
-    trip.status = 'deactivated'
-    db.session.commit()
-    flash('Trip deactivated')
-    return redirect(url_for('admin.trips', filter='deactivated'))
+    return unpublish_trip_route(id)
 
 
 @bp.route('/trips/<int:id>/reactivate', methods=['POST'])
 @login_required
 def reactivate_trip(id):
+    # Old "reactivate" meant go live — now only Publish from Unpublished
     trip = Trip.query.get_or_404(id)
-    gaps = get_trip_publish_gaps(trip)
-    if gaps:
-        # 不完整行程不能靠 deactivate/reactivate「绕过」发布条件
-        trip.status = 'draft'
-        trip.is_published = False
-        db.session.commit()
-        labels = {
-            'title': 'title',
-            'start_date': 'start date',
-            'end_date': 'end date',
-            'destination': 'destination',
-            'description': 'About this Trip (Description)',
-            'packages': 'at least one package',
-        }
-        missing = ', '.join(labels.get(g, g) for g in gaps)
-        flash(
-            f'Trip restored as draft (not published). Still needed: {missing}.',
-            'warning'
-        )
-        return redirect(url_for('admin.trips', filter='draft'))
-
-    trip.status = 'published'
-    trip.is_published = True
-    db.session.commit()
-
-    today = date.today()
-    target_filter = 'past' if trip.end_date and trip.end_date < today else 'upcoming'
-
-    flash(f'Trip reactivated and moved to {target_filter.title()} Trips')
-    return redirect(url_for('admin.trips', filter=target_filter))
+    sync_trip_lifecycle(trip, commit=True)
+    if trip.status == 'unpublished':
+        return publish_trip_route(id)
+    flash('Open the trip and use Publish when it is ready (Unpublished).', 'warning')
+    return redirect(url_for('admin.trips', filter=trip_list_bucket(trip)))
 
 
 @bp.route('/trips/<int:id>/archive', methods=['POST'])
 @login_required
 def archive_trip(id):
+    # Legacy: treat archive as unpublish into unpublished/draft via lifecycle
     trip = Trip.query.get_or_404(id)
-    trip.status = 'archived'
-    db.session.commit()
-    flash('Trip archived')
-    return redirect(url_for('admin.trips', filter='archived'))
+    if trip.status == 'published':
+        ok, msg = unpublish_trip(trip)
+        db.session.commit()
+        flash(msg, 'success' if ok else 'warning')
+    else:
+        flash('Trip is not live.', 'warning')
+    return redirect(url_for('admin.trips', filter=trip_list_bucket(trip)))
 
 
 @bp.route('/cities')
@@ -2110,7 +2076,7 @@ def reports():
 
     upcoming_trips = [t for t in all_trips if t.status == 'published' and t.end_date and t.end_date >= today]
     past_trips = [t for t in all_trips if t.status == 'published' and t.end_date and t.end_date < today]
-    deactivated_trips = [t for t in all_trips if t.status == 'deactivated']
+    deactivated_trips = [t for t in all_trips if t.status in ('unpublished', 'deactivated')]
 
     def get_trip_summary(trip):
         stats = calculate_trip_stats(trip)

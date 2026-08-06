@@ -26,16 +26,33 @@
             </div>
         </div>
 
-        <!-- Trip ID (order number prefix; field trip_abbr) -->
+        <!-- Trip ID (order number prefix; field trip_abbr = letters only) -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6 items-center">
             <label for="trip_abbr" class="block text-sm font-semibold text-gray-700 md:col-span-1">Trip ID</label>
             <div class="md:col-span-3">
-                <div
-                    class="border border-gray-200 rounded-md px-3 bg-white shadow-sm focus-within:ring-1 focus-within:ring-wetravel-cyan focus-within:border-wetravel-cyan max-w-[11rem]">
-                    {{ form.trip_abbr(class="block w-full border-0 focus:ring-0 focus:outline-none sm:text-sm py-2
-                    bg-transparent placeholder-gray-400 uppercase tracking-wider", maxlength="8", autocomplete="off") }}
+                <div class="flex flex-wrap items-center gap-2">
+                    <div
+                        class="inline-flex items-center border border-gray-200 rounded-md px-3 bg-white shadow-sm focus-within:ring-1 focus-within:ring-wetravel-cyan focus-within:border-wetravel-cyan max-w-[14rem]">
+                        <span id="trip_abbr_yymm"
+                            class="text-sm font-mono text-gray-500 select-none pr-0.5 tabular-nums"
+                            title="From start month (read-only)"></span>
+                        {{ form.trip_abbr(class="block w-full min-w-0 border-0 focus:ring-0 focus:outline-none sm:text-sm py-2
+                        bg-transparent placeholder-gray-400 uppercase tracking-wider font-mono", maxlength="4",
+                        autocomplete="off", placeholder="MT", spellcheck="false") }}
+                    </div>
+                    <button type="button" id="trip_abbr_reset"
+                        class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-md shadow-sm hover:bg-gray-50 hover:text-wetravel-cyan focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-wetravel-cyan"
+                        title="Restore default from trip title (e.g. Mark Twain → MT)">
+                        Reset
+                    </button>
+                    <input type="hidden" name="trip_abbr_reset" id="trip_abbr_reset_flag" value="0">
                 </div>
-                <p class="mt-2 text-xs text-gray-500">Used in order numbers (e.g. <span class="font-mono">2609SS-001</span>). Auto from title + start month; edit affects new bookings only.</p>
+                <p class="mt-2 text-xs text-gray-500">
+                    Default is start month + letters from the title
+                    (e.g. <span class="font-mono" id="trip_abbr_example">2612MT-001</span>).
+                    Edit to customize; <strong>Reset</strong> restores the default.
+                    Changes affect <strong>new</strong> bookings only.
+                </p>
                 {% for error in form.trip_abbr.errors %}
                 <p class="mt-1 text-sm text-red-600">{{ error }}</p>
                 {% endfor %}
@@ -521,7 +538,8 @@
                     if (endInput.value && dateStr && endInput.value < dateStr) {
                         fpEnd.setDate(dateStr);
                     }
-                    if (typeof syncAbbrField === 'function') syncAbbrField();
+                    if (typeof updateAbbrChrome === 'function') updateAbbrChrome();
+                    if (typeof scheduleBasicsAutosave === 'function') scheduleBasicsAutosave();
                 }
             });
             const fpEnd = flatpickr(endInput, {
@@ -565,6 +583,7 @@
             fd.append('title', document.getElementById('title')?.value || '');
             fd.append('slug', document.getElementById('slug')?.value || '');
             fd.append('trip_abbr', document.getElementById('trip_abbr')?.value || '');
+            fd.append('trip_abbr_reset', document.getElementById('trip_abbr_reset_flag')?.value || '0');
             fd.append('destination_text', document.getElementById('destination_text')?.value || '');
             fd.append('start_date', document.getElementById('start_date')?.value || '');
             fd.append('end_date', document.getElementById('end_date')?.value || '');
@@ -579,10 +598,20 @@
                     basicsAutosavePending = false;
                     const el = document.getElementById('basics-autosave-indicator');
                     if (el && d.success) { el.textContent = 'Saved'; el.className = 'text-xs text-green-600 mr-auto'; }
-                    if (d.success && d.trip_abbr) {
-                        letterAbbr = d.trip_abbr;
-                        if (!abbrManuallyEdited) syncAbbrField();
-                        else syncAbbrField({ keepLetters: true });
+                    if (d.success && d.trip_abbr && abbrInput && typeof isValidLetterAbbr === 'function') {
+                        const server = String(d.trip_abbr).replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 4);
+                        const local = (abbrInput.value || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+                        const resetFlag = document.getElementById('trip_abbr_reset_flag');
+                        if (resetFlag && resetFlag.value === '1') {
+                            abbrInput.value = server;
+                            abbrManuallyEdited = false;
+                            resetFlag.value = '0';
+                        } else if (!local || isValidLetterAbbr(local)) {
+                            // Don't clobber mid-typing (e.g. "M"); sync when empty/complete,
+                            // including uniquify MT → MT2 so the field matches what was saved.
+                            if (server && server !== local) abbrInput.value = server;
+                        }
+                        if (typeof updateAbbrChrome === 'function') updateAbbrChrome();
                     }
                 })
                 .catch(() => { basicsAutosavePending = false; });
@@ -602,7 +631,7 @@
             if (el) el.addEventListener('change', scheduleBasicsAutosave);
         });
 
-        // Trip abbreviation field shows YYMM+letters (e.g. 2609SS); DB stores letters only
+        // Trip ID: YYMM is read-only prefix; input stores letters only (2–4, ≥1 letter)
         const STOP_WORDS = new Set(['a','an','the','of','for','to','in','on','at','by','and','or','with','from','into','onto','over','under','vs','via','our','your','its','this','that','these','those']);
         function suggestAbbrFromTitle(title) {
             const words = (title || '').match(/[A-Za-z0-9\u4e00-\u9fff]+/g) || [];
@@ -624,59 +653,119 @@
             if (!m) return '';
             return m[1].slice(2) + m[2];
         }
-        function lettersFromAbbrInput(val) {
-            const cleaned = (val || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-            const withYymm = cleaned.match(/^\d{4}([A-Z0-9]*)$/);
-            if (withYymm) return (withYymm[1] || '').slice(0, 4);
-            return cleaned.slice(0, 4);
-        }
-        let abbrManuallyEdited = {{ 'true' if trip.trip_abbr else 'false' }};
-        const abbrInput = document.getElementById('trip_abbr');
-        const titleInput = document.getElementById('title');
-        let letterAbbr = lettersFromAbbrInput(abbrInput && abbrInput.value) || '{{ trip.trip_abbr or "" }}';
-        function syncAbbrField(opts) {
-            if (!abbrInput) return;
-            const keepLetters = opts && opts.keepLetters;
-            if (!keepLetters && !abbrManuallyEdited && titleInput) {
-                letterAbbr = suggestAbbrFromTitle(titleInput.value) || letterAbbr;
-            } else {
-                letterAbbr = lettersFromAbbrInput(abbrInput.value) || letterAbbr;
-            }
-            letterAbbr = (letterAbbr || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 4);
+        /** Parse paste/type into storage letters (strip accidental YYMM; reject bare/dupe YYMM). */
+        function parseLetterAbbr(val) {
+            let cleaned = (val || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
             const yymm = yymmFromStartDate(startInput && startInput.value);
-            abbrInput.value = (yymm && letterAbbr) ? (yymm + letterAbbr) : letterAbbr;
+            if (!cleaned) return '';
+            if (yymm && cleaned.startsWith(yymm)) {
+                cleaned = cleaned.slice(4);
+            }
+            cleaned = cleaned.slice(0, 4);
+            if (!cleaned || /^\d{4}$/.test(cleaned)) return '';
+            return cleaned;
+        }
+        function isValidLetterAbbr(val) {
+            const a = parseLetterAbbr(val);
+            return a.length >= 2 && a.length <= 4 && /[A-Z]/.test(a);
+        }
+        let abbrManuallyEdited = {{ 'false' if abbr_follows_title|default(true) else 'true' }};
+        const abbrInput = document.getElementById('trip_abbr');
+        const abbrYymmEl = document.getElementById('trip_abbr_yymm');
+        const abbrExampleEl = document.getElementById('trip_abbr_example');
+        const abbrResetBtn = document.getElementById('trip_abbr_reset');
+        const abbrResetFlag = document.getElementById('trip_abbr_reset_flag');
+        const titleInput = document.getElementById('title');
+
+        function updateAbbrChrome() {
+            const yymm = yymmFromStartDate(startInput && startInput.value);
+            if (abbrYymmEl) {
+                abbrYymmEl.textContent = yymm || '';
+                abbrYymmEl.classList.toggle('hidden', !yymm);
+            }
+            if (abbrExampleEl && abbrInput) {
+                const letters = parseLetterAbbr(abbrInput.value) || suggestAbbrFromTitle(titleInput && titleInput.value) || 'MT';
+                const prefix = yymm || '2612';
+                abbrExampleEl.textContent = prefix + letters + '-001';
+            }
+        }
+        function syncAbbrFromTitle() {
+            if (!abbrInput || abbrManuallyEdited || !titleInput) return;
+            abbrInput.value = suggestAbbrFromTitle(titleInput.value);
+            updateAbbrChrome();
+        }
+        function resetAbbrToDefault() {
+            if (!abbrInput) return;
+            abbrManuallyEdited = false;
+            if (abbrResetFlag) abbrResetFlag.value = '1';
+            abbrInput.value = suggestAbbrFromTitle(titleInput && titleInput.value);
+            updateAbbrChrome();
+            scheduleBasicsAutosave();
+        }
+        if (abbrResetBtn) {
+            abbrResetBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                resetAbbrToDefault();
+            });
         }
         if (abbrInput) {
+            // Normalize any legacy combined value left in the field
+            abbrInput.value = parseLetterAbbr(abbrInput.value) || abbrInput.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 4);
+            if (/^\d{4}$/.test(abbrInput.value)) abbrInput.value = '';
+            if (!abbrInput.value && titleInput) {
+                abbrInput.value = suggestAbbrFromTitle(titleInput.value);
+                abbrManuallyEdited = false;
+            }
             abbrInput.addEventListener('input', function () {
                 abbrManuallyEdited = true;
+                if (abbrResetFlag) abbrResetFlag.value = '0';
+                const start = this.selectionStart;
+                const before = this.value;
+                // Allow 0–1 chars while typing; only strip illegal chars / YYMM paste
+                let next = (this.value || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
                 const yymm = yymmFromStartDate(startInput && startInput.value);
-                let cleaned = this.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 8);
-                if (yymm) {
-                    if (cleaned.startsWith(yymm)) {
-                        letterAbbr = cleaned.slice(4).slice(0, 4);
-                    } else if (/^[A-Z]/.test(cleaned)) {
-                        letterAbbr = cleaned.slice(0, 4);
-                    } else {
-                        letterAbbr = lettersFromAbbrInput(cleaned);
+                if (yymm && next.startsWith(yymm)) next = next.slice(4);
+                next = next.slice(0, 4);
+                if (/^\d{4}$/.test(next)) next = '';
+                this.value = next;
+                try {
+                    const delta = before.length - next.length;
+                    const pos = Math.max(0, (start || 0) - (delta > 0 ? delta : 0));
+                    this.setSelectionRange(pos, pos);
+                } catch (e) { /* ignore */ }
+                updateAbbrChrome();
+            });
+            abbrInput.addEventListener('blur', function () {
+                // On blur, if incomplete and still following title default, restore suggestion
+                if (!isValidLetterAbbr(this.value) && titleInput) {
+                    if (!abbrManuallyEdited || !this.value) {
+                        this.value = suggestAbbrFromTitle(titleInput.value);
+                        abbrManuallyEdited = false;
                     }
-                    this.value = yymm + letterAbbr;
-                } else {
-                    letterAbbr = cleaned.slice(0, 4);
-                    this.value = letterAbbr;
                 }
+                updateAbbrChrome();
+            });
+            abbrInput.addEventListener('paste', function (e) {
+                e.preventDefault();
+                const paste = (e.clipboardData || window.clipboardData).getData('text') || '';
+                const parsed = parseLetterAbbr(paste);
+                this.value = parsed || parseLetterAbbr(paste.replace(/[^A-Za-z0-9]/g, ''));
+                abbrManuallyEdited = true;
+                if (abbrResetFlag) abbrResetFlag.value = '0';
+                updateAbbrChrome();
+                scheduleBasicsAutosave();
             });
         }
         if (titleInput && abbrInput) {
             titleInput.addEventListener('input', function () {
-                if (!abbrManuallyEdited) syncAbbrField();
+                if (!abbrManuallyEdited) syncAbbrFromTitle();
             });
         }
         if (startInput) {
-            startInput.addEventListener('change', function () { syncAbbrField({ keepLetters: true }); });
-            startInput.addEventListener('input', function () { syncAbbrField({ keepLetters: true }); });
+            startInput.addEventListener('change', updateAbbrChrome);
+            startInput.addEventListener('input', updateAbbrChrome);
         }
-        syncAbbrField({ keepLetters: true });
-
+        updateAbbrChrome();
         // Disable mouse wheel and middle button for capacity input
         const capacityInput = document.getElementById('capacity');
         if (capacityInput) {

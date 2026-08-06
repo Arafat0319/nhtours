@@ -14,7 +14,7 @@ class LoginForm(FlaskForm):
 class TripBasicsForm(FlaskForm):
     title = StringField('Trip Title', validators=[DataRequired(), Length(max=128)])
     slug = StringField('URL Slug', validators=[DataRequired(), Length(max=128)])
-    trip_abbr = StringField('Trip ID', validators=[Optional(), Length(min=2, max=8)])
+    trip_abbr = StringField('Trip ID', validators=[Optional(), Length(max=8)])
     destination_text = StringField('Destination', validators=[DataRequired(), Length(max=128)])
     start_date = DateField('Start Date', validators=[DataRequired()])
     end_date = DateField('End Date', validators=[DataRequired()])
@@ -26,12 +26,16 @@ class TripBasicsForm(FlaskForm):
     submit = SubmitField('Next')
 
     def validate_trip_abbr(self, field):
-        from app.order_numbers import parse_trip_abbr_input
-        if field.data:
-            cleaned = parse_trip_abbr_input(field.data)
-            if len(cleaned) < 2 or len(cleaned) > 4:
-                raise ValidationError('Trip ID must be 2–4 letters or digits (optional YYMM prefix).')
-            field.data = cleaned
+        from app.order_numbers import is_valid_trip_abbr, parse_trip_abbr_input
+        if not field.data:
+            return
+        cleaned = parse_trip_abbr_input(field.data)
+        if not is_valid_trip_abbr(cleaned):
+            raise ValidationError(
+                'Trip ID must be 2–4 characters with at least one letter '
+                '(you can paste a full id like 2609SS).'
+            )
+        field.data = cleaned
 
 
 from wtforms import HiddenField
@@ -84,7 +88,11 @@ class TripForm(FlaskForm):
     
     # WeTravel 风格字段
     capacity = IntegerField('最大名额', validators=[DataRequired()])
-    status = SelectField('状态', choices=[('draft', 'Draft (草稿)'), ('published', 'Published (已发布)'), ('archived', 'Archived (已归档)')], default='draft')
+    status = SelectField('状态', choices=[
+        ('draft', 'Draft (草稿)'),
+        ('unpublished', 'Unpublished (未发布)'),
+        ('published', 'Published (已上线)'),
+    ], default='draft')
     color = StringField('日历颜色', default='#00D1C1')
     
     submit = SubmitField('保存行程')

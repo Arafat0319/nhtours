@@ -6,10 +6,11 @@
     <div class="flex justify-between items-center">
         <div>
             <h2 class="text-2xl font-normal text-gray-500">
-                {% if filter_type == 'upcoming' %}Upcoming Trips
+                {% if filter_type == 'future' %}Future Trips
+                {% elif filter_type == 'in_progress' %}In Progress Trips
                 {% elif filter_type == 'past' %}Past Trips
                 {% elif filter_type == 'draft' %}Draft Trips
-                {% elif filter_type == 'archived' %}Archived Trips
+                {% elif filter_type == 'unpublished' %}Unpublished Trips
                 {% else %}Trips{% endif %}
                 <span class="text-gray-400">({{ count }})</span>
             </h2>
@@ -113,9 +114,9 @@
                 <!-- Status Badge if needed -->
                 {% if trip.status == 'draft' %}
                 <span class="absolute top-2 left-2 bg-gray-600 text-white text-xs px-2 py-0.5 rounded">DRAFT</span>
-                {% elif trip.status == 'deactivated' %}
+                {% elif trip.status in ['unpublished', 'deactivated'] %}
                 <span
-                    class="absolute top-2 left-2 bg-yellow-500 text-white text-xs px-2 py-0.5 rounded font-bold">DEACTIVATED</span>
+                    class="absolute top-2 left-2 bg-amber-500 text-white text-xs px-2 py-0.5 rounded font-bold">UNPUBLISHED</span>
                 {% endif %}
             </div>
 
@@ -172,7 +173,7 @@
                     </a>
                     {% if trip.slug %}
                     <a href="{{ url_for('main.trip_detail', slug=trip.slug) }}" target="_blank"
-                        class="hover:text-wetravel-cyan" title="View Public Page">
+                        class="hover:text-wetravel-cyan" title="Preview page">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
@@ -207,15 +208,15 @@
                             <button onclick="submitPost('{{ url_for('admin.copy_trip', id=trip.id) }}')"
                                 class="w-full text-left block px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:border-wetravel-cyan">Copy</button>
 
-                            {% if trip.status == 'deactivated' %}
-                            <button onclick="submitPost('{{ url_for('admin.reactivate_trip', id=trip.id) }}')"
-                                class="w-full text-left block px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:border-wetravel-green">Reactivate</button>
-                            {% else %}
-                            <button onclick="submitPost('{{ url_for('admin.deactivate_trip', id=trip.id) }}')"
-                                class="w-full text-left block px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:border-wetravel-green">Deactivate</button>
+                            {% if trip.status == 'unpublished' or trip.status == 'deactivated' %}
+                            <button onclick="submitPost('{{ url_for('admin.publish_trip_route', id=trip.id) }}')"
+                                class="w-full text-left block px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:border-wetravel-green">Publish</button>
+                            {% elif trip.status == 'published' %}
+                            <button onclick="confirmUnpublish('{{ url_for('admin.unpublish_trip_route', id=trip.id) }}', {{ trip_stats.get(trip.id, {}).get('participants_count', 0) if trip_stats else 0 }})"
+                                class="w-full text-left block px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:border-amber-500">Unpublish</button>
                             {% endif %}
 
-                            <button onclick="openDeleteModal('{{ url_for('admin.delete_trip', id=trip.id) }}')"
+                            <button onclick="openDeleteModal('{{ url_for('admin.delete_trip', id=trip.id) }}', {{ trip_stats.get(trip.id, {}).get('participants_count', 0) if trip_stats else 0 }})"
                                 class="w-full text-left block px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-red-600 border-l-4 border-transparent hover:border-red-500">Delete</button>
 
                             <!-- Archive action removed -->
@@ -235,14 +236,14 @@
         <div class="text-center py-10">
             <h3 class="mt-2 text-sm font-medium text-gray-900">No trips found</h3>
             <p class="mt-1 text-sm text-gray-500">
-                {% if filter_type == 'upcoming' %}You don't have any upcoming trips.
+                {% if filter_type == 'future' %}You don't have any future trips.
+                {% elif filter_type == 'in_progress' %}You don't have any in-progress trips.
                 {% elif filter_type == 'past' %}You don't have any past trips.
                 {% elif filter_type == 'draft' %}You don't have any draft trips.
-                {% elif filter_type == 'deactivated' %}You don't have any deactivated trips.
-                {% elif filter_type == 'archived' %}You don't have any archived trips.
+                {% elif filter_type == 'unpublished' %}You don't have any unpublished trips.
                 {% else %}Get started by creating a new trip.{% endif %}
             </p>
-            {% if filter_type not in ['past', 'deactivated', 'archived'] %}
+            {% if filter_type not in ['past'] %}
             <div class="mt-6">
                 <a href="{{ url_for('admin.new_trip') }}"
                     class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-wetravel-cyan hover:bg-cyan-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500">
@@ -269,15 +270,8 @@
     <div
         class="relative top-1/4 mx-auto p-0 border w-96 shadow-lg rounded-lg bg-white overflow-hidden animate-fade-in-down">
 
-        <!-- Header -->
-        <div class="flex justify-between items-center px-6 py-4 border-b border-gray-100 hidden">
-            <!-- Header Hidden as per WeTravel style sometimes, but screenshot shows "Delete Trip"? -->
-            <!-- Screenshot shows Title "Delete Trip" inside body area top left, inside the modal -->
-        </div>
-
         <div class="px-8 py-6">
-            <!-- Close X -->
-            <button onclick="closeDeleteModal()"
+            <button type="button" onclick="closeDeleteModal()"
                 class="absolute top-4 right-4 text-gray-400 hover:text-gray-500 focus:outline-none">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
@@ -285,31 +279,72 @@
                 </svg>
             </button>
 
-            <!-- Title -->
             <h3 class="text-xl leading-6 font-medium text-gray-500 mb-6" id="modal-headline">
                 Delete Trip
             </h3>
 
-            <!-- Content -->
             <div class="mt-2 space-y-4">
                 <p class="text-sm text-gray-400 font-light">
-                    You are about to delete the trip.
+                    You are about to permanently delete this trip.
                 </p>
+                <p class="text-sm text-gray-400 font-light hidden" id="deleteModalBookings"></p>
                 <p class="text-sm text-gray-400 font-light">
-                    This will fully remove the trip. Neither you nor your participants will have access to the trip
-                    dashboard.
+                    This cannot be undone. Neither you nor your participants will have access to the trip dashboard.
                 </p>
             </div>
 
-            <!-- Buttons -->
             <div class="mt-8 flex justify-end space-x-3">
-                <button onclick="closeDeleteModal()"
+                <button type="button" onclick="closeDeleteModal()"
                     class="px-4 py-2 bg-white text-gray-500 text-base font-medium rounded-md border border-wetravel-cyan hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 sm:text-sm shadow-sm">
                     Cancel
                 </button>
-                <button onclick="confirmDelete()"
-                    class="px-4 py-2 bg-red-400 text-white text-base font-medium rounded-md shadow-sm hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:text-sm">
+                <button type="button" onclick="confirmDelete()"
+                    class="px-4 py-2 bg-red-500 text-white text-base font-medium rounded-md shadow-sm hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:text-sm">
                     Delete
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Unpublish Confirmation Modal (same WeTravel card pattern as Delete) -->
+<div id="unpublishModal"
+    class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 transform transition-all duration-300"
+    role="dialog" aria-modal="true" aria-labelledby="unpublish-modal-headline">
+    <div
+        class="relative top-1/4 mx-auto p-0 border w-96 shadow-lg rounded-lg bg-white overflow-hidden animate-fade-in-down">
+        <div class="px-8 py-6">
+            <button type="button" onclick="closeUnpublishModal()"
+                class="absolute top-4 right-4 text-gray-400 hover:text-gray-500 focus:outline-none">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                    </path>
+                </svg>
+            </button>
+
+            <h3 class="text-xl leading-6 font-medium text-gray-500 mb-6" id="unpublish-modal-headline">
+                Unpublish Trip
+            </h3>
+
+            <div class="mt-2 space-y-4">
+                <p class="text-sm text-gray-400 font-light" id="unpublishModalBody">
+                    This trip will move to Unpublished. New customers will not be able to book.
+                </p>
+                <p class="text-sm text-gray-400 font-light hidden" id="unpublishModalBookings">
+                </p>
+                <p class="text-sm text-gray-400 font-light">
+                    Existing bookings are kept. You can Publish again later when ready.
+                </p>
+            </div>
+
+            <div class="mt-8 flex justify-end space-x-3">
+                <button type="button" onclick="closeUnpublishModal()"
+                    class="px-4 py-2 bg-white text-gray-500 text-base font-medium rounded-md border border-wetravel-cyan hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 sm:text-sm shadow-sm">
+                    Cancel
+                </button>
+                <button type="button" onclick="confirmUnpublishSubmit()"
+                    class="px-4 py-2 bg-amber-500 text-white text-base font-medium rounded-md shadow-sm hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 sm:text-sm">
+                    Unpublish
                 </button>
             </div>
         </div>
@@ -321,12 +356,30 @@
 
 <script>
     let currentDeleteUrl = '';
+    let currentUnpublishUrl = '';
 
-    function openDeleteModal(url) {
+    function _setBookingHint(elId, n, withBookingsText, emptyHide) {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        const count = Number(n) || 0;
+        if (count > 0) {
+            el.textContent = withBookingsText.replace('%n%', String(count));
+            el.classList.remove('hidden');
+        } else {
+            el.textContent = '';
+            if (emptyHide !== false) el.classList.add('hidden');
+        }
+    }
+
+    function openDeleteModal(url, bookingHint) {
         currentDeleteUrl = url;
+        _setBookingHint(
+            'deleteModalBookings',
+            bookingHint,
+            'About %n% participant slot(s) are linked. Deleting removes this trip and related access; treat existing bookings with care.'
+        );
         const modal = document.getElementById('deleteModal');
-        modal.classList.remove('hidden');
-        // Close dropdowns
+        if (modal) modal.classList.remove('hidden');
         document.querySelectorAll('[id^="dropdown-"]').forEach(el => {
             el.classList.add('hidden');
         });
@@ -334,7 +387,7 @@
 
     function closeDeleteModal() {
         const modal = document.getElementById('deleteModal');
-        modal.classList.add('hidden');
+        if (modal) modal.classList.add('hidden');
         currentDeleteUrl = '';
     }
 
@@ -344,9 +397,53 @@
         }
     }
 
+    function openUnpublishModal(url, bookingHint) {
+        currentUnpublishUrl = url;
+        _setBookingHint(
+            'unpublishModalBookings',
+            bookingHint,
+            'About %n% participant slot(s) are linked to this trip. Existing bookings stay.'
+        );
+        const modal = document.getElementById('unpublishModal');
+        if (modal) modal.classList.remove('hidden');
+        document.querySelectorAll('[id^="dropdown-"]').forEach(el => {
+            el.classList.add('hidden');
+        });
+    }
+
+    function closeUnpublishModal() {
+        const modal = document.getElementById('unpublishModal');
+        if (modal) modal.classList.add('hidden');
+        currentUnpublishUrl = '';
+    }
+
+    function confirmUnpublishSubmit() {
+        if (currentUnpublishUrl) {
+            submitPost(currentUnpublishUrl);
+        }
+    }
+
+    // Back-compat name used by menu onclick
+    function confirmUnpublish(url, bookingHint) {
+        openUnpublishModal(url, bookingHint);
+    }
+
     function submitPost(url) {
         const form = document.getElementById('actionForm');
         form.action = url;
+        // CSRF if present on page
+        if (!form.querySelector('input[name=csrf_token]')) {
+            const meta = document.querySelector('meta[name=csrf-token]');
+            const fromInput = document.querySelector('input[name=csrf_token]');
+            const token = (fromInput && fromInput.value) || (meta && meta.getAttribute('content'));
+            if (token) {
+                const inp = document.createElement('input');
+                inp.type = 'hidden';
+                inp.name = 'csrf_token';
+                inp.value = token;
+                form.appendChild(inp);
+            }
+        }
         form.submit();
     }
 
@@ -376,10 +473,26 @@
             }
         });
 
-        // Also close modal if clicked outside content box? Screenshot doesn't specify, standard behavior ok.
-        const modal = document.getElementById('deleteModal');
-        if (event.target === modal) {
+        const deleteModal = document.getElementById('deleteModal');
+        if (event.target === deleteModal) {
             closeDeleteModal();
+        }
+        const unpublishModal = document.getElementById('unpublishModal');
+        if (event.target === unpublishModal) {
+            closeUnpublishModal();
+        }
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key !== 'Escape') return;
+        const deleteModal = document.getElementById('deleteModal');
+        if (deleteModal && !deleteModal.classList.contains('hidden')) {
+            closeDeleteModal();
+            return;
+        }
+        const unpublishModal = document.getElementById('unpublishModal');
+        if (unpublishModal && !unpublishModal.classList.contains('hidden')) {
+            closeUnpublishModal();
         }
     });
 </script>

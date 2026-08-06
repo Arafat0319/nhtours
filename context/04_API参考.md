@@ -41,13 +41,15 @@
 | `/admin/trips/json` | GET | 日历/列表用 JSON 数据 |
 | `/admin/trips/new` | GET | 创建新行程，跳转 Trip Builder |
 | `/admin/trips/<id>/manage` | GET | 行程详情 / 订单管理页 |
-| `/admin/trips/<id>/deactivate` | POST | 停用行程（`status=deactivated`） |
-| `/admin/trips/<id>/reactivate` | POST | 重新启用：完整则 `published`；缺发布条件则回 **draft**（不可绕过） |
-| `/admin/trips/<id>/archive` | POST | 归档行程 |
-| `/admin/trips/<id>/copy` | POST | 复制行程 |
+| `/admin/trips/<id>/publish` | POST | 显式上线：仅 `unpublished` 且必填齐全 → `published` |
+| `/admin/trips/<id>/unpublish` | POST | 下架 → `unpublished`（不完整则 `draft`）。**不**取消已有订单；未付分期/催款/Pay now 仍可用 |
+| `/admin/trips/<id>/deactivate` | POST | 兼容旧入口，等同 unpublish |
+| `/admin/trips/<id>/reactivate` | POST | 兼容旧入口：若已是 unpublished 则等同 publish |
+| `/admin/trips/<id>/archive` | POST | 兼容：对 live 行程等同 unpublish |
+| `/admin/trips/<id>/copy` | POST | 复制：Draft→Draft；其余→Unpublished。不拷订单；现仅拷行程壳字段 |
 | `/admin/trips/<id>/delete` | POST | 删除行程 |
 
-> **发布**：无独立 `/publish` 路由。自动发布需：title、start/end date、destination、**非空 About this Trip**（空 Quill HTML 不算）、≥1 package。Basics/Description 的 `X-Autosave: 1` 与完整 POST 保存后都会调用 `check_trip_completion`。
+> **发布**：填齐必填（title、dates、destination、非空 About、≥1 package）后进入 **`unpublished`**，**不会**自动对客。须 `POST .../publish`。保存时 `sync_trip_lifecycle` 维护 draft↔unpublished；Live 改缺必填会自动下架回 draft。状态机见 `app/trip_status.py`。
 
 ### Trip Builder
 
@@ -390,4 +392,4 @@ stripe listen --forward-to localhost:8080/webhooks/stripe
 
 ## 更新日期
 
-**最后更新**: 2026-07-27（支付门禁；upload trip_id；discount 服务端重算；后台 role）
+**最后更新**: 2026-08-06（Publish/Unpublish/Copy；trip_status）

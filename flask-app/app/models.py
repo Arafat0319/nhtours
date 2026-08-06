@@ -109,7 +109,7 @@ class Trip(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # WeTravel 风格字段
-    status = db.Column(db.String(20), default='draft') # draft, published, archived
+    status = db.Column(db.String(20), default='draft')  # draft, unpublished, published (legacy: deactivated)
     capacity = db.Column(db.Integer) # 最大名额 (Total Capacity)
     min_capacity = db.Column(db.Integer, default=0) # 最小成团人数
     spots_sold = db.Column(db.Integer, default=0) # 已售名额

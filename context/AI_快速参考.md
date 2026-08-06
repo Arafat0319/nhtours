@@ -42,6 +42,7 @@
 | 模型 | `flask-app/app/models.py` |
 | 业务单号 | `flask-app/app/order_numbers.py` |
 | 支付逻辑 | `flask-app/app/payments.py` |
+| Trip 状态机 | `flask-app/app/trip_status.py` |
 | App 工厂 | `flask-app/app/__init__.py` |
 | 生产 WSGI | `flask-app/wsgi.py` |
 
@@ -75,12 +76,23 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 |----|-----|
 | 格式 | `{YYMM}{ABBR}-{SEQ}` → `2612MT-001` |
 | YYMM | Trip `start_date` 出发年月（写入后改期不改旧号） |
-| ABBR | `Trip.trip_abbr`（库内 2–4 字母；Basics 输入框可显示 `YYMM`+字母，保存时剥年月） |
+| ABBR | `Trip.trip_abbr`（库内 2–4 位，**至少 1 个字母**；Basics：年月只读前缀 + 字母框；**默认**=出发年月+标题缩写如 `2612MT`；可改；**Reset** 复位默认；保存时剥 YYMM） |
 | SEQ | 每 trip `001…`；取消不回收 |
 | 时机 | 正式 Booking 创建时；PendingBooking 不生成 |
 | 代码 | `app/order_numbers.py` → `assign_order_number` |
 | 展示 | 界面只显示 Order number（不再附内部数据库 id） |
 | 路由 | URL/API 仍用 `booking.id` |
+
+## Trip 状态 / 发布
+
+| 项 | 值 |
+|----|-----|
+| status | `draft` / `unpublished` / `published`（legacy `deactivated`→unpublished） |
+| 列表 | Future · In Progress · Past · **Unpublished** · **Draft**（侧栏此序） |
+| 流程 | 填齐→`unpublished`；点 **Publish** 才对客；**Unpublish** 下架（已有订单/未付分期保留）；Draft 仅 Preview |
+| Copy | 不拷订单；现仅拷行程壳字段（非套餐/表单深拷） |
+| 代码 | `app/trip_status.py`；后台入口 `admin/routes.py` |
+| 业务单号 | `app/order_numbers.py` |
 
 ## 后台 Excel 导出
 

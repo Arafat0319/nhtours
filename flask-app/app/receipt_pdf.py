@@ -118,24 +118,20 @@ def _logo_rgb_bytes(logo_path, max_height_px=None):
 
 
 class ReceiptPDF(FPDF):
-    """Letter receipt: same brand logo in header (top-left) and footer."""
+    """Letter receipt: brand logo only in footer (no top-left header logo)."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._order_label = ""
         self._page_subtitle = "Booking Receipt"
-        header_bytes, header_aspect = _logo_rgb_bytes(
+        footer_bytes, footer_aspect = _logo_rgb_bytes(
             _resolve_logo_path(_HEADER_LOGO_NAME),
             max_height_px=220,
         )
-        # Fallback to email logo if header asset missing
-        if not header_bytes:
-            header_bytes, header_aspect = _logo_rgb_bytes(_resolve_logo_path(_EMAIL_LOGO_NAME))
-        # Footer uses the same mark as top-left header (customer request)
-        self._header_logo_bytes = header_bytes
-        self._header_logo_aspect = header_aspect or 1.0
-        self._footer_logo_bytes = header_bytes
-        self._footer_logo_aspect = header_aspect or 1.0
+        if not footer_bytes:
+            footer_bytes, footer_aspect = _logo_rgb_bytes(_resolve_logo_path(_EMAIL_LOGO_NAME))
+        self._footer_logo_bytes = footer_bytes
+        self._footer_logo_aspect = footer_aspect or 1.0
         # Drawn above the footer rule on page 1 (Paid/Pending + due-at-booking notes)
         self._footer_notes = []
 
@@ -146,30 +142,13 @@ class ReceiptPDF(FPDF):
         return w / aspect if aspect else w * 0.4
 
     def header(self):
-        # Preferred size: logo ~17mm, title 18pt; bottom edges aligned
-        logo_w = 17
-        logo_h = 0.0
-        logo_y = 10.0
-        if self._header_logo_bytes:
-            logo_h = self._draw_logo_bytes(
-                self._header_logo_bytes,
-                self._header_logo_aspect,
-                self.l_margin,
-                logo_y,
-                logo_w,
-            )
-
+        # Text-only header (logo stays at page bottom only)
+        text_y = 11.0
+        text_x = self.l_margin
         title_h = 7.0
         sub_h = 5.0
         gap = 1.0
         text_block_h = title_h + gap + sub_h
-        if logo_h > 0:
-            # Align bottoms: NHTOURS baseline with "Booking Receipt - …"
-            text_y = logo_y + logo_h - text_block_h
-            text_x = self.l_margin + logo_w + 4
-        else:
-            text_y = 11.0
-            text_x = self.l_margin
 
         self.set_xy(text_x, text_y)
         self.set_font("Helvetica", "B", 18)
@@ -181,16 +160,13 @@ class ReceiptPDF(FPDF):
         self.cell(100, sub_h, _safe(self._page_subtitle))
 
         if self._order_label:
-            # Two lines @ 4mm → match text/logo bottom edge
             order_line_h = 4.0
-            order_block_h = order_line_h * 2
-            order_y = (logo_y + logo_h - order_block_h) if logo_h > 0 else text_y
-            self.set_xy(self.w - self.r_margin - 70, order_y)
+            self.set_xy(self.w - self.r_margin - 70, text_y)
             self.set_font("Helvetica", size=9)
             self.set_text_color(75, 85, 99)
             self.multi_cell(70, order_line_h, _safe(self._order_label), align="R")
 
-        y = max(logo_y + logo_h + 3, text_y + text_block_h + 3, 30)
+        y = max(text_y + text_block_h + 3, 26)
         self.set_draw_color(229, 231, 235)
         self.line(self.l_margin, y, self.w - self.r_margin, y)
         self.set_y(y + 5)
@@ -224,7 +200,7 @@ class ReceiptPDF(FPDF):
         self.set_draw_color(229, 231, 235)
         self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
         self.ln(3)
-        # Same logo as page header (top-left)
+        # Brand logo only in footer (centered)
         if self._footer_logo_bytes:
             logo_w = 17
             x = (self.w - logo_w) / 2

@@ -141,13 +141,16 @@
             <div class="w-full md:w-64 flex-shrink-0 sidebar-container">
                 <div class="space-y-1">
                     {% set navigation = [
-                    ('Upcoming Trips', 'admin.trips', {'filter': 'upcoming'}),
+                    ('Future Trips', 'admin.trips', {'filter': 'future'}),
+                    ('In Progress', 'admin.trips', {'filter': 'in_progress'}),
                     ('Past Trips', 'admin.trips', {'filter': 'past'}),
-                    ('Draft Trips', 'admin.trips', {'filter': 'draft'}),
-                    ('Deactivated Trips', 'admin.trips', {'filter': 'deactivated'})
+                    ('Unpublished', 'admin.trips', {'filter': 'unpublished'}),
+                    ('Draft Trips', 'admin.trips', {'filter': 'draft'})
                     ] %}
 
-                    {% set current_filter = request.args.get('filter', 'upcoming') %}
+                    {% set current_filter = request.args.get('filter', 'future') %}
+                    {% if current_filter in ['upcoming', ''] %}{% set current_filter = 'future' %}{% endif %}
+                    {% if current_filter in ['deactivated', 'offline'] %}{% set current_filter = 'unpublished' %}{% endif %}
                     {% for name, endpoint, args in navigation %}
                     {% set isActive = (current_filter == args['filter']) %}
                     <a href="{{ url_for(endpoint, **args) }}"

@@ -81,30 +81,49 @@ def suggest_base_abbr(title: str) -> str:
 
 
 def normalize_trip_abbr(raw: str | None) -> str:
-    """Normalize user/admin abbr to 2–4 alphanumeric uppercase chars."""
+    """
+    Normalize to 2–4 alphanumeric uppercase chars for storage.
+    Rejects bare YYMM (4 digits) — that belongs to start_date only.
+    """
     if not raw:
         return ''
-    cleaned = re.sub(r'[^A-Za-z0-9]', '', str(raw)).upper()
-    return cleaned[:4]
+    cleaned = re.sub(r'[^A-Za-z0-9]', '', str(raw)).upper()[:4]
+    if re.fullmatch(r'\d{4}', cleaned):
+        return ''
+    return cleaned
+
+
+def is_valid_trip_abbr(raw: str | None) -> bool:
+    """
+    Stored abbr must be 2–4 chars and include at least one letter.
+    Avoids ambiguous all-digit codes (e.g. 12, 001) colliding with YYMM visually.
+    """
+    abbr = normalize_trip_abbr(raw)
+    if len(abbr) < 2 or len(abbr) > 4:
+        return False
+    return bool(re.search(r'[A-Z]', abbr))
 
 
 def parse_trip_abbr_input(raw: str | None) -> str:
     """
-    Accept letter-only abbr (SS) or display form with start YYMM (2609SS).
-    Returns the 2–4 char letter/digit code stored on Trip.trip_abbr.
+    Accept letter-only abbr (SS), digits+letters (MT2), or display form with
+    start YYMM (2609SS / 26122612 mistype). Returns storage form (no YYMM).
     """
     if not raw:
         return ''
     cleaned = re.sub(r'[^A-Za-z0-9]', '', str(raw)).upper()
-    # YYMM + abbr (e.g. 2609SS / 2609SS2)
+    # YYMM + abbr (e.g. 2609SS / 2609SS2) — require 2–4 after prefix
     m = re.match(r'^(\d{4})([A-Z0-9]{2,4})$', cleaned)
     if m:
-        return m.group(2)
-    # Digits prefix then letters (partial typing)
+        return normalize_trip_abbr(m.group(2))
+    # YYMM + shorter/partial tail while typing (2612M)
     m2 = re.match(r'^\d{4}([A-Z0-9]+)$', cleaned)
     if m2:
-        return m2.group(1)[:4]
-    return cleaned[:4]
+        return normalize_trip_abbr(m2.group(1)[:4])
+    # Bare YYMM only
+    if re.fullmatch(r'\d{4}', cleaned):
+        return ''
+    return normalize_trip_abbr(cleaned[:4])
 
 
 def ensure_unique_trip_abbr(base: str, exclude_trip_id: int | None = None) -> str:
@@ -115,8 +134,14 @@ def ensure_unique_trip_abbr(base: str, exclude_trip_id: int | None = None) -> st
     from app.models import Trip
 
     base = normalize_trip_abbr(base) or 'XX'
-    if len(base) < 2:
-        base = (base + 'XX')[:2]
+    if not is_valid_trip_abbr(base):
+        # Pad / fix single letter or digit-only leftovers
+        if len(base) == 1 and base.isalpha():
+            base = (base + 'X')[:2]
+        elif not re.search(r'[A-Z]', base):
+            base = 'XX'
+        elif len(base) < 2:
+            base = (base + 'XX')[:2]
 
     candidate = base
     n = 2
@@ -130,10 +155,13 @@ def ensure_unique_trip_abbr(base: str, exclude_trip_id: int | None = None) -> st
         suffix = str(n)
         max_base_len = 4 - len(suffix)
         if max_base_len < 1:
-            # Extremely unlikely collision storm
             candidate = f"X{n}"[-4:]
         else:
-            candidate = f"{base[:max_base_len]}{suffix}"
+            # Keep at least one letter from base when truncating
+            head = base[:max_base_len]
+            if not re.search(r'[A-Z]', head):
+                head = ('X' + head)[:max_base_len]
+            candidate = f"{head}{suffix}"
         n += 1
         if n > 9999:
             raise RuntimeError(f'Unable to allocate unique trip_abbr from base={base!r}')
@@ -144,12 +172,81 @@ def suggest_trip_abbr(title: str, exclude_trip_id: int | None = None) -> str:
     return ensure_unique_trip_abbr(suggest_base_abbr(title), exclude_trip_id=exclude_trip_id)
 
 
-def ensure_trip_abbr(trip) -> str:
-    """Ensure trip.trip_abbr is set (does not commit)."""
-    if trip.trip_abbr:
-        return trip.trip_abbr
-    trip.trip_abbr = suggest_trip_abbr(trip.title or '', exclude_trip_id=trip.id)
+def default_trip_abbr(trip) -> str:
+    """
+    Default letter code from current title (unique across trips).
+    Full Trip ID in UI is start YYMM + this (e.g. Dec 2026 + MT → 2612MT).
+    """
+    return suggest_trip_abbr(
+        getattr(trip, 'title', None) or '',
+        exclude_trip_id=getattr(trip, 'id', None),
+    )
+
+
+def trip_abbr_follows_title(trip) -> bool:
+    """
+    True when stored abbr is still the title-derived default base
+    (so title edits may keep syncing). Uniquified bumps (MT2) count as customized.
+    """
+    stored = normalize_trip_abbr(getattr(trip, 'trip_abbr', None))
+    if not stored:
+        return True
+    base = suggest_base_abbr(getattr(trip, 'title', None) or '')
+    return stored == base
+
+
+def reset_trip_abbr(trip) -> str:
+    """Restore trip.trip_abbr to the title-derived default (does not commit)."""
+    trip.trip_abbr = default_trip_abbr(trip)
     return trip.trip_abbr
+
+
+def ensure_trip_abbr(trip) -> str:
+    """Ensure trip.trip_abbr is a valid stored code (does not commit)."""
+    if is_valid_trip_abbr(getattr(trip, 'trip_abbr', None)):
+        trip.trip_abbr = normalize_trip_abbr(trip.trip_abbr)
+        return trip.trip_abbr
+    trip.trip_abbr = default_trip_abbr(trip)
+    return trip.trip_abbr
+
+
+def sanitize_stored_trip_abbr(trip) -> str:
+    """
+    Return a valid letter/digit abbr for display/save.
+    Repairs legacy rows that stored bare YYMM (e.g. '2612') or other invalid values.
+    Does not commit; caller may assign trip.trip_abbr = result.
+    """
+    if is_valid_trip_abbr(getattr(trip, 'trip_abbr', None)):
+        return normalize_trip_abbr(trip.trip_abbr)
+    return default_trip_abbr(trip)
+
+
+def apply_trip_abbr_from_input(trip, abbr_raw, *, suggest_if_missing=True) -> str:
+    """
+    Apply admin input to trip.trip_abbr (no commit).
+    - Valid input → unique normalized abbr
+    - Incomplete / empty → keep existing if valid; else suggest/repair
+    """
+    cleaned = parse_trip_abbr_input(abbr_raw)
+    if is_valid_trip_abbr(cleaned):
+        trip.trip_abbr = ensure_unique_trip_abbr(cleaned, exclude_trip_id=getattr(trip, 'id', None))
+        return trip.trip_abbr
+    if is_valid_trip_abbr(getattr(trip, 'trip_abbr', None)):
+        trip.trip_abbr = normalize_trip_abbr(trip.trip_abbr)
+        return trip.trip_abbr
+    if suggest_if_missing:
+        trip.trip_abbr = sanitize_stored_trip_abbr(trip)
+        return trip.trip_abbr
+    return trip.trip_abbr or ''
+
+
+def display_trip_id(trip) -> str:
+    """UI form: YYMM + abbr when start_date known; else abbr only."""
+    letters = sanitize_stored_trip_abbr(trip) if trip is not None else ''
+    start = getattr(trip, 'start_date', None) if trip is not None else None
+    if start and letters:
+        return f"{start.strftime('%y%m')}{letters}"
+    return letters
 
 
 def allocate_order_number(trip) -> tuple[str, int]:
@@ -201,10 +298,10 @@ def assign_order_number(booking, trip=None) -> str | None:
     if getattr(booking, 'order_number', None):
         return booking.order_number
 
-    from app.models import Trip
-
-    trip = trip or getattr(booking, 'trip', None)
-    if trip is None and booking.trip_id:
+    if trip is None:
+        trip = getattr(booking, 'trip', None)
+    if trip is None and getattr(booking, 'trip_id', None):
+        from app.models import Trip
         trip = Trip.query.get(booking.trip_id)
     if trip is None:
         try:

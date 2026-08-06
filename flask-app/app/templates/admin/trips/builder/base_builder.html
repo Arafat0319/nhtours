@@ -136,6 +136,15 @@
         background: #dc2626;
     }
 
+    .custom-confirm-btn-warning {
+        background: #f59e0b;
+        color: white;
+    }
+
+    .custom-confirm-btn-warning:hover {
+        background: #d97706;
+    }
+
     .custom-confirm-btn-secondary {
         background: #f3f4f6;
         color: #374151;
@@ -252,24 +261,56 @@
             {% if trip.slug %}
             <a href="{{ url_for('main.trip_detail', slug=trip.slug) }}" target="_blank"
                 class="block w-full text-center px-4 py-2 border border-wetravel-cyan text-wetravel-cyan font-medium rounded-md shadow-sm hover:bg-cyan-50">
-                Preview
+                Preview page
             </a>
             {% else %}
             <button disabled
                 class="block w-full text-center px-4 py-2 border border-gray-300 text-gray-400 font-medium rounded-md shadow-sm cursor-not-allowed">
-                Preview
+                Preview page
             </button>
             {% endif %}
 
-            <!-- Publish Button can be a form submission or link to status change -->
+            {% if trip.status == 'unpublished' or trip.status == 'deactivated' %}
+            <form method="post" action="{{ url_for('admin.publish_trip_route', id=trip.id) }}">
+                {% if form is defined and form.csrf_token %}{{ form.csrf_token }}{% endif %}
+                <button type="submit"
+                    class="block w-full text-center px-4 py-2 bg-wetravel-cyan text-white font-medium rounded-md shadow-sm hover:bg-cyan-600">
+                    Publish
+                </button>
+            </form>
+            {% elif trip.status == 'published' %}
+            <button type="button" id="builder-unpublish-btn"
+                class="block w-full text-center px-4 py-2 border border-amber-500 text-amber-700 font-medium rounded-md shadow-sm hover:bg-amber-50">
+                Unpublish
+            </button>
+            <form method="post" action="{{ url_for('admin.unpublish_trip_route', id=trip.id) }}" id="builder-unpublish-form" class="hidden">
+                {% if form is defined and form.csrf_token %}{{ form.csrf_token }}{% endif %}
+            </form>
+            {% endif %}
         </div>
 
-        <div class="mt-4 px-3 text-xs text-gray-400 text-center">
-            Saved as {{ trip.status }}
+        <div class="mt-4 px-3 text-xs text-gray-500 text-center space-y-1">
+            {% if trip.status == 'draft' %}
+            <p class="font-medium text-gray-600">Status: Draft — not live yet</p>
+            <p>Finish required fields to move it to Unpublished.</p>
+            {% elif trip.status in ['unpublished', 'deactivated'] %}
+            <p class="font-medium text-gray-600">Status: Unpublished — ready, not live</p>
+            <p>Preview does not publish. Use Publish when you want customers to book.</p>
+            {% elif trip.status == 'published' %}
+            <p class="font-medium text-green-700">Status: Live for customers</p>
+            <p>
+                {% if trip_bucket == 'future' %}Listed under Future.
+                {% elif trip_bucket == 'in_progress' %}Listed under In Progress.
+                {% elif trip_bucket == 'past' %}Listed under Past.
+                {% endif %}
+            </p>
+            {% else %}
+            <p>Status: {{ trip.status }}</p>
+            {% endif %}
         </div>
         {% if trip.status == 'draft' and publish_gaps is defined and publish_gaps %}
         <div class="mt-2 px-3 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-md p-2">
-            <p class="font-semibold mb-1">Still needed to publish:</p>
+            <p class="font-semibold mb-1">Still needed to unlock Publish:</p>
             <ul class="list-disc list-inside space-y-0.5 text-left">
                 {% for gap in publish_gaps %}
                 <li>
@@ -369,10 +410,18 @@ function customConfirm(message, title = 'Confirm Action', type = 'warning') {
             iconSvg.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />';
             okBtn.className = 'custom-confirm-btn custom-confirm-btn-danger';
             okBtn.textContent = 'Delete';
+        } else if (type === 'warning') {
+            iconSvg.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />';
+            okBtn.className = 'custom-confirm-btn custom-confirm-btn-warning';
+            okBtn.textContent = 'Unpublish';
+            okBtn.style.backgroundColor = '';
+            okBtn.style.borderColor = '';
         } else {
             iconSvg.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />';
             okBtn.className = 'custom-confirm-btn custom-confirm-btn-primary';
             okBtn.textContent = 'OK';
+            okBtn.style.backgroundColor = '';
+            okBtn.style.borderColor = '';
         }
 
         // Show dialog
@@ -475,5 +524,20 @@ function customAlert(message, title = 'Notice') {
 // Make functions globally available
 window.customConfirm = customConfirm;
 window.customAlert = customAlert;
+
+(function wireBuilderUnpublish() {
+    const btn = document.getElementById('builder-unpublish-btn');
+    const form = document.getElementById('builder-unpublish-form');
+    if (!btn || !form) return;
+    const slots = {{ (active_booking_count|default(0))|int }};
+    btn.addEventListener('click', async function () {
+        let msg = 'This trip will move to Unpublished. New customers will not be able to book. Existing bookings are kept.';
+        if (slots > 0) {
+            msg = 'About ' + slots + ' participant slot(s) are linked. ' + msg;
+        }
+        const ok = await customConfirm(msg, 'Unpublish Trip', 'warning');
+        if (ok) form.submit();
+    });
+})();
 </script>
 {% endblock %}

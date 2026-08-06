@@ -1111,8 +1111,11 @@ body.installment-modal-page #booking-modal #place-order-btn {
   cursor: pointer;
   transition: border-color 0.1s ease, box-shadow 0.1s ease, background-color 0.15s ease, transform 0.1s ease, filter 0.15s ease;
 }
-/* Choose file：品牌蓝主按钮（与表单焦点色一致，不抢 Continue 荧光绿） */
+/* Choose file：品牌蓝主按钮（label[for] 关联隐藏 file，无 JS 也可点开） */
 #booking-modal .participant-file-browse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 40px;
   min-height: 40px;
   min-width: 120px;
@@ -1123,6 +1126,7 @@ body.installment-modal-page #booking-modal #place-order-btn {
   font-size: 0.9375rem;
   font-weight: 600;
   box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  cursor: pointer;
 }
 #booking-modal .participant-file-browse-btn:hover:not(:disabled) {
   background-color: #0052cc;

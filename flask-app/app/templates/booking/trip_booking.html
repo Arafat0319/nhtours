@@ -4,7 +4,7 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/booking-modal.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/booking-modal.css') }}?v=file-upload-2">
 <style>
     .flatpickr-calendar {
         font-size: 16px !important;
@@ -424,7 +424,7 @@
     .trip-includes-list, .trip-excludes-list { list-style: none; padding: 0; margin: 0; }
     .trip-includes-list li, .trip-excludes-list li {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         gap: 0.75rem;
         padding: 0.65rem 0;
         border-bottom: 1px solid #e5e7eb;
@@ -432,6 +432,25 @@
         font-size: 0.9375rem;
     }
     .trip-includes-list li:last-child, .trip-excludes-list li:last-child { border-bottom: none; }
+    .trip-includes-list .item-icon,
+    .trip-excludes-list .item-icon { margin-top: 0.15rem; }
+    .trip-includes-list .item-body, .trip-excludes-list .item-body {
+        min-width: 0;
+        flex: 1;
+    }
+    .trip-includes-list .item-title, .trip-excludes-list .item-title {
+        display: block;
+        color: #374151;
+        font-weight: 500;
+    }
+    .trip-includes-list .item-desc, .trip-excludes-list .item-desc {
+        display: block;
+        margin-top: 0.2rem;
+        color: #6b7280;
+        font-size: 0.8125rem;
+        line-height: 1.4;
+        font-weight: 400;
+    }
     .trip-includes-list .item-icon {
         flex-shrink: 0;
         width: 1.25rem;
@@ -697,7 +716,7 @@
         </section>
         {% endif %}
 
-        {# What's included：绿色圆勾 + 项间浅灰分隔线 #}
+        {# What's included：绿色圆勾 + 项间浅灰分隔线；有 description 则显示在标题下 #}
         {% if trip.trip_includes and trip.trip_includes|length > 0 %}
         <section id="section-includes" class="scroll-mt-24 trip-page__section">
             <h3 class="trip-page-section__header">What's included</h3>
@@ -705,7 +724,16 @@
                 {% for item in trip.trip_includes %}
                 <li>
                     <span class="item-icon" aria-hidden="true">✓</span>
-                    <span>{{ item.title if item is mapping else item }}</span>
+                    <div class="item-body">
+                        {% if item is mapping %}
+                        <span class="item-title">{{ item.title }}</span>
+                        {% if item.description %}
+                        <span class="item-desc">{{ item.description }}</span>
+                        {% endif %}
+                        {% else %}
+                        <span class="item-title">{{ item }}</span>
+                        {% endif %}
+                    </div>
                 </li>
                 {% endfor %}
             </ul>
@@ -720,7 +748,16 @@
                 {% for item in trip.trip_excludes %}
                 <li>
                     <span class="item-icon" aria-hidden="true">✕</span>
-                    <span>{{ item.title if item is mapping else item }}</span>
+                    <div class="item-body">
+                        {% if item is mapping %}
+                        <span class="item-title">{{ item.title }}</span>
+                        {% if item.description %}
+                        <span class="item-desc">{{ item.description }}</span>
+                        {% endif %}
+                        {% else %}
+                        <span class="item-title">{{ item }}</span>
+                        {% endif %}
+                    </div>
                 </li>
                 {% endfor %}
             </ul>
@@ -970,7 +1007,7 @@
                                 <h3 class="booking-sidebar-title text-[16px] font-medium leading-[26px] text-gray-900" style="text-transform: none; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">Your Booking</h3>
                             </div>
                             <div id="discount-input-section" class="flex justify-between items-center gap-2 py-4 border-b border-gray-200">
-                                <input type="text" id="discount-code-input" class="discount-input-match flex-1 min-w-0" placeholder="Discount code" value="">
+                                <input type="text" id="discount-code-input" class="discount-input-match flex-1 min-w-0" placeholder="Promotion Code" value="">
                                 <button type="button" id="apply-discount-btn" class="apply-discount-btn-match flex-shrink-0">Apply</button>
                             </div>
                             <div id="discount-message" class="text-sm hidden mt-2"></div>
@@ -1445,8 +1482,8 @@
     window.initFlatpickrOnDates = initFlatpickrOnDates;
 })();
 </script>
-<script src="{{ url_for('static', filename='js/booking.js') }}?v=pay-fail"></script>
-<script src="{{ url_for('static', filename='js/booking-modal.js') }}"></script>
+<script src="{{ url_for('static', filename='js/booking.js') }}?v=file-upload-2"></script>
+<script src="{{ url_for('static', filename='js/booking-modal.js') }}?v=file-upload-2"></script>
 <script src="https://js.stripe.com/v3/"></script>
 <script>
 window.tripData = {
