@@ -1122,20 +1122,26 @@ body.installment-modal-page #booking-modal #place-order-btn {
   padding: 0 1.25rem;
   border: 2px solid #0066ff;
   background-color: #0066ff;
-  color: #fff;
+  color: #ffffff !important;
   font-size: 0.9375rem;
   font-weight: 600;
   box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   cursor: pointer;
+  text-decoration: none !important;
+  -webkit-text-fill-color: #ffffff;
 }
 #booking-modal .participant-file-browse-btn:hover:not(:disabled) {
   background-color: #0052cc;
   border-color: #0052cc;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
 }
 #booking-modal .participant-file-browse-btn:focus {
   outline: none;
   border-color: #0066ff;
   box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.25);
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
 }
 /* Change：与 Apply 同级次按钮 */
 #booking-modal .participant-file-change-btn {
