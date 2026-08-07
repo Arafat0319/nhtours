@@ -1,0 +1,17 @@
+{{ subject_line }}
+
+Hi{% if customer_name and customer_name != 'Customer' %} {{ customer_name }}{% endif %},
+
+{{ intro_text }}
+
+Status: Payment processing (US bank transfer / ACH)
+Order number: {{ order_number }}
+Trip: {{ trip_title }}
+{% if amount is not none %}Amount submitted: ${{ '%.2f'|format(amount) }}
+{% endif %}
+When the bank transfer clears, we will email your confirmation and receipt. No action is needed right now.
+
+{{ footer_note }}
+
+Questions? Please email us at info@nhtours.com (this message was sent from a no-reply address).
+Nexus Horizons Tours · https://nhtours.com

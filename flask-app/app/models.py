@@ -345,10 +345,10 @@ class Payment(db.Model):
     stripe_customer_id = db.Column(db.String(128))  # Customer ID（新增）
     
     # 支付方式
-    payment_method_type = db.Column(db.String(20))  # 'card', 'bank_transfer', etc.
+    payment_method_type = db.Column(db.String(32))  # 'card', 'us_bank_account', etc.
     payment_method_id = db.Column(db.String(128))  # Stripe Payment Method ID
-    funding = db.Column(db.String(20))  # card funding: debit/credit/prepaid/unknown
-    brand = db.Column(db.String(32))  # card brand: visa/mastercard/amex/unknown
+    funding = db.Column(db.String(20))  # card: debit/credit/prepaid; ACH: ach
+    brand = db.Column(db.String(32))  # card brand or us_bank
 
     # 金额明细（最小货币单位）
     base_amount_cents = db.Column(db.Integer)
@@ -357,7 +357,7 @@ class Payment(db.Model):
     final_amount_cents = db.Column(db.Integer)
     
     # 状态
-    status = db.Column(db.String(20), default='pending')  # 'pending', 'succeeded', 'failed', 'refunded', 'partially_refunded'
+    status = db.Column(db.String(20), default='pending')  # pending, processing, succeeded, failed, refunded, partially_refunded
     
     # 分期付款关联（如果是分期付款）
     installment_payment_id = db.Column(db.Integer, db.ForeignKey('installment_payments.id'), nullable=True)  # 新增
@@ -410,7 +410,7 @@ class Booking(db.Model):
     trip_id = db.Column(db.Integer, db.ForeignKey('trips.id'))
     client_id = db.Column(db.Integer, db.ForeignKey('clients.id'))
     
-    status = db.Column(db.String(20), default='pending') # pending, deposit_paid, fully_paid, cancelled（后台 Payment Status 还可展示 overdue/refunded）
+    status = db.Column(db.String(20), default='pending') # pending, processing (ACH), deposit_paid, fully_paid, cancelled
     passenger_count = db.Column(db.Integer, default=1)  # Total participants (calculated from BookingPackage quantities)
     amount_paid = db.Column(db.Float, default=0.0)  # Total amount paid (sum of all BookingPackage amounts)
     special_requests = db.Column(db.Text)

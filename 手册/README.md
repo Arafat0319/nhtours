@@ -13,6 +13,9 @@
 - **后台操作、建行程、客户报名、订单号（Order number）**
     - → [用户手册.md](用户手册.md)
 
+- **ACH（美国银行转账）付款规则、清算期、邮件与锁定**
+    - → [ACH付款规则.md](ACH付款规则.md)
+
 - **域名 / HTTPS**
     - → [域名接入GoDaddy.md](域名接入GoDaddy.md)
 
@@ -28,6 +31,9 @@
 
 - **[用户手册.md](用户手册.md)**
     - Trip Builder、Order number、退款、Excel 快照、报名、收据、**分期邮件提醒规则**、Testimonials / Feedback
+
+- **[ACH付款规则.md](ACH付款规则.md)**
+    - US bank account（ACH）：Processing → 成功/失败、邮件、清算期锁定、与分期关系
 
 - **[安全手册-凭据.local.md](安全手册-凭据.local.md)**
     - 用户名密码（本地专用，不提交 Git）

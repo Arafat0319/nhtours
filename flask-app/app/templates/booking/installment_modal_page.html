@@ -9,7 +9,7 @@
 {% block nav_scripts %}{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/booking-modal.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/booking-modal.css') }}?v=ach-3">
 <style>
     body.installment-modal-page #homePreviewNav { display: none !important; }
     /* 锁住背后首页滚动；付款层自身可滚（短屏 / 公司笔记本必需要） */
@@ -300,6 +300,14 @@
 									</div>
 									<button type="button" id="booking-result-close-btn" class="w-full rounded border font-normal mt-auto inline-flex items-center justify-center" style="height: 40px; min-height: 40px; font-size: 14px;">Close</button>
 								</div>
+								<div id="booking-result-processing" class="booking-result-state hidden flex flex-col py-10 px-6">
+									<div class="booking-result-icon booking-result-icon--processing rounded-full p-4 w-fit mx-auto mb-6" aria-hidden="true">
+										<svg class="h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+									</div>
+									<h2 class="booking-result-title text-2xl font-bold text-gray-900 text-center mb-3">Payment submitted!</h2>
+									<p id="booking-result-processing-copy" class="booking-result-copy text-gray-600 text-center mb-8">Your US bank account (ACH) transfer is processing. This usually takes several business days. We've emailed you — confirmation and receipt will follow when it clears.</p>
+									<button type="button" id="booking-result-processing-close-btn" class="w-full rounded border font-normal inline-flex items-center justify-center" style="height: 40px; min-height: 40px; font-size: 14px;">Close</button>
+								</div>
 								<div id="booking-result-failure" class="booking-result-state hidden flex flex-col flex-1 py-10 px-6">
 									<div class="rounded-full bg-red-100 p-4 w-fit mx-auto mb-6">
 										<svg class="h-12 w-12 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -380,8 +388,9 @@
 		baseAmountCents: {{ base_amount_cents }},
 		remainingAmountCents: {{ remaining_amount_cents or 0 }},
 		paymentStep: "installment",
-		previewOnly: {{ 'true' if preview_only|default(false) else 'false' }}
+		previewOnly: {{ 'true' if preview_only|default(false) else 'false' }},
+		achProcessingLocked: {{ 'true' if ach_processing_locked|default(false) else 'false' }}
 	};
 </script>
-<script src="{{ url_for('static', filename='js/installment_modal.js') }}?v=pay-fail"></script>
+<script src="{{ url_for('static', filename='js/installment_modal.js') }}?v=ach-4"></script>
 {% endblock %}

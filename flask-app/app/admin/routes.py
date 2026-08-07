@@ -2291,6 +2291,18 @@ def send_installment_reminder(installment_id):
             'success': False,
             'error': 'This installment is cancelled; cannot send reminder',
         }), 400
+
+    from app.payments import booking_has_processing_ach_payment, installment_has_processing_ach
+    if installment_has_processing_ach(installment) or booking_has_processing_ach_payment(
+        installment.booking_id
+    ):
+        return jsonify({
+            'success': False,
+            'error': (
+                'A bank transfer for this order is still processing; '
+                'cannot send reminder until it clears'
+            ),
+        }), 400
     
     try:
         from app.tasks import send_installment_reminder_email, send_overdue_reminder_email
@@ -3733,7 +3745,7 @@ def manage_booking(trip_id, booking_id):
             if prev_status == 'cancelled':
                 # 已取消：保持 cancelled，仍可改备注/参与者等；忽略付款状态下拉
                 new_status = 'cancelled'
-            elif new_status not in ('pending', 'deposit_paid', 'fully_paid'):
+            elif new_status not in ('pending', 'processing', 'deposit_paid', 'fully_paid'):
                 return jsonify({
                     'success': False,
                     'message': 'Invalid payment status.',

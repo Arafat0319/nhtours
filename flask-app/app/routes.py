@@ -40,6 +40,7 @@ from app.payments import (
     retrieve_payment_intent,
     payment_intent_error_message,
     retrieve_payment_method_card_details,
+    retrieve_payment_method_details,
     calculate_fee,
     safe_cancel_payment_intent,
     extract_stripe_charge_id,
@@ -51,12 +52,104 @@ from app.payments import (
     catch_up_metadata_fields,
     parse_catch_up_ids,
     void_stale_pending_payments,
+    booking_has_processing_ach_payment,
+    find_processing_ach_covering_installment,
+    iter_processing_payments_for_booking,
 )
 from datetime import datetime, date, timedelta
 
 from app.testimonial_data import get_carousel_testimonials
 
 bp = Blueprint('main', __name__)
+
+
+def _stripe_intent_as_dict(intent, fallback_id=None):
+    """Stripe PaymentIntent → dict（供 processing webhook 回退同步）。"""
+    if isinstance(intent, dict):
+        return intent
+    if hasattr(intent, 'to_dict'):
+        try:
+            return intent.to_dict()
+        except Exception:
+            pass
+    return {
+        'id': getattr(intent, 'id', fallback_id),
+        'amount': getattr(intent, 'amount', 0) or 0,
+        'currency': getattr(intent, 'currency', 'usd') or 'usd',
+        'metadata': dict(getattr(intent, 'metadata', None) or {}),
+        'payment_method_types': list(getattr(intent, 'payment_method_types', None) or []),
+        'status': getattr(intent, 'status', None),
+    }
+
+
+def _sync_ach_processing_from_pi(payment_intent_id):
+    """Webhook 滞后时：若 Stripe PI 已是 processing，写入本地 Payment。"""
+    if not payment_intent_id or str(payment_intent_id).startswith('free_'):
+        return
+    intent = retrieve_payment_intent(payment_intent_id)
+    if not intent:
+        return
+    status = getattr(intent, 'status', None) or ''
+    if status != 'processing':
+        return
+    try:
+        handle_payment_intent_processing(
+            _stripe_intent_as_dict(intent, payment_intent_id)
+        )
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.warning(
+            "ACH processing sync from PI %s failed: %s", payment_intent_id, e
+        )
+
+
+def _render_installment_ach_locked(
+    *,
+    booking,
+    installment,
+    installment_label,
+    all_installments,
+    base_amount_cents,
+    summary_items,
+    payment_step,
+    token,
+    pi_id,
+    proc=None,
+):
+    """分期页：ACH 清算中，禁止二次付款。"""
+    success_url_same_page = (
+        url_for('main.pay_installment', installment_id=installment.id, _external=True)
+        + '?token=' + (token or '')
+        + ('&payment_intent_id=' + pi_id if pi_id else '')
+    )
+    amount_cents = base_amount_cents or (
+        int(round((proc.amount or 0) * 100)) if proc else 0
+    )
+    items = summary_items or [{
+        'label': installment_label or 'Payment',
+        'amount_cents': amount_cents,
+    }]
+    return render_template(
+        'booking/installment_modal_page.html',
+        booking=booking,
+        installment=installment,
+        installment_label=installment_label,
+        all_installments=all_installments,
+        base_amount_cents=amount_cents,
+        summary_items=items,
+        catch_up_note=None,
+        publishable_key=current_app.config.get('STRIPE_PUBLISHABLE_KEY'),
+        client_secret=None,
+        payment_intent_id=pi_id,
+        success_url=success_url_same_page,
+        payment_plan='installment',
+        payment_mode='installment',
+        payment_step=payment_step,
+        remaining_amount_cents=0,
+        show_payoff=False,
+        payoff_url=None,
+        ach_processing_locked=True,
+    )
 
 
 def _parse_post_data():
@@ -1224,6 +1317,14 @@ def api_payment_quote():
                 base_amount_cents = data.get('base_amount_cents', 45000)  # 默认 $450.00
             else:
                 return jsonify({'error': 'installment_not_found'}), 404
+        elif booking_has_processing_ach_payment(installment.booking_id):
+            return jsonify({
+                'error': 'payment_processing',
+                'message': (
+                    'A bank transfer for this order is already processing. '
+                    'Please wait until it clears before starting another payment.'
+                ),
+            }), 409
         else:
             # 强制补齐：该期 + 此前未付/逾期
             base_amount_cents = catch_up_amount_cents(installment)
@@ -1248,6 +1349,14 @@ def api_payment_quote():
                     base_amount_cents = data.get('base_amount_cents', 45000)  # 默认 $450.00
             else:
                 return jsonify({'error': 'booking_not_found'}), 404
+        elif booking_has_processing_ach_payment(booking.id):
+            return jsonify({
+                'error': 'payment_processing',
+                'message': (
+                    'A bank transfer for this order is already processing. '
+                    'Please wait until it clears before starting another payment.'
+                ),
+            }), 409
         else:
             # 获取支付计划类型（从booking的payment_plan_type推断，或使用默认值）
             payment_plan = 'full'
@@ -1289,18 +1398,19 @@ def api_payment_quote():
             'payment_required': False,
         })
 
-    funding, brand = retrieve_payment_method_card_details(payment_method_id)
+    funding, brand, pm_type = retrieve_payment_method_details(payment_method_id)
     fee_cents = calculate_fee(base_amount_cents, funding, brand)
     tax_amount_cents = 0
     final_amount_cents = base_amount_cents + fee_cents + tax_amount_cents
 
     current_app.logger.info(
-        "Quote computed booking_id=%s installment_id=%s payment_intent_id=%s funding=%s brand=%s base=%s fee=%s final=%s",
+        "Quote computed booking_id=%s installment_id=%s payment_intent_id=%s funding=%s brand=%s pm_type=%s base=%s fee=%s final=%s",
         booking_id,
         installment_id,
         payment_intent_id,
         funding,
         brand,
+        pm_type,
         base_amount_cents,
         fee_cents,
         final_amount_cents
@@ -1309,6 +1419,7 @@ def api_payment_quote():
     return jsonify({
         'funding': funding,
         'brand': brand,
+        'payment_method_type': pm_type,
         'base_amount': base_amount_cents,
         'fee': fee_cents,
         'tax_amount': tax_amount_cents,
@@ -1377,6 +1488,15 @@ def api_payment_intent():
         installment = InstallmentPayment.query.get(installment_id)
         if not installment:
             return jsonify({'error': 'installment_not_found'}), 404
+
+        if booking_has_processing_ach_payment(installment.booking_id):
+            return jsonify({
+                'error': 'payment_processing',
+                'message': (
+                    'A bank transfer for this order is already processing. '
+                    'Please wait until it clears before starting another payment.'
+                ),
+            }), 409
         
         # 强制补齐合计（非单期金额）
         base_amount_cents = catch_up_amount_cents(installment)
@@ -1405,6 +1525,15 @@ def api_payment_intent():
         booking = Booking.query.get(booking_id)
         if not booking:
             return jsonify({'error': 'booking_not_found'}), 404
+
+        if booking_has_processing_ach_payment(booking.id):
+            return jsonify({
+                'error': 'payment_processing',
+                'message': (
+                    'A bank transfer for this order is already processing. '
+                    'Please wait until it clears before starting another payment.'
+                ),
+            }), 409
         
         # 获取支付计划类型（从booking的payment_plan_type推断，或使用默认值）
         payment_plan = payment_plan or 'full'
@@ -1455,7 +1584,7 @@ def api_payment_intent():
         # 这种情况理论上不应该发生（所有参数都为空已在前面检查）
         return jsonify({'error': 'missing_parameters'}), 400
 
-    funding, brand = retrieve_payment_method_card_details(payment_method_id)
+    funding, brand, pm_type = retrieve_payment_method_details(payment_method_id)
     fee_cents = calculate_fee(base_amount_cents, funding, brand)
     tax_amount_cents = 0
     final_amount_cents = base_amount_cents + fee_cents + tax_amount_cents
@@ -1480,6 +1609,7 @@ def api_payment_intent():
             'source': source,
             'funding': funding,
             'brand': brand,
+            'payment_method_type': pm_type,
             'fee': fee_cents,
             'tax_amount': tax_amount_cents,
             'final_amount': final_amount_cents,
@@ -1498,6 +1628,7 @@ def api_payment_intent():
                 'source': 'trip_booking',
                 'funding': funding,
                 'brand': brand,
+                'payment_method_type': pm_type,
                 'fee': fee_cents,
                 'tax_amount': tax_amount_cents,
                 'final_amount': final_amount_cents,
@@ -1511,6 +1642,7 @@ def api_payment_intent():
                 'source': 'trip_booking',
                 'funding': funding,
                 'brand': brand,
+                'payment_method_type': pm_type,
                 'fee': fee_cents,
                 'tax_amount': tax_amount_cents,
                 'final_amount': final_amount_cents,
@@ -1538,6 +1670,7 @@ def api_payment_intent():
             'source': 'installment_link',
             'funding': funding,
             'brand': brand,
+            'payment_method_type': pm_type,
             'fee': fee_cents,
             'tax_amount': tax_amount_cents,
             'final_amount': final_amount_cents,
@@ -1557,17 +1690,18 @@ def api_payment_intent():
     # 更新Payment记录（如果存在）
     if booking_id and payment:
         current_app.logger.info(
-            "Payment intent updated booking_id=%s pi=%s funding=%s brand=%s base=%s fee=%s final=%s",
+            "Payment intent updated booking_id=%s pi=%s funding=%s brand=%s pm_type=%s base=%s fee=%s final=%s",
             booking_id,
             payment_intent_id,
             funding,
             brand,
+            pm_type,
             base_amount_cents,
             fee_cents,
             final_amount_cents
         )
         payment.payment_method_id = payment_method_id
-        payment.payment_method_type = 'card'
+        payment.payment_method_type = pm_type if pm_type != 'unknown' else 'card'
         payment.funding = funding
         payment.brand = brand
         payment.base_amount_cents = base_amount_cents
@@ -1579,21 +1713,23 @@ def api_payment_intent():
     elif payment_intent_id and not booking_id:
         # 新流程：还没有Payment记录，不需要更新（支付成功后会创建）
         current_app.logger.info(
-            "Payment intent updated (new flow) payment_intent_id=%s funding=%s brand=%s base=%s fee=%s final=%s",
+            "Payment intent updated (new flow) payment_intent_id=%s funding=%s brand=%s pm_type=%s base=%s fee=%s final=%s",
             payment_intent_id,
             funding,
             brand,
+            pm_type,
             base_amount_cents,
             fee_cents,
             final_amount_cents
         )
     else:
         current_app.logger.info(
-            "Payment intent updated installment_id=%s pi=%s funding=%s brand=%s base=%s fee=%s final=%s",
+            "Payment intent updated installment_id=%s pi=%s funding=%s brand=%s pm_type=%s base=%s fee=%s final=%s",
             installment.id if installment else None,
             payment_intent_id,
             funding,
             brand,
+            pm_type,
             base_amount_cents,
             fee_cents,
             final_amount_cents
@@ -1604,7 +1740,7 @@ def api_payment_intent():
         ).first()
         if payment:
             payment.payment_method_id = payment_method_id
-            payment.payment_method_type = 'card'
+            payment.payment_method_type = pm_type if pm_type != 'unknown' else 'card'
             payment.funding = funding
             payment.brand = brand
             payment.base_amount_cents = base_amount_cents
@@ -1618,6 +1754,8 @@ def api_payment_intent():
     return jsonify({
         'payment_intent_id': payment_intent_id,
         'final_amount': final_amount_cents,
+        'payment_method_type': pm_type,
+        'fee': fee_cents,
     })
 
 
@@ -2252,6 +2390,13 @@ def api_payment_status():
                 time.sleep(0.5)
                 payment = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
                 if not payment:
+                    created_id = (pending_booking.booking_data or {}).get('created_booking_id')
+                    if created_id:
+                        return jsonify({
+                            'status': 'processing',
+                            'booking_id': created_id,
+                            'payment_intent_id': payment_intent_id,
+                        }), 200
                     # 仍在处理中，返回 pending
                     return jsonify({'status': 'pending', 'payment_intent_id': payment_intent_id}), 200
             elif pending_booking.status == 'pending':
@@ -2282,6 +2427,31 @@ def api_payment_status():
                             payment = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
                     else:
                         current_app.logger.info(f"Payment for {payment_intent_id} already exists (created by webhook)")
+                elif intent and intent_status == 'processing':
+                    # ACH submitted: create processing booking if webhook lagging
+                    try:
+                        # intent may be Stripe object; convert-like via retrieve dict path
+                        handle_payment_intent_processing(
+                            intent if isinstance(intent, dict) else intent.to_dict()
+                            if hasattr(intent, 'to_dict') else {
+                                'id': getattr(intent, 'id', payment_intent_id),
+                                'amount': getattr(intent, 'amount', 0),
+                                'currency': getattr(intent, 'currency', 'usd'),
+                                'metadata': dict(getattr(intent, 'metadata', None) or {}),
+                                'payment_method_types': list(getattr(intent, 'payment_method_types', None) or []),
+                            }
+                        )
+                    except Exception as e:
+                        db.session.rollback()
+                        current_app.logger.warning(f"ACH processing fallback failed: {e}")
+                    payment = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
+                    if payment and payment.status == 'processing':
+                        return jsonify({
+                            'status': 'processing',
+                            'booking_id': payment.booking_id,
+                            'payment_intent_id': payment_intent_id,
+                        }), 200
+                    return jsonify({'status': 'processing', 'payment_intent_id': payment_intent_id}), 200
                 elif intent and intent_status in {'requires_payment_method', 'canceled', 'requires_action'}:
                     # 支付失败或需要操作
                     payload = {
@@ -2315,7 +2485,7 @@ def api_payment_status():
         return jsonify({'status': 'pending', 'payment_intent_id': payment_intent_id}), 200
 
     # 如果Payment状态是pending，再次检查Stripe状态（Stripe SDK 返回对象用 getattr 取 status）
-    if payment.status == 'pending' and payment.stripe_payment_intent_id:
+    if payment.status in ('pending', 'processing') and payment.stripe_payment_intent_id:
         intent = retrieve_payment_intent(payment.stripe_payment_intent_id)
         intent_status = getattr(intent, 'status', None) if intent else None
         if intent and intent_status == 'succeeded':
@@ -2325,8 +2495,27 @@ def api_payment_status():
             except Exception as e:
                 db.session.rollback()
                 current_app.logger.warning(f"Error handling payment (may already be processed): {str(e)}")
+        elif intent and intent_status == 'processing' and payment.status != 'processing':
+            try:
+                handle_payment_intent_processing(
+                    intent if isinstance(intent, dict) else (
+                        intent.to_dict() if hasattr(intent, 'to_dict') else {
+                            'id': getattr(intent, 'id', payment.stripe_payment_intent_id),
+                            'amount': getattr(intent, 'amount', 0),
+                            'currency': getattr(intent, 'currency', 'usd'),
+                            'metadata': dict(getattr(intent, 'metadata', None) or {}),
+                            'payment_method_types': list(getattr(intent, 'payment_method_types', None) or []),
+                        }
+                    )
+                )
+            except Exception as e:
+                db.session.rollback()
+                current_app.logger.warning(f"ACH processing sync failed: {e}")
         elif intent and intent_status in {'requires_payment_method', 'canceled'}:
             payment.status = 'failed'
+            booking = Booking.query.get(payment.booking_id) if payment.booking_id else None
+            if booking and booking.status == 'processing':
+                booking.status = 'cancelled'
             db.session.commit()
 
     # 重新查询以获取最新状态
@@ -2759,6 +2948,10 @@ def pay_installment(installment_id):
             token=generate_receipt_token(installment.booking_id),
         ))
 
+    # Webhook 滞后：同步 Stripe processing → 本地 Payment
+    if installment.payment_intent_id:
+        _sync_ach_processing_from_pi(installment.payment_intent_id)
+
     # 获取该预订的所有分期付款记录（用于显示付款进度）
     all_installments = InstallmentPayment.query.filter_by(
         booking_id=booking.id
@@ -2779,7 +2972,7 @@ def pay_installment(installment_id):
         installment, post_deposit_count=post_deposit_count
     )
     base_amount_cents = sum(int(i.get('amount_cents') or 0) for i in summary_items)
-    if base_amount_cents <= 0:
+    if base_amount_cents <= 0 and not booking_has_processing_ach_payment(booking.id):
         return redirect(url_for(
             'main.booking_success',
             booking_id=booking.id,
@@ -2792,6 +2985,7 @@ def pay_installment(installment_id):
     show_payoff = bool(
         remaining_amount_cents > 0
         and installment_has_other_unpaid(installment, all_installments)
+        and not booking_has_processing_ach_payment(booking.id)
     )
     installment_label = installment_display_label(
         installment,
@@ -2805,6 +2999,29 @@ def pay_installment(installment_id):
             installment_label = f'{first}–#{last.split("#")[-1]}'
         else:
             installment_label = ' + '.join(labels)
+
+    # ACH 清算中：禁止新建 PI / 二次付款，直接展示 Processing
+    if booking_has_processing_ach_payment(booking.id):
+        proc = find_processing_ach_covering_installment(installment)
+        if not proc:
+            procs = iter_processing_payments_for_booking(booking.id)
+            proc = procs[0] if procs else None
+        pi_id = (
+            (proc.stripe_payment_intent_id if proc else None)
+            or installment.payment_intent_id
+        )
+        return _render_installment_ach_locked(
+            booking=booking,
+            installment=installment,
+            installment_label=installment_label,
+            all_installments=all_installments,
+            base_amount_cents=base_amount_cents,
+            summary_items=summary_items,
+            payment_step=payment_step,
+            token=token,
+            pi_id=pi_id,
+            proc=proc,
+        )
 
     installment_metadata = build_booking_metadata(booking, {
         'payment_flow': 'installment',
@@ -2821,6 +3038,25 @@ def pay_installment(installment_id):
         # 旧单期 PI / 补齐集合变化 → 取消并重建（已含卡费的 PI 用 metadata.base_amount 比对）
         if payment_intent is not None:
             status = getattr(payment_intent, 'status', None) or ''
+            # 已在 ACH processing：绝不可 cancel/rebuild
+            if status == 'processing':
+                _sync_ach_processing_from_pi(getattr(payment_intent, 'id', None))
+                proc = find_processing_ach_covering_installment(installment)
+                if not proc:
+                    procs = iter_processing_payments_for_booking(booking.id)
+                    proc = procs[0] if procs else None
+                return _render_installment_ach_locked(
+                    booking=booking,
+                    installment=installment,
+                    installment_label=installment_label,
+                    all_installments=all_installments,
+                    base_amount_cents=base_amount_cents,
+                    summary_items=summary_items,
+                    payment_step=payment_step,
+                    token=token,
+                    pi_id=getattr(payment_intent, 'id', None),
+                    proc=proc,
+                )
             pi_meta = dict(getattr(payment_intent, 'metadata', None) or {})
             need_rebuild = status in ('succeeded', 'canceled')
             if not need_rebuild:
@@ -2935,6 +3171,7 @@ def pay_installment(installment_id):
         remaining_amount_cents=remaining_amount_cents if show_payoff else 0,
         show_payoff=show_payoff,
         payoff_url=url_for('main.pay_installment_payoff', installment_id=installment.id, token=token) if show_payoff else None,
+        ach_processing_locked=False,
     )
 
 
@@ -3266,6 +3503,16 @@ def pay_installment_payoff(installment_id):
             token=generate_receipt_token(booking.id),
         ))
 
+    # ACH 清算中：禁止 payoff 新建扣款，回到分期页 Processing 态
+    if installment.payment_intent_id:
+        _sync_ach_processing_from_pi(installment.payment_intent_id)
+    if booking_has_processing_ach_payment(booking.id):
+        return redirect(url_for(
+            'main.pay_installment',
+            installment_id=installment.id,
+            token=token,
+        ))
+
     from app.payments import booking_payoff_due
     remaining_amount = booking_payoff_due(booking)
     if remaining_amount <= 0:
@@ -3389,6 +3636,8 @@ def stripe_webhook():
     try:
         if event_type == 'checkout.session.completed':
             handle_checkout_completed(event['data']['object'])
+        elif event_type == 'payment_intent.processing':
+            handle_payment_intent_processing(event['data']['object'])
         elif event_type == 'payment_intent.succeeded':
             handle_booking_payment_intent_succeeded(event['data']['object'])
             handle_payment_intent_succeeded(event['data']['object'])
@@ -3568,7 +3817,15 @@ def _create_booking_from_metadata(payment_intent_id):
             status='completed'
         ).first()
         if completed_pending:
-            # 已处理过，尝试找到对应的 Booking
+            # 已处理过，优先用 processing 时写入的 booking id
+            created_id = (completed_pending.booking_data or {}).get('created_booking_id')
+            if created_id:
+                booking = Booking.query.get(created_id)
+                if booking:
+                    current_app.logger.info(
+                        f"PendingBooking already completed for {payment_intent_id}, found booking {booking.id}"
+                    )
+                    return booking
             booking = Booking.query.filter_by(trip_id=completed_pending.trip_id).order_by(Booking.id.desc()).first()
             if booking:
                 current_app.logger.info(f"PendingBooking already completed for {payment_intent_id}, found booking {booking.id}")
@@ -3621,7 +3878,7 @@ def _create_booking_from_metadata(payment_intent_id):
         if package.capacity:
             spots_sold = BookingPackage.query.filter(
                 BookingPackage.package_id == package.id,
-                BookingPackage.status.in_(['deposit_paid', 'fully_paid'])
+                BookingPackage.status.in_(['pending', 'processing', 'deposit_paid', 'fully_paid'])
             ).with_entities(
                 db.func.sum(BookingPackage.quantity)
             ).scalar() or 0
@@ -3787,6 +4044,202 @@ def _create_booking_from_metadata(payment_intent_id):
     return booking
 
 
+def _payment_method_type_from_intent(payment_intent, metadata=None):
+    """Prefer metadata; fall back to Stripe PaymentIntent.payment_method types."""
+    meta = metadata if metadata is not None else (payment_intent.get('metadata') or {})
+    pm_type = (meta.get('payment_method_type') or '').strip()
+    if pm_type in ('card', 'us_bank_account'):
+        return pm_type
+    # Stripe object may expose payment_method_types
+    types = payment_intent.get('payment_method_types') or []
+    if 'us_bank_account' in types and 'card' not in types:
+        return 'us_bank_account'
+    if meta.get('funding') == 'ach':
+        return 'us_bank_account'
+    return pm_type or 'card'
+
+
+def handle_payment_intent_processing(payment_intent):
+    """
+    ACH (and similar async methods): bank debit accepted but not settled yet.
+    Create Booking shell + Payment(status=processing) so PendingBooking (24h) is not lost.
+    Do NOT mark paid or create installments.
+    Sends a processing notice email (no receipt PDF); confirmation+receipt on succeeded.
+    """
+    def _parse_int(value):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    payment_intent_id = payment_intent['id']
+    metadata = payment_intent.get('metadata', {}) or {}
+    pm_type = _payment_method_type_from_intent(payment_intent, metadata)
+
+    existing = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
+    if existing and existing.status == 'succeeded':
+        current_app.logger.info(
+            "Payment Intent %s already succeeded, skip processing handler",
+            payment_intent_id,
+        )
+        return
+    if existing and existing.status == 'processing':
+        # 幂等：若上次邮件失败，允许补发一次
+        booking_retry = Booking.query.get(existing.booking_id) if existing.booking_id else None
+        if booking_retry:
+            is_new = (booking_retry.status or '') == 'processing'
+            try:
+                send_order_processing_email(
+                    booking_retry, existing, is_new_order=is_new
+                )
+            except Exception as e:
+                current_app.logger.warning(
+                    "ACH processing notice retry failed for %s: %s",
+                    payment_intent_id,
+                    e,
+                )
+        current_app.logger.info(
+            "Payment Intent %s already processing, skip status update",
+            payment_intent_id,
+        )
+        return
+
+    # Installment / payoff on an existing booking: only mark Payment processing
+    installment = InstallmentPayment.query.filter_by(payment_intent_id=payment_intent_id).first()
+    booking_id = metadata.get('booking_id')
+    booking = None
+    if booking_id:
+        try:
+            booking = Booking.query.get(int(booking_id))
+        except (ValueError, TypeError):
+            booking = None
+    if installment and installment.booking_id and not booking:
+        booking = Booking.query.get(installment.booking_id)
+
+    total_amount_cents = payment_intent.get('amount', 0) or 0
+    base_amount_cents = _parse_int(metadata.get('base_amount'))
+    fee_cents = _parse_int(metadata.get('fee')) or 0
+    tax_amount_cents = _parse_int(metadata.get('tax_amount')) or 0
+    final_amount_cents = _parse_int(metadata.get('final_amount'))
+    funding = metadata.get('funding') or ('ach' if pm_type == 'us_bank_account' else None)
+    brand = metadata.get('brand') or ('us_bank' if pm_type == 'us_bank_account' else None)
+    if final_amount_cents is None:
+        final_amount_cents = total_amount_cents
+    if base_amount_cents is None:
+        base_amount_cents = max(0, total_amount_cents - fee_cents)
+    total_amount = total_amount_cents / 100.0
+
+    if booking and (installment or metadata.get('payment_step') == 'payoff' or metadata.get('payment_flow') == 'installment'):
+        payment = existing
+        if not payment:
+            payment = Payment(
+                booking_id=booking.id,
+                client_id=booking.client_id,
+                trip_id=booking.trip_id,
+                amount=total_amount,
+                stripe_payment_intent_id=payment_intent_id,
+                status='processing',
+                currency=(payment_intent.get('currency') or 'usd').upper(),
+                payment_metadata=metadata,
+                installment_payment_id=installment.id if installment else None,
+            )
+            db.session.add(payment)
+        else:
+            if payment.status != 'succeeded':
+                payment.status = 'processing'
+            payment.amount = total_amount
+            payment.payment_metadata = metadata
+        payment.payment_method_type = pm_type
+        payment.funding = funding
+        payment.brand = brand
+        payment.base_amount_cents = base_amount_cents
+        payment.fee_cents = fee_cents
+        payment.tax_amount_cents = tax_amount_cents
+        payment.final_amount_cents = final_amount_cents
+        if metadata.get('payment_method_id'):
+            payment.payment_method_id = metadata.get('payment_method_id')
+        db.session.commit()
+        current_app.logger.info(
+            "ACH processing: payment %s for existing booking %s (installment/payoff)",
+            payment_intent_id,
+            booking.id,
+        )
+        try:
+            send_order_processing_email(booking, payment, is_new_order=False)
+        except Exception as e:
+            current_app.logger.warning(
+                "ACH processing notice failed for booking %s: %s", booking.id, e
+            )
+        return
+
+    # First booking payment (PendingBooking → Booking shell)
+    booking = _create_booking_from_metadata(payment_intent_id)
+    if not booking:
+        current_app.logger.error(
+            "ACH processing: failed to create booking from PendingBooking for %s",
+            payment_intent_id,
+        )
+        return
+
+    booking.status = 'processing'
+    booking.amount_paid = booking.amount_paid or 0.0
+    for bp in booking.booking_packages.all():
+        if bp.status == 'pending':
+            bp.status = 'processing'
+
+    pending_booking = PendingBooking.query.filter_by(payment_intent_id=payment_intent_id).first()
+    if pending_booking:
+        pending_booking.status = 'completed'
+        data = dict(pending_booking.booking_data or {})
+        data['created_booking_id'] = booking.id
+        pending_booking.booking_data = data
+
+    payment = existing
+    if not payment:
+        payment = Payment(
+            booking_id=booking.id,
+            client_id=booking.client_id,
+            trip_id=booking.trip_id,
+            amount=total_amount,
+            stripe_payment_intent_id=payment_intent_id,
+            status='processing',
+            currency=(payment_intent.get('currency') or 'usd').upper(),
+            payment_metadata=metadata,
+        )
+        db.session.add(payment)
+    else:
+        if payment.status != 'succeeded':
+            payment.status = 'processing'
+        payment.booking_id = booking.id
+        payment.client_id = booking.client_id
+        payment.trip_id = booking.trip_id
+        payment.amount = total_amount
+        payment.payment_metadata = metadata
+
+    payment.payment_method_type = pm_type
+    payment.funding = funding
+    payment.brand = brand
+    payment.base_amount_cents = base_amount_cents
+    payment.fee_cents = fee_cents
+    payment.tax_amount_cents = tax_amount_cents
+    payment.final_amount_cents = final_amount_cents
+    if metadata.get('payment_method_id'):
+        payment.payment_method_id = metadata.get('payment_method_id')
+
+    db.session.commit()
+    current_app.logger.info(
+        "ACH processing: created booking %s for payment_intent %s",
+        booking.id,
+        payment_intent_id,
+    )
+    try:
+        send_order_processing_email(booking, payment, is_new_order=True)
+    except Exception as e:
+        current_app.logger.warning(
+            "ACH processing notice failed for booking %s: %s", booking.id, e
+        )
+
+
 def handle_booking_payment_intent_succeeded(payment_intent):
     """
     处理 Payment Intent 成功事件（站内 Payment Element 全额/定金）
@@ -3818,7 +4271,7 @@ def handle_booking_payment_intent_succeeded(payment_intent):
         handle_payment_intent_succeeded(payment_intent)
         return
     
-    # 检查是否已有Booking（通过booking_id）
+    # 检查是否已有Booking（通过booking_id）；ACH processing 可能已建单
     booking_id = metadata.get('booking_id')
     booking = None
     
@@ -3828,6 +4281,11 @@ def handle_booking_payment_intent_succeeded(payment_intent):
             booking = Booking.query.get(booking_id)
         except (ValueError, TypeError):
             pass
+
+    # Prefer Payment row created at processing (has booking_id)
+    existing_any = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
+    if not booking and existing_any and existing_any.booking_id:
+        booking = Booking.query.get(existing_any.booking_id)
     
     # 如果没有Booking，从PendingBooking表创建（首次支付）
     if not booking:
@@ -3840,6 +4298,9 @@ def handle_booking_payment_intent_succeeded(payment_intent):
         pending_booking = PendingBooking.query.filter_by(payment_intent_id=payment_intent_id).first()
         if pending_booking:
             pending_booking.status = 'completed'
+            data = dict(pending_booking.booking_data or {})
+            data['created_booking_id'] = booking.id
+            pending_booking.booking_data = data
         
         current_app.logger.info(f"Created booking {booking.id} from PendingBooking for payment_intent {payment_intent_id}")
 
@@ -3850,6 +4311,7 @@ def handle_booking_payment_intent_succeeded(payment_intent):
     final_amount_cents = _parse_int(metadata.get('final_amount'))
     funding = metadata.get('funding')
     brand = metadata.get('brand')
+    pm_type = _payment_method_type_from_intent(payment_intent, metadata)
     
     # 计算基础金额（不含手续费）：优先使用 metadata 中的 base_amount，否则从总金额减去 fee
     if base_amount_cents is not None:
@@ -3882,6 +4344,7 @@ def handle_booking_payment_intent_succeeded(payment_intent):
         payment.amount = total_amount
         payment.currency = payment_intent.get('currency', 'usd').upper()
         payment.payment_metadata = metadata
+        payment.booking_id = booking.id
     
     if base_amount_cents is not None:
         payment.base_amount_cents = base_amount_cents
@@ -3895,6 +4358,9 @@ def handle_booking_payment_intent_succeeded(payment_intent):
         payment.funding = funding
     if brand:
         payment.brand = brand
+    payment.payment_method_type = pm_type
+    if metadata.get('payment_method_id'):
+        payment.payment_method_id = metadata.get('payment_method_id')
 
     charge_id = extract_stripe_charge_id(payment_intent)
     if charge_id and not payment.stripe_charge_id:
@@ -4115,7 +4581,8 @@ def handle_payment_intent_succeeded(payment_intent):
 
 def handle_payment_intent_failed(payment_intent):
     """
-    处理 Payment Intent 失败事件
+    处理 Payment Intent 失败事件。
+    ACH：若 Booking 仍为 processing，取消订单以释放名额。
     """
     payment_intent_id = payment_intent['id']
     err_msg = payment_intent_error_message(payment_intent)
@@ -4128,9 +4595,18 @@ def handle_payment_intent_failed(payment_intent):
     payment = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
     if payment and payment.status != 'succeeded':
         payment.status = 'failed'
+        booking = Booking.query.get(payment.booking_id) if payment.booking_id else None
+        if booking and booking.status == 'processing':
+            booking.status = 'cancelled'
+            for bp in booking.booking_packages.all():
+                if bp.status == 'processing':
+                    bp.status = 'pending'
+            current_app.logger.info(
+                "Cancelled processing booking %s after ACH failure for %s",
+                booking.id,
+                payment_intent_id,
+            )
         db.session.commit()
-
-    # 通常不需要更新 Booking 状态（支付未成功）；对客原因由前端 Stripe error / status API 展示
 
 
 def handle_refund(charge_data):
@@ -4368,6 +4844,104 @@ def _receipt_pdf_attachment(booking, payment_id=None):
     except Exception as e:
         current_app.logger.exception(f'receipt PDF attachment failed for booking {getattr(booking, "id", "?")}: {e}')
         return None
+
+
+def send_order_processing_email(booking, payment=None, *, is_new_order=False):
+    """
+    ACH 进入 processing：通知客户订单/付款已受理（不附收据 PDF）。
+    is_new_order=True：首次报名建单；False：分期 / payoff 等后续付款。
+    """
+    if not booking or not booking.buyer_email:
+        current_app.logger.warning(
+            'processing email skipped: missing booking/email (booking=%s)',
+            getattr(booking, 'id', None),
+        )
+        return False
+
+    meta = dict((payment.payment_metadata if payment else None) or {})
+    if str(meta.get('processing_notice_sent') or '') == '1':
+        return True
+
+    trip_title = booking.trip.title if booking.trip else 'Trip Booking'
+    order_number = booking.order_number or booking.id
+    customer_name = (booking.buyer_first_name or '').strip() or 'Customer'
+
+    amount = None
+    if payment is not None:
+        if payment.final_amount_cents is not None:
+            amount = int(payment.final_amount_cents) / 100.0
+        elif payment.amount is not None:
+            amount = float(payment.amount)
+
+    if is_new_order:
+        subject = f"Order received — payment processing - {trip_title}"
+        intro_text = (
+            f"We created your order ({order_number}). Your US bank account (ACH) payment "
+            "was submitted and is now Processing. Bank transfers usually take several business days."
+        )
+    else:
+        subject = f"Payment processing - {trip_title}"
+        intro_text = (
+            f"We received your payment for order {order_number}. Your US bank account (ACH) "
+            "payment is now Processing. Bank transfers usually take several business days."
+        )
+
+    context = {
+        'subject_line': subject,
+        'customer_name': customer_name,
+        'intro_text': intro_text,
+        'order_number': order_number,
+        'trip_title': trip_title,
+        'amount': amount,
+        'email_logo_url': _email_brand_logo_url(),
+        'footer_note': (
+            'This is not a payment confirmation or receipt. '
+            'You will receive those after the transfer clears.'
+        ),
+    }
+
+    html_body = render_template('emails/order_processing.html', **context)
+    text_body = render_template('emails/order_processing.txt', **context)
+    sender = (
+        current_app.config.get('SENDER_EMAIL')
+        or current_app.config.get('RECIPIENT_EMAIL')
+        or 'nhtours-noreply@nhtours.com'
+    )
+    success, detail = send_email_via_ses(
+        sender,
+        booking.buyer_email,
+        subject,
+        html_body,
+        text_body,
+    )
+    if not success:
+        current_app.logger.error(
+            'Processing notice email failed for booking %s: %s',
+            booking.id,
+            detail,
+        )
+        return False
+
+    if payment is not None:
+        updated = dict(payment.payment_metadata or {})
+        updated['processing_notice_sent'] = '1'
+        payment.payment_metadata = updated
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.warning(
+                'Could not mark processing_notice_sent on payment %s: %s',
+                getattr(payment, 'id', None),
+                e,
+            )
+
+    current_app.logger.info(
+        'Processing notice email sent for booking %s (new_order=%s)',
+        booking.id,
+        is_new_order,
+    )
+    return True
 
 
 def send_booking_confirmation_email(booking, is_full_payment):

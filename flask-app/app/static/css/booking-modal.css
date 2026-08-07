@@ -1255,3 +1255,71 @@ body.installment-modal-page #booking-modal #place-order-btn {
 #booking-modal .participant-file-status.is-error {
   color: #b91c1c;
 }
+
+/* 付款结果态：保高度 + 淡入，避免 Confirm 后弹窗突然变塌 */
+#booking-modal .booking-modal-result {
+  min-height: 280px;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+#booking-modal .booking-modal-result.is-visible {
+  opacity: 1;
+}
+#booking-modal .booking-result-state {
+  min-height: 0;
+  animation: booking-result-fade-in 0.2s ease;
+}
+@keyframes booking-result-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 结果态图标：与成功绿 / 失败红同级的明确色（不依赖 Tailwind 工具类是否被裁掉） */
+#booking-modal .booking-result-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#booking-modal .booking-result-icon svg {
+  width: 3rem;
+  height: 3rem;
+}
+#booking-modal #booking-result-success .booking-result-icon,
+#booking-modal #booking-result-success .rounded-full.bg-green-100 {
+  background-color: #dcfce7 !important;
+}
+#booking-modal #booking-result-success .rounded-full.bg-green-100 svg,
+#booking-modal #booking-result-success .text-green-600 {
+  color: #16a34a !important;
+  stroke: #16a34a !important;
+}
+#booking-modal .booking-result-icon--processing {
+  background-color: #fef3c7 !important;
+}
+#booking-modal .booking-result-icon--processing svg {
+  color: #d97706 !important;
+  stroke: #d97706 !important;
+}
+#booking-modal #booking-result-processing .booking-result-title,
+#booking-modal #booking-result-success h2 {
+  color: #111827 !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+  font-weight: 700 !important;
+}
+#booking-modal #booking-result-processing .booking-result-copy {
+  color: #4b5563 !important;
+  font-size: 1rem !important;
+  line-height: 1.5 !important;
+  max-width: 28rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+

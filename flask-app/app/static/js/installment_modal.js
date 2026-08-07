@@ -41,6 +41,7 @@
     const remainingAmountCents = config.remainingAmountCents || 0;
     const paymentStep = config.paymentStep || 'installment';
     const previewOnly = config.previewOnly === true;
+    const achProcessingLocked = config.achProcessingLocked === true;
 
     const messageEl = document.getElementById('payment-message');
     const placeOrderBtn = document.getElementById('place-order-btn');
@@ -50,11 +51,13 @@
     const btnBar = document.getElementById('booking-modal-btn-bar');
     const loadingEl = document.getElementById('booking-result-loading');
     const successEl = document.getElementById('booking-result-success');
+    const processingEl = document.getElementById('booking-result-processing');
     const failureEl = document.getElementById('booking-result-failure');
     const receiptLink = document.getElementById('booking-result-receipt-link');
     const receiptWrap = document.getElementById('booking-result-receipt-wrap');
     const tryAgainBtn = document.getElementById('booking-result-try-again-btn');
     const closeBtn = document.getElementById('booking-result-close-btn');
+    const processingCloseBtn = document.getElementById('booking-result-processing-close-btn');
     const homeUrl = (config.homeUrl || '/');
 
     let stripe = null;
@@ -153,24 +156,44 @@
         if (state === null) {
             resultWrap.classList.add('hidden');
             resultWrap.setAttribute('aria-hidden', 'true');
+            resultWrap.style.minHeight = '';
+            resultWrap.classList.remove('is-visible');
             formArea.classList.remove('hidden');
             btnBar.classList.remove('hidden');
             if (loadingEl) loadingEl.classList.add('hidden');
             if (successEl) successEl.classList.add('hidden');
+            if (processingEl) processingEl.classList.add('hidden');
             if (failureEl) failureEl.classList.add('hidden');
             return;
         }
+
+        var RESULT_HEIGHT_FLOOR = 280;
+        var leftInner = document.getElementById('booking-modal-left-inner');
+        var scrollEl = document.getElementById('booking-modal-scroll');
 
         formArea.classList.add('hidden');
         btnBar.classList.add('hidden');
         resultWrap.classList.remove('hidden');
         resultWrap.setAttribute('aria-hidden', 'false');
+        resultWrap.style.minHeight = RESULT_HEIGHT_FLOOR + 'px';
+        resultWrap.classList.remove('is-visible');
+        void resultWrap.offsetWidth;
+        resultWrap.classList.add('is-visible');
         if (loadingEl) loadingEl.classList.add('hidden');
         if (successEl) successEl.classList.add('hidden');
+        if (processingEl) processingEl.classList.add('hidden');
         if (failureEl) failureEl.classList.add('hidden');
 
         if (state === 'loading') {
             if (loadingEl) loadingEl.classList.remove('hidden');
+        } else if (state === 'processing') {
+            if (processingEl) processingEl.classList.remove('hidden');
+            var copyEl = document.getElementById('booking-result-processing-copy');
+            if (copyEl && data && data.locked) {
+                copyEl.innerHTML = 'A US bank account (ACH) payment for this order is already processing. Please wait until it clears before making another payment. Confirmation and receipt will follow by email.';
+            }
+            var payoffSec = document.getElementById('installment-payoff-section');
+            if (payoffSec) payoffSec.classList.add('hidden');
         } else if (state === 'success') {
             if (successEl) successEl.classList.remove('hidden');
             const bid = data && data.booking_id;
@@ -182,18 +205,29 @@
             } else if (receiptWrap) {
                 receiptWrap.classList.add('hidden');
             }
-            var payoffSec = document.getElementById('installment-payoff-section');
-            if (payoffSec) payoffSec.classList.add('hidden');
+            var payoffSecPaid = document.getElementById('installment-payoff-section');
+            if (payoffSecPaid) payoffSecPaid.classList.add('hidden');
         } else if (state === 'failure') {
             if (failureEl) failureEl.classList.remove('hidden');
             setFailureReason(
                 (data && (data.message || data.error_message || data.error)) || PAYMENT_FAILURE_FALLBACK
             );
         }
+
+        if (scrollEl && window.innerWidth >= 1024) {
+            var rightEl = document.getElementById('booking-modal-right');
+            requestAnimationFrame(function() {
+                var h = RESULT_HEIGHT_FLOOR;
+                if (leftInner) h = Math.max(h, leftInner.offsetHeight);
+                if (rightEl) h = Math.max(h, rightEl.offsetHeight);
+                scrollEl.style.minHeight = h + 'px';
+            });
+        }
     }
 
     function pollPaymentStatus(piId) {
         const statusUrl = '/api/payment/status?payment_intent_id=' + encodeURIComponent(piId);
+        var polls = 0;
         function poll() {
             fetch(statusUrl)
                 .then(function(res) { return res.json(); })
@@ -209,6 +243,14 @@
                         }
                         return;
                     }
+                    if (data.status === 'processing') {
+                        showResult('processing', { booking_id: data.booking_id });
+                        if (placeOrderBtn) {
+                            placeOrderBtn.disabled = false;
+                            placeOrderBtn.textContent = 'Confirm payment';
+                        }
+                        return;
+                    }
                     if (data.status === 'failed') {
                         showResult('failure', {
                             message: data.error_message || data.message || PAYMENT_FAILURE_FALLBACK
@@ -217,6 +259,11 @@
                             placeOrderBtn.disabled = false;
                             placeOrderBtn.textContent = 'Confirm payment';
                         }
+                        return;
+                    }
+                    polls += 1;
+                    if (polls > 45) {
+                        showResult('processing', { booking_id: data.booking_id || null });
                         return;
                     }
                     setTimeout(poll, 2000);
@@ -345,16 +392,21 @@
                 const result = await res.json();
                 if (!res.ok) throw new Error(result.error || 'Payment update failed');
 
-                const { error } = await stripe.confirmPayment({
+                const { error, paymentIntent } = await stripe.confirmPayment({
                     elements,
                     confirmParams: { return_url: successUrl },
+                    redirect: 'if_required',
                 });
 
                 if (error) {
                     showResult('failure', { error: error });
                 } else {
-                    var pi = paymentIntentId || (result && result.payment_intent_id);
-                    if (pi) {
+                    var pi = paymentIntentId || (result && result.payment_intent_id)
+                        || (paymentIntent && paymentIntent.id);
+                    if (paymentIntent && paymentIntent.status === 'processing') {
+                        showResult('processing', { booking_id: bookingId });
+                        if (pi) pollPaymentStatus(pi);
+                    } else if (pi) {
                         pollPaymentStatus(pi);
                     } else {
                         showResult('failure', {
@@ -406,7 +458,7 @@
                 },
             });
             paymentElement = elements.create('payment', {
-                paymentMethodOrder: ['card'],
+                paymentMethodOrder: ['card', 'us_bank_account'],
                 wallets: { applePay: 'never', googlePay: 'never' },
                 fields: { billingDetails: { name: 'auto', email: 'auto', phone: 'auto', address: 'auto' } },
             });
@@ -414,6 +466,11 @@
             setPaymentElementLoading(false);
 
             paymentElement.on('change', function(event) {
+                var hint = document.getElementById('ach-payment-hint');
+                if (hint) {
+                    var type = (event && event.value && event.value.type) || '';
+                    hint.classList.toggle('hidden', type !== 'us_bank_account');
+                }
                 if (!event.complete) {
                     lastPaymentMethodId = null;
                     lastQuote = null;
@@ -452,9 +509,21 @@
             window.location.href = homeUrl;
         });
     }
+    if (processingCloseBtn) {
+        processingCloseBtn.addEventListener('click', function() {
+            window.location.href = homeUrl;
+        });
+    }
 
     if (previewOnly) {
         setPaymentElementLoading(false);
+        if (placeOrderBtn) {
+            placeOrderBtn.disabled = true;
+            placeOrderBtn.textContent = 'Confirm payment';
+        }
+    } else if (achProcessingLocked) {
+        setPaymentElementLoading(false);
+        showResult('processing', { locked: true, booking_id: bookingId });
         if (placeOrderBtn) {
             placeOrderBtn.disabled = true;
             placeOrderBtn.textContent = 'Confirm payment';

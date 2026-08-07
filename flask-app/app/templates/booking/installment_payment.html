@@ -37,13 +37,16 @@
         <div class="lg:col-span-2 space-y-6">
             <div>
                 <h2 class="text-2xl font-medium text-zinc-800 mb-2 uppercase tracking-wide">Installment Payment</h2>
-                <p class="content mb-2">Card fees apply to credit cards: Visa/Mastercard 2.9%, AmEx 3.5%. Debit or prepaid cards have no fee.</p>
+                <p class="content mb-2">Card fees apply to credit cards: Visa/Mastercard 2.9%, AmEx 3.5%. Debit or prepaid cards have no fee. US bank account (ACH) has no card fee.</p>
+                <p id="ach-payment-hint" class="hidden text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-2" role="status">
+                    ACH bank transfers usually take several business days to complete. This payment will stay in <strong>Processing</strong> until confirmed.
+                </p>
                 <p class="text-sm text-zinc-500">Complete your payment below to finish this installment.</p>
             </div>
 
             {# 卡片详情 #}
             <div class="bg-white border border-zinc-300 rounded-xs p-6 space-y-4">
-                <h3 class="text-lg font-medium text-zinc-800">Card Details</h3>
+                <h3 class="text-lg font-medium text-zinc-800">Payment method</h3>
                 <div id="payment-element" class="rounded-xs p-3"></div>
                 <div id="payment-message" class="payment-failure-reason hidden" role="alert" style="max-width: none; margin: 0;"></div>
             </div>
@@ -146,5 +149,5 @@
         publishableKeyPreview: window.checkoutConfig.publishableKey ? window.checkoutConfig.publishableKey.substring(0, 20) + '...' : null
     });
 </script>
-<script src="{{ url_for('static', filename='js/payment.js') }}?v=pay-fail"></script>
+<script src="{{ url_for('static', filename='js/payment.js') }}?v=ach-1"></script>
 {% endblock %}

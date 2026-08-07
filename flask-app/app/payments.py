@@ -119,7 +119,9 @@ def create_payment_intent(amount, currency='usd', customer_id=None, metadata=Non
         payment_intent_params = {
             'amount': int(amount * 100),  # Stripe 使用最小货币单位
             'currency': currency,
-            'payment_method_types': ['card'],
+            # Explicit types only (card + ACH). Avoid automatic_payment_methods
+            # so Link / wallets do not appear unexpectedly.
+            'payment_method_types': ['card', 'us_bank_account'],
         }
         
         if customer_id:
@@ -259,23 +261,39 @@ def safe_cancel_payment_intent(payment_intent_id, reason=''):
 
 
 def retrieve_payment_method_card_details(payment_method_id):
+    """Back-compat: returns (funding, brand) for card PMs; ACH → ('ach', 'us_bank')."""
+    funding, brand, _pm_type = retrieve_payment_method_details(payment_method_id)
+    return funding, brand
+
+
+def retrieve_payment_method_details(payment_method_id):
+    """
+    Returns (funding, brand, payment_method_type).
+    us_bank_account → funding='ach', brand='us_bank', type='us_bank_account'
+    card → card funding/brand, type='card'
+    """
     stripe.api_key = current_app.config.get('STRIPE_SECRET_KEY')
     if not stripe.api_key:
         current_app.logger.error("STRIPE_SECRET_KEY not configured")
-        return "unknown", "unknown"
+        return "unknown", "unknown", "unknown"
     try:
         payment_method = stripe.PaymentMethod.retrieve(payment_method_id)
     except Exception:
-        return "unknown", "unknown"
+        return "unknown", "unknown", "unknown"
+
+    pm_type = getattr(payment_method, "type", None) or "unknown"
+    if pm_type == "us_bank_account":
+        return "ach", "us_bank", "us_bank_account"
 
     card = getattr(payment_method, "card", None)
     if not card:
-        return "unknown", "unknown"
+        return "unknown", "unknown", pm_type
 
-    return card.get("funding", "unknown"), card.get("brand", "unknown")
+    return card.get("funding", "unknown"), card.get("brand", "unknown"), "card"
 
 
 def calculate_fee(base_amount_cents, funding, brand):
+    # ACH / debit / prepaid / unknown: no credit-card surcharge
     if funding != "credit":
         return 0
     if brand == "amex":
@@ -473,6 +491,61 @@ def parse_catch_up_ids(metadata):
         except (TypeError, ValueError):
             continue
     return out
+
+
+def iter_processing_payments_for_booking(booking_id):
+    """订单上 status=processing 的 Payment（ACH 等异步清算中）。"""
+    from app.models import Payment
+
+    if not booking_id:
+        return []
+    return (
+        Payment.query.filter_by(booking_id=booking_id, status='processing')
+        .order_by(Payment.id.desc())
+        .all()
+    )
+
+
+def booking_has_processing_ach_payment(booking_id):
+    """订单是否有在途 ACH/异步付款（清算完成前禁止再发起分期/payoff）。"""
+    return bool(iter_processing_payments_for_booking(booking_id))
+
+
+def payment_covers_installment(payment, installment):
+    """该 Payment（含 catch-up / payoff）是否覆盖指定分期行。"""
+    if not payment or not installment:
+        return False
+    if getattr(payment, 'installment_payment_id', None) == getattr(installment, 'id', None):
+        return True
+    if getattr(payment, 'booking_id', None) != getattr(installment, 'booking_id', None):
+        return False
+    meta = dict(payment.payment_metadata or {})
+    step = (meta.get('payment_step') or '').strip().lower()
+    if step == 'payoff':
+        return True
+    if getattr(installment, 'id', None) in parse_catch_up_ids(meta):
+        return True
+    pi = getattr(payment, 'stripe_payment_intent_id', None)
+    if pi and getattr(installment, 'payment_intent_id', None) == pi:
+        return True
+    return False
+
+
+def find_processing_ach_covering_installment(installment):
+    """返回覆盖该分期的 processing Payment，否则 None。"""
+    if not installment:
+        return None
+    for payment in iter_processing_payments_for_booking(
+        getattr(installment, 'booking_id', None)
+    ):
+        if payment_covers_installment(payment, installment):
+            return payment
+    return None
+
+
+def installment_has_processing_ach(installment):
+    """该分期是否被在途 ACH 覆盖（提醒/逾期任务应跳过）。"""
+    return find_processing_ach_covering_installment(installment) is not None
 
 
 def payment_step_label(payment):

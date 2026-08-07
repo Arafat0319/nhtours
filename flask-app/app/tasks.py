@@ -211,7 +211,12 @@ def send_installment_reminders():
     若订单经济上已结清（amount_due <= 0），跳过催款并取消未付分期。
     """
     try:
-        from app.payments import calculate_booking_total, cancel_unpaid_installments
+        from app.payments import (
+            calculate_booking_total,
+            cancel_unpaid_installments,
+            booking_has_processing_ach_payment,
+            installment_has_processing_ach,
+        )
 
         today = pacific_today()
         sent_pre = 0
@@ -242,6 +247,15 @@ def send_installment_reminders():
             last = to_pacific_date(installment.reminder_sent_at)
             return bool(last and last >= today)
 
+        def _skip_ach_in_flight(installment):
+            """ACH 清算中：不发提醒、不标 overdue（避免催款与二次付款）。"""
+            if installment_has_processing_ach(installment):
+                return True
+            booking = installment.booking
+            if booking and booking_has_processing_ach_payment(booking.id):
+                return True
+            return False
+
         # 1. 3 天前提醒
         three_days_later = today + timedelta(days=3)
         installments_3days = (
@@ -255,6 +269,8 @@ def send_installment_reminders():
 
         for installment in installments_3days:
             if _booking_is_settled(installment.booking):
+                continue
+            if _skip_ach_in_flight(installment):
                 continue
             if send_installment_reminder_email(installment, days_until_due=3):
                 installment.reminder_sent = True
@@ -273,6 +289,8 @@ def send_installment_reminders():
         for installment in installments_1day:
             if _booking_is_settled(installment.booking):
                 continue
+            if _skip_ach_in_flight(installment):
+                continue
             if _already_reminded_pacific_today(installment):
                 continue
             if send_installment_reminder_email(installment, days_until_due=1):
@@ -290,6 +308,8 @@ def send_installment_reminders():
 
         for installment in installments_today:
             if _booking_is_settled(installment.booking):
+                continue
+            if _skip_ach_in_flight(installment):
                 continue
             if _already_reminded_pacific_today(installment):
                 continue
@@ -311,6 +331,8 @@ def send_installment_reminders():
 
         for installment in overdue_installments:
             if _booking_is_settled(installment.booking):
+                continue
+            if _skip_ach_in_flight(installment):
                 continue
             days_overdue = (today - installment.due_date).days
             should_send = False

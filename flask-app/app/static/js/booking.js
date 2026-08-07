@@ -559,17 +559,22 @@
 
         // 付款结果区：Close / Try Again
         var resultCloseBtn = document.getElementById('booking-result-close-btn');
+        var resultProcessingCloseBtn = document.getElementById('booking-result-processing-close-btn');
         var resultTryAgainBtn = document.getElementById('booking-result-try-again-btn');
+        function closeResultModal() {
+            prepareNewBooking({ keepFormData: false });
+            var m = document.getElementById('booking-modal');
+            if (m) {
+                m.classList.add('hidden');
+                document.documentElement.style.overflow = '';
+                document.body.style.overflow = '';
+            }
+        }
         if (resultCloseBtn) {
-            resultCloseBtn.addEventListener('click', function() {
-                prepareNewBooking({ keepFormData: false });
-                var m = document.getElementById('booking-modal');
-                if (m) {
-                    m.classList.add('hidden');
-                    document.documentElement.style.overflow = '';
-                    document.body.style.overflow = '';
-                }
-            });
+            resultCloseBtn.addEventListener('click', closeResultModal);
+        }
+        if (resultProcessingCloseBtn) {
+            resultProcessingCloseBtn.addEventListener('click', closeResultModal);
         }
         if (resultTryAgainBtn) {
             resultTryAgainBtn.addEventListener('click', function() {
@@ -2647,7 +2652,7 @@
                 },
             });
             paymentElementInstance = elementsInstance.create("payment", {
-                paymentMethodOrder: ["card"],
+                paymentMethodOrder: ["card", "us_bank_account"],
                 wallets: {
                     applePay: "never",
                     googlePay: "never",
@@ -2667,6 +2672,7 @@
             paymentElementInstance.mount("#payment-element");
 
             paymentElementInstance.on("change", (event) => {
+                updateAchPaymentHint(event);
                 if (!event.complete) {
                     lastPaymentMethodId = null;
                     lastQuote = null;
@@ -2885,18 +2891,25 @@
                 throw new Error(result.error || "Payment update failed");
             }
 
-            const { error } = await stripeInstance.confirmPayment({
+            const { error, paymentIntent } = await stripeInstance.confirmPayment({
                 elements: elementsInstance,
                 confirmParams: {
                     return_url: embeddedPaymentSession.success_url,
                 },
+                redirect: 'if_required',
             });
             if (error) {
                 showBookingModalResult('failure', { error: error });
             } else {
-                // 无重定向（无 3DS）时在当前页轮询状态并在弹窗内显示结果
-                const pi = embeddedPaymentSession.payment_intent_id;
-                if (pi) {
+                const pi = embeddedPaymentSession.payment_intent_id
+                    || (paymentIntent && paymentIntent.id);
+                if (paymentIntent && paymentIntent.status === 'processing') {
+                    showBookingModalResult('processing', {
+                        booking_id: null,
+                        payment_intent_id: pi,
+                    });
+                    if (pi) pollPaymentStatusThenShowResult(pi);
+                } else if (pi) {
                     pollPaymentStatusThenShowResult(pi);
                 } else {
                     showBookingModalResult('failure', {
@@ -2918,6 +2931,13 @@
         const el = document.getElementById('payment-element-loading');
         if (!el) return;
         el.setAttribute('aria-hidden', show ? 'false' : 'true');
+    }
+
+    function updateAchPaymentHint(event) {
+        var hint = document.getElementById('ach-payment-hint');
+        if (!hint) return;
+        var type = (event && event.value && event.value.type) || '';
+        hint.classList.toggle('hidden', type !== 'us_bank_account');
     }
 
     function resetEmbeddedPaymentSession() {
@@ -2994,10 +3014,12 @@
     /**
      * 桌面端（lg）下将 #booking-modal-scroll 的 minHeight 设为
      * max(#booking-modal-left-inner, #booking-modal-right)，避免右侧 Your Booking 被折叠。
-     * 先清空 minHeight 让左右列按内容自然高度 reflow，再测量并设置，否则会量到被撑高后的值导致越设越高。
-     * 仅当 viewport >= 1024px 时设置；否则清空 minHeight。
+     * 先清空 minHeight 让左右列按内容自然高度 reflow，再测量并设置。
+     * options.preserveMin：结果态用合理下限（如 280），按内容伸缩，不再锁死付款表单高度。
      */
-    function syncBookingModalBodyMinHeight() {
+    function syncBookingModalBodyMinHeight(options) {
+        options = options || {};
+        var preserveMin = Number(options.preserveMin) || 0;
         var scrollEl = document.getElementById('booking-modal-scroll');
         var leftInner = document.getElementById('booking-modal-left-inner');
         var rightEl = document.getElementById('booking-modal-right');
@@ -3012,10 +3034,13 @@
         }
         scrollEl.style.minHeight = '';
         requestAnimationFrame(function() {
-            var h = Math.max(leftInner.offsetHeight, rightEl.offsetHeight);
+            var h = Math.max(leftInner.offsetHeight, rightEl.offsetHeight, preserveMin);
             scrollEl.style.minHeight = h + 'px';
         });
     }
+
+    /** 结果态高度下限：防塌陷，但不沿用付款表单的超高 minHeight */
+    var BOOKING_RESULT_HEIGHT_FLOOR = 280;
 
     var PAYMENT_FAILURE_FALLBACK = 'Your payment could not be completed. Please try again.';
 
@@ -3066,6 +3091,7 @@
         const btnBar = document.getElementById('booking-modal-btn-bar');
         const loadingEl = document.getElementById('booking-result-loading');
         const successEl = document.getElementById('booking-result-success');
+        const processingEl = document.getElementById('booking-result-processing');
         const failureEl = document.getElementById('booking-result-failure');
         const receiptLink = document.getElementById('booking-result-receipt-link');
         const receiptWrap = document.getElementById('booking-result-receipt-wrap');
@@ -3074,10 +3100,13 @@
         if (state === null) {
             resultWrap.classList.add('hidden');
             resultWrap.setAttribute('aria-hidden', 'true');
+            resultWrap.style.minHeight = '';
+            resultWrap.classList.remove('is-visible');
             formArea.classList.remove('hidden');
             btnBar.classList.remove('hidden');
             if (loadingEl) loadingEl.classList.add('hidden');
             if (successEl) successEl.classList.add('hidden');
+            if (processingEl) processingEl.classList.add('hidden');
             if (failureEl) failureEl.classList.add('hidden');
             var amountPaidRow = document.getElementById('amount-paid-row');
             if (amountPaidRow) amountPaidRow.classList.add('hidden');
@@ -3097,12 +3126,19 @@
             return;
         }
 
+        // 结果态：按内容测高 + 合理下限，避免沿用付款表单高度造成大块空白
         formArea.classList.add('hidden');
         btnBar.classList.add('hidden');
         resultWrap.classList.remove('hidden');
         resultWrap.setAttribute('aria-hidden', 'false');
+        resultWrap.style.minHeight = BOOKING_RESULT_HEIGHT_FLOOR + 'px';
+        resultWrap.classList.remove('is-visible');
+        // 强制 reflow 后再加淡入，避免瞬间闪切
+        void resultWrap.offsetWidth;
+        resultWrap.classList.add('is-visible');
         if (loadingEl) loadingEl.classList.add('hidden');
         if (successEl) successEl.classList.add('hidden');
+        if (processingEl) processingEl.classList.add('hidden');
         if (failureEl) failureEl.classList.add('hidden');
 
         // 付款结果页：整块折扣 UI 不显示（输入 / 已应用 / Remove / 提示）
@@ -3117,6 +3153,8 @@
 
         if (state === 'loading') {
             if (loadingEl) loadingEl.classList.remove('hidden');
+        } else if (state === 'processing') {
+            if (processingEl) processingEl.classList.remove('hidden');
         } else if (state === 'success') {
             if (successEl) successEl.classList.remove('hidden');
             const bid = data && data.booking_id;
@@ -3136,7 +3174,7 @@
         }
         // 付款结果页：有 booking_id 时用接口拉取金额填充 Your Booking，否则用 updateOrderSummary；高亮 Payment 步骤
         requestAnimationFrame(function() {
-            syncBookingModalBodyMinHeight();
+            syncBookingModalBodyMinHeight({ preserveMin: BOOKING_RESULT_HEIGHT_FLOOR });
             var bid = state === 'success' && data && data.booking_id ? data.booking_id : null;
             if (bid) {
                 var summaryUrl = '/api/booking/' + bid + '/summary';
@@ -3180,10 +3218,13 @@
                             var onum = summary.order_number || bid;
                             receiptLink.href = summary.receipt_url || ('/booking/' + bid + '/receipt');
                             receiptLink.setAttribute('download', 'NHTours-Order-' + onum + '.pdf');
-                        }                    })
+                        }
+                        syncBookingModalBodyMinHeight({ preserveMin: BOOKING_RESULT_HEIGHT_FLOOR });
+                    })
                     .catch(function() { if (typeof updateOrderSummary === 'function') updateOrderSummary(); });
             } else {
                 if (typeof updateOrderSummary === 'function') updateOrderSummary();
+                syncBookingModalBodyMinHeight({ preserveMin: BOOKING_RESULT_HEIGHT_FLOOR });
             }
             var paymentStep = stepContainers.length;
             document.querySelectorAll('.modal-step-tab').forEach(function(tab) {
@@ -3197,6 +3238,7 @@
     /** 轮询支付状态，成功后显示结果在弹窗内 */
     function pollPaymentStatusThenShowResult(paymentIntentId) {
         const statusUrl = '/api/payment/status?payment_intent_id=' + encodeURIComponent(paymentIntentId);
+        var polls = 0;
         function poll() {
             fetch(statusUrl)
                 .then(function(res) { return res.json(); })
@@ -3211,12 +3253,30 @@
                         if (btn) { btn.disabled = false; btn.textContent = 'Confirm Booking'; }
                         return;
                     }
+                    if (data.status === 'processing') {
+                        showBookingModalResult('processing', {
+                            booking_id: data.booking_id,
+                            payment_intent_id: paymentIntentId || data.payment_intent_id
+                        });
+                        var btnP = submitButton || nextButton;
+                        if (btnP) { btnP.disabled = false; btnP.textContent = 'Confirm Booking'; }
+                        return;
+                    }
                     if (data.status === 'failed') {
                         showBookingModalResult('failure', {
                             message: data.error_message || data.message || PAYMENT_FAILURE_FALLBACK
                         });
                         var btn = submitButton || nextButton;
                         if (btn) { btn.disabled = false; btn.textContent = 'Confirm Booking'; }
+                        return;
+                    }
+                    polls += 1;
+                    if (polls > 45) {
+                        // After ~90s still pending: show processing tip (ACH may lag webhook)
+                        showBookingModalResult('processing', {
+                            booking_id: data.booking_id || null,
+                            payment_intent_id: paymentIntentId
+                        });
                         return;
                     }
                     setTimeout(poll, 2000);

@@ -130,6 +130,7 @@ class AdminBookingForm(FlaskForm):
     # Payment progress only; cancel via Cancel order API
     status = SelectField('Payment Status', choices=[
         ('pending', 'Pending'),
+        ('processing', 'Processing'),
         ('deposit_paid', 'Deposit Paid'),
         ('fully_paid', 'Fully Paid'),
     ], default='pending')
@@ -142,6 +143,7 @@ class EditBookingForm(FlaskForm):
     # Edit existing booking — payment progress only; cancel via Cancel order API
     status = SelectField('Payment Status', choices=[
         ('pending', 'Pending'),
+        ('processing', 'Processing'),
         ('deposit_paid', 'Deposit Paid'),
         ('fully_paid', 'Fully Paid'),
     ], validators=[DataRequired()])

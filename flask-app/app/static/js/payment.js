@@ -90,7 +90,7 @@ if (clientSecret && publishableKey) {
             },
         });
         paymentElement = elements.create("payment", {
-            paymentMethodOrder: ["card"],
+            paymentMethodOrder: ["card", "us_bank_account"],
             wallets: {
                 applePay: "never",
                 googlePay: "never",
@@ -105,6 +105,13 @@ if (clientSecret && publishableKey) {
             },
         });
         paymentElement.mount("#payment-element");
+        paymentElement.on("change", (event) => {
+            var hint = document.getElementById("ach-payment-hint");
+            if (hint) {
+                var type = (event && event.value && event.value.type) || "";
+                hint.classList.toggle("hidden", type !== "us_bank_account");
+            }
+        });
     } catch (error) {
         console.error("Failed to initialize Stripe Elements:", error);
         let errorMsg = "Payment is not ready. Please refresh the page.";
@@ -382,15 +389,24 @@ if (placeOrderButton) {
                 throw new Error(result.error || "Payment update failed");
             }
 
-            const { error } = await stripe.confirmPayment({
+            const { error, paymentIntent } = await stripe.confirmPayment({
                 elements,
                 confirmParams: {
                     return_url: successUrl,
                 },
+                redirect: "if_required",
             });
 
             if (error) {
                 showPaymentFailed(error);
+                return;
+            }
+            if (paymentIntent && paymentIntent.status === "processing") {
+                window.location.href = successUrl + (successUrl.indexOf("?") >= 0 ? "&" : "?") + "ach_processing=1";
+                return;
+            }
+            if (paymentIntent && paymentIntent.status === "succeeded") {
+                window.location.href = successUrl;
                 return;
             }
         } catch (err) {

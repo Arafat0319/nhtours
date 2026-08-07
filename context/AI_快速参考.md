@@ -58,8 +58,12 @@ POST /trips/<slug>（AJAX）
 POST /api/payment/quote     →  算价
 POST /api/payment/intent      →  仅更新已有 PI（卡费等），不创建 PendingBooking
 Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
+  （succeeded / payment_failed / **processing** / refund / checkout.completed）
 ```
 
+- PI：`payment_method_types=['card','us_bank_account']`；Element 同序；ACH 无卡费
+- ACH：`processing` 时建 Booking（防 PendingBooking 24h 过期）+ **受理邮件**；确认信+收据仅 `succeeded`
+- ACH 清算中：整单锁定（提醒跳过、分期页/API 不可再付）；规则见 `手册/ACH付款规则.md`
 - `PendingBooking.payment_intent_id`（可以是 `pi_…` 或 `free_…`）
 - 折扣抵「现在应付」；`$0` 勿建 Stripe PI
 - 未支付草稿：`expires_at=+24h`；03:00 cleanup → `expired` + `safe_cancel_payment_intent`
