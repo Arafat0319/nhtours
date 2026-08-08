@@ -8,16 +8,16 @@ from flask import current_app, render_template, url_for
 from sqlalchemy import or_, and_
 from app import db
 from app.models import Booking, InstallmentPayment, PendingBooking
-from app.utils import send_email_via_ses, generate_installment_token, pacific_today, to_pacific_date
+from app.utils import (
+    send_email_via_ses,
+    generate_installment_token,
+    pacific_today,
+    to_pacific_date,
+    _email_brand_logo_url,
+)
 
 # 未付分期：含 pending / overdue（逾期催款后会标 overdue，须继续可催）
 _UNPAID_INSTALLMENT_STATUSES = ('pending', 'overdue')
-
-
-def _email_brand_logo_url():
-    """催款/收据邮件页脚 logo（PNG；邮件客户端基本不支持 SVG）。"""
-    base = (current_app.config.get('BASE_URL') or '').rstrip('/') or 'https://nhtours.com'
-    return f'{base}/static/images/icons/nexus-horizons-email.png'
 
 
 def _installment_payment_link(installment):

@@ -9,6 +9,7 @@ from botocore.exceptions import ClientError
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
+from email.mime.image import MIMEImage
 from email.header import Header
 from email.utils import formataddr, parseaddr, formatdate, make_msgid
 from datetime import date, datetime, timezone
@@ -20,10 +21,93 @@ import json
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 
-def _email_brand_logo_url():
-    """收据 / 催款 / 线索通知等邮件页脚 logo。"""
+# 客户邮件页脚品牌图：CID 内嵌，不依赖邮箱「显示外部图片」
+EMAIL_BRAND_LOGO_CID = 'nh-brand-logo@nhtours.com'
+_EMAIL_BRAND_LOGO_REL = os.path.join('static', 'images', 'icons', 'nexus-horizons-email.png')
+
+
+def _email_brand_logo_path():
+    """仓库内邮件 logo 绝对路径；不存在则 None。"""
+    path = os.path.join(current_app.root_path, _EMAIL_BRAND_LOGO_REL)
+    return path if os.path.isfile(path) else None
+
+
+def _email_brand_logo_https_url():
+    """外链备用（文件缺失或非邮件场景）。"""
     base = (current_app.config.get('BASE_URL') or '').rstrip('/') or 'https://nhtours.com'
     return f'{base}/static/images/icons/nexus-horizons-email.png'
+
+
+def _email_brand_logo_url():
+    """
+    邮件 HTML 中 img src。
+    优先 CID 内嵌；本地无文件时回退 HTTPS（避免空图）。
+    """
+    if _email_brand_logo_path():
+        return f'cid:{EMAIL_BRAND_LOGO_CID}'
+    return _email_brand_logo_https_url()
+
+
+def _email_brand_logo_inline_attachment():
+    """供 SES Raw MIME 内嵌的 logo 附件 dict；失败返回 None。"""
+    path = _email_brand_logo_path()
+    if not path:
+        return None
+    try:
+        with open(path, 'rb') as f:
+            content = f.read()
+    except OSError as e:
+        current_app.logger.warning('email brand logo read failed: %s', e)
+        return None
+    if not content:
+        return None
+    return {
+        'filename': 'nexus-horizons-email.png',
+        'content': content,
+        'mime_maintype': 'image',
+        'mime_subtype': 'png',
+        'content_id': EMAIL_BRAND_LOGO_CID,
+        'disposition': 'inline',
+    }
+
+
+def _ensure_brand_logo_inline(attachments, html_body):
+    """HTML 引用 cid: 时自动附上内嵌 logo（幂等）。"""
+    html = html_body or ''
+    if f'cid:{EMAIL_BRAND_LOGO_CID}' not in html:
+        return list(attachments or [])
+    out = list(attachments or [])
+    if any((a.get('content_id') or '') == EMAIL_BRAND_LOGO_CID for a in out):
+        return out
+    part = _email_brand_logo_inline_attachment()
+    if part:
+        out.insert(0, part)
+    return out
+
+
+def _mime_attachment_part(att):
+    """把附件 dict 转成 MIME 部件；无效则 None。"""
+    raw = att.get('content') or b''
+    if not raw:
+        return None
+    filename = att.get('filename') or 'attachment.bin'
+    subtype = att.get('mime_subtype') or 'octet-stream'
+    maintype = (att.get('mime_maintype') or 'application').lower()
+    content_id = (att.get('content_id') or '').strip()
+    disposition = att.get('disposition') or ('inline' if content_id else 'attachment')
+
+    if maintype == 'image':
+        part = MIMEImage(raw, _subtype=subtype)
+    else:
+        part = MIMEApplication(raw, _subtype=subtype)
+
+    if content_id:
+        cid = content_id if content_id.startswith('<') else f'<{content_id}>'
+        part.add_header('Content-ID', cid)
+        part.add_header('Content-Disposition', disposition, filename=filename)
+    else:
+        part.add_header('Content-Disposition', 'attachment', filename=filename)
+    return part
 
 
 def render_branded_customer_message(
@@ -193,7 +277,9 @@ def send_email_via_ses(
         include_list_unsubscribe: 是否加 List-Unsubscribe。默认关闭——
             Gmail 常因此把信分到 Promotions；收据/行程通知等事务信不应带退订头。
         attachments: 可选附件列表，每项为 dict：
-            ``{'filename': 'x.pdf', 'content': bytes, 'mime_subtype': 'pdf'}``
+            ``{'filename': 'x.pdf', 'content': bytes, 'mime_subtype': 'pdf'}``；
+            内嵌图可加 ``content_id`` / ``disposition='inline'`` / ``mime_maintype='image'``。
+            HTML 含 ``cid:nh-brand-logo@nhtours.com`` 时会自动附上品牌 logo。
     
     Returns:
         tuple: (success: bool, message: str)
@@ -223,38 +309,7 @@ def send_email_via_ses(
         from_header = formataddr((display_name, email_addr)) if email_addr else sender
         domain = _email_domain(email_addr) or 'localhost'
 
-        attachments = attachments or []
-        # 有附件用 mixed；无附件保持 alternative（与旧行为一致）
-        if attachments:
-            message = MIMEMultipart('mixed')
-            body_root = MIMEMultipart('alternative')
-            message.attach(body_root)
-        else:
-            message = MIMEMultipart('alternative')
-            body_root = message
-
-        message['Subject'] = Header(subject or '', 'utf-8')
-        message['From'] = from_header
-        message['To'] = recipient
-        message['Date'] = formatdate(localtime=True)
-        message['Message-ID'] = make_msgid(domain=domain)
-
         effective_reply = _normalize_reply_to(email_addr, reply_to)
-        if effective_reply:
-            message['Reply-To'] = effective_reply
-
-        # List-Unsubscribe 仅在明确需要时开启（营销群发）；默认不加，减少进 Gmail Promotions
-        if include_list_unsubscribe:
-            unsub = (
-                current_app.config.get('REPLY_TO_EMAIL')
-                or current_app.config.get('RECIPIENT_EMAIL')
-                or email_addr
-            )
-            if unsub and '@' in unsub:
-                message['List-Unsubscribe'] = f'<mailto:{unsub}?subject=unsubscribe>'
-
-        # MIME-Version 由 MIMEMultipart 自带，勿再手动加（SES 会报 Duplicate header）
-        message['X-Mailer'] = 'Nexus Horizons Tours'
 
         plain = (text_body or '').strip() or 'Please view this email in an HTML-capable client.'
         footer_plain, footer_html = _email_brand_footer(email_addr, effective_reply)
@@ -273,18 +328,72 @@ def send_email_via_ses(
                 '</body></html>'
             )
 
-        body_root.attach(MIMEText(plain + footer_plain, 'plain', 'utf-8'))
-        body_root.attach(MIMEText(html_out, 'html', 'utf-8'))
+        attachments = _ensure_brand_logo_inline(attachments, html_out)
+        inline_atts = [
+            a for a in attachments
+            if (a.get('disposition') == 'inline') or a.get('content_id')
+        ]
+        file_atts = [
+            a for a in attachments
+            if not ((a.get('disposition') == 'inline') or a.get('content_id'))
+        ]
 
-        for att in attachments:
-            raw = att.get('content') or b''
-            if not raw:
-                continue
-            filename = att.get('filename') or 'attachment.pdf'
-            subtype = att.get('mime_subtype') or 'pdf'
-            part = MIMEApplication(raw, _subtype=subtype)
-            part.add_header('Content-Disposition', 'attachment', filename=filename)
-            message.attach(part)
+        # MIME：有内嵌图用 related；有普通附件外包 mixed
+        alt = MIMEMultipart('alternative')
+        if inline_atts and file_atts:
+            message = MIMEMultipart('mixed')
+            related = MIMEMultipart('related')
+            related.attach(alt)
+            for att in inline_atts:
+                part = _mime_attachment_part(att)
+                if part is not None:
+                    related.attach(part)
+            message.attach(related)
+            for att in file_atts:
+                part = _mime_attachment_part(att)
+                if part is not None:
+                    message.attach(part)
+        elif inline_atts:
+            message = MIMEMultipart('related')
+            message.attach(alt)
+            for att in inline_atts:
+                part = _mime_attachment_part(att)
+                if part is not None:
+                    message.attach(part)
+        elif file_atts:
+            message = MIMEMultipart('mixed')
+            message.attach(alt)
+            for att in file_atts:
+                part = _mime_attachment_part(att)
+                if part is not None:
+                    message.attach(part)
+        else:
+            message = alt
+
+        message['Subject'] = Header(subject or '', 'utf-8')
+        message['From'] = from_header
+        message['To'] = recipient
+        message['Date'] = formatdate(localtime=True)
+        message['Message-ID'] = make_msgid(domain=domain)
+
+        if effective_reply:
+            message['Reply-To'] = effective_reply
+
+        # List-Unsubscribe 仅在明确需要时开启（营销群发）；默认不加，减少进 Gmail Promotions
+        if include_list_unsubscribe:
+            unsub = (
+                current_app.config.get('REPLY_TO_EMAIL')
+                or current_app.config.get('RECIPIENT_EMAIL')
+                or email_addr
+            )
+            if unsub and '@' in unsub:
+                message['List-Unsubscribe'] = f'<mailto:{unsub}?subject=unsubscribe>'
+
+        # MIME-Version 由 MIMEMultipart 自带，勿再手动加（SES 会报 Duplicate header）
+        message['X-Mailer'] = 'Nexus Horizons Tours'
+
+        alt.attach(MIMEText(plain + footer_plain, 'plain', 'utf-8'))
+        alt.attach(MIMEText(html_out, 'html', 'utf-8'))
 
         # as_bytes 保留 PDF 等二进制附件；无附件时与 as_string 等价
         raw_data = message.as_bytes()

@@ -22,6 +22,7 @@ from app.utils import (
     load_receipt_token,
     save_booking_upload,
     format_pacific_date,
+    _email_brand_logo_url,
 )
 from app.models import (
     Trip, Client, Payment, Booking, db,
@@ -4813,12 +4814,6 @@ def _receipt_public_download_url(booking_id, payment_id=None):
     base = (current_app.config.get('BASE_URL') or '').rstrip('/') or 'https://nhtours.com'
     token = generate_receipt_token(booking_id, payment_id=payment_id)
     return f'{base}/booking/{int(booking_id)}/receipt?token={token}'
-
-
-def _email_brand_logo_url():
-    """收据邮件页脚品牌图（PNG；邮件客户端基本不支持 SVG）。"""
-    base = (current_app.config.get('BASE_URL') or '').rstrip('/') or 'https://nhtours.com'
-    return f'{base}/static/images/icons/nexus-horizons-email.png'
 
 
 def _receipt_pdf_attachment(booking, payment_id=None):
