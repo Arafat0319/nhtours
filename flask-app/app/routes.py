@@ -32,6 +32,8 @@ from app.models import (
 from sqlalchemy.orm import joinedload
 from app.forms import BookingForm
 from app.payments import (
+    booking_package_unit_price,
+    booking_addon_unit_price,
     create_checkout_session,
     calculate_booking_total,
     calculate_initial_payment_amount,
@@ -56,6 +58,7 @@ from app.payments import (
     booking_has_processing_ach_payment,
     find_processing_ach_covering_installment,
     iter_processing_payments_for_booking,
+    validate_package_payment_plan_type,
 )
 from datetime import datetime, date, timedelta
 
@@ -403,6 +406,22 @@ def north_america_canada():
     gallery_nums.sort()
     return render_template('north-america/canada.html', gallery_images=gallery_nums)
 
+@bp.route('/teacher/trips/<teacher_view_slug>')
+def teacher_trip_roster(teacher_view_slug):
+    """
+    老师只读报名名单：凭 Trip.teacher_view_slug 访问，无需登录。
+    无效 slug → 404（不区分「行程不存在」与「码错误」）。
+    """
+    slug = (teacher_view_slug or '').strip()
+    if not slug:
+        abort(404)
+    trip = Trip.query.filter_by(teacher_view_slug=slug).first_or_404()
+    from app.trip_roster import build_teacher_roster_context
+
+    ctx = build_teacher_roster_context(trip)
+    return render_template('teacher/trip_roster.html', **ctx)
+
+
 @bp.route('/trips/<slug>', methods=['GET', 'POST'])
 def trip_detail(slug):
     """
@@ -715,7 +734,10 @@ def handle_booking_submission(request, trip):
         if not buyer_info.get('email'):
             return jsonify({'success': False, 'error': 'Buyer email is required'}), 400
 
-        from app.booking_validation import validate_booking_payload
+        from app.booking_validation import (
+            validate_booking_payload,
+            validate_and_normalize_booking_packages,
+        )
         format_errors = validate_booking_payload(buyer_info, participants_data)
         if format_errors:
             return jsonify({
@@ -723,13 +745,20 @@ def handle_booking_submission(request, trip):
                 'error': format_errors[0],
                 'errors': format_errors,
             }), 400
-        
+
+        packages_data, pkg_err = validate_and_normalize_booking_packages(
+            packages_data, trip.id
+        )
+        if pkg_err:
+            return jsonify({'success': False, 'error': pkg_err}), 400
+        booking_data['packages'] = packages_data
+
         # 检查库存（不锁定，只检查）
         for pkg_data in packages_data:
             package = TripPackage.query.get(pkg_data.get('package_id'))
             if not package:
-                continue
-            
+                return jsonify({'success': False, 'error': 'One or more selected packages are invalid'}), 400
+
             if package.capacity:
                 # 计算已售名额（只计算已支付成功的预订）
                 spots_sold = BookingPackage.query.filter(
@@ -758,7 +787,7 @@ def handle_booking_submission(request, trip):
         for pkg_data in packages_data:
             package = TripPackage.query.get(pkg_data.get('package_id'))
             if not package:
-                continue
+                return jsonify({'success': False, 'error': 'One or more selected packages are invalid'}), 400
             
             quantity = pkg_data.get('quantity', 1)
             pkg_payment_plan = pkg_data.get('payment_plan_type', 'full')
@@ -863,6 +892,11 @@ def handle_booking_submission(request, trip):
                     )
         
         # 应用折扣（从「现在应付」中减去；可为 $0，例如免定金 code）
+        if gross_amount < 0:
+            return jsonify({
+                'success': False,
+                'error': 'Invalid booking amount',
+            }), 400
         base_amount = max(0, gross_amount - discount_amount)
         base_amount_cents = int(round(base_amount * 100))
         if discount_amount and discount_amount >= gross_amount and gross_amount > 0:
@@ -1137,7 +1171,7 @@ def booking_payment(booking_id):
     for bp in booking.booking_packages.all():
         if bp.package:
             qty = int(bp.quantity) if bp.quantity else 1
-            amount_cents = int(round(float(bp.package.price) * qty * 100))
+            amount_cents = int(round(booking_package_unit_price(bp) * qty * 100))
             summary_items.append({
                 'label': f"{bp.package.name} × {qty}",
                 'amount_cents': amount_cents,
@@ -1145,7 +1179,7 @@ def booking_payment(booking_id):
     for ba in booking.addons.all():
         if ba.addon:
             qty = int(ba.quantity) if ba.quantity else 1
-            amount_cents = int(round(float(ba.addon.price) * qty * 100))
+            amount_cents = int(round(booking_addon_unit_price(ba) * qty * 100))
             summary_items.append({
                 'label': f"{ba.addon.name} × {qty}",
                 'amount_cents': amount_cents,
@@ -1799,7 +1833,7 @@ def api_booking_summary(booking_id):
     for bp in booking.booking_packages:
         if not bp.package:
             continue
-        price = float(bp.package.price or 0)
+        price = booking_package_unit_price(bp)
         qty = int(bp.quantity or 1)
         line_total = price * qty
         trip_total += line_total
@@ -1810,7 +1844,7 @@ def api_booking_summary(booking_id):
         for addon_rel in participant.addons:
             if not addon_rel.addon:
                 continue
-            price = float(addon_rel.addon.price or 0)
+            price = booking_addon_unit_price(addon_rel)
             qty = int(addon_rel.quantity or 0)
             if qty <= 0:
                 continue
@@ -1825,7 +1859,7 @@ def api_booking_summary(booking_id):
         Payment.stripe_payment_intent_id.isnot(None)
     ).order_by(Payment.created_at.desc()).first()
 
-    # Trip Total 始终为套餐+附加目录价合计（与弹窗一致）；勿用本笔 Payment.base（$0 单会变成 0）
+    # Trip Total：套餐+附加按订单快照单价合计；勿用本笔 Payment.base（$0 单会变成 0）
     trip_total_display = round(trip_total, 2)
 
     if payment and payment.final_amount_cents is not None:
@@ -1909,12 +1943,12 @@ def _compute_due_at_booking_parts(booking):
             if booking_addon.id in seen or not booking_addon.addon:
                 continue
             seen.add(booking_addon.id)
-            addons_total += float(booking_addon.addon.price or 0) * int(booking_addon.quantity or 0)
+            addons_total += booking_addon_unit_price(booking_addon) * int(booking_addon.quantity or 0)
     for booking_addon in booking.addons:
         if booking_addon.id in seen or not booking_addon.addon:
             continue
         seen.add(booking_addon.id)
-        addons_total += float(booking_addon.addon.price or 0) * int(booking_addon.quantity or 0)
+        addons_total += booking_addon_unit_price(booking_addon) * int(booking_addon.quantity or 0)
 
     deposit_amount = round(deposit_amount, 2)
     overdue_total = round(overdue_total, 2)
@@ -2005,7 +2039,7 @@ def _booking_receipt_context(booking, payment_id=None):
     has_packages = False
     for bp in booking.booking_packages:
         if bp.package:
-            package_price = float(bp.package.price) if bp.package.price is not None else 0.0
+            package_price = booking_package_unit_price(bp)
             quantity = int(bp.quantity) if bp.quantity is not None else 1
             packages_subtotal += package_price * quantity
             has_packages = True
@@ -2017,12 +2051,12 @@ def _booking_receipt_context(booking, payment_id=None):
             if booking_addon.id in seen_addon_ids or not booking_addon.addon:
                 continue
             seen_addon_ids.add(booking_addon.id)
-            addons_total += float(booking_addon.addon.price or 0) * int(booking_addon.quantity or 0)
+            addons_total += booking_addon_unit_price(booking_addon) * int(booking_addon.quantity or 0)
     for booking_addon in booking.addons:
         if booking_addon.id in seen_addon_ids or not booking_addon.addon:
             continue
         seen_addon_ids.add(booking_addon.id)
-        addons_total += float(booking_addon.addon.price or 0) * int(booking_addon.quantity or 0)
+        addons_total += booking_addon_unit_price(booking_addon) * int(booking_addon.quantity or 0)
 
     discount_amount = float(booking.discount_amount) if booking.discount_amount else 0.0
     trip_total_before_discount = packages_subtotal + addons_total
@@ -2040,8 +2074,8 @@ def _booking_receipt_context(booking, payment_id=None):
                 addons_info.append({
                     'name': booking_addon.addon.name,
                     'quantity': booking_addon.quantity,
-                    'price': booking_addon.addon.price,
-                    'total': float(booking_addon.addon.price or 0) * int(booking_addon.quantity or 0)
+                    'price': booking_addon_unit_price(booking_addon),
+                    'total': booking_addon_unit_price(booking_addon) * int(booking_addon.quantity or 0)
                 })
         participants_info.append({
             'name': participant.name,
@@ -2817,6 +2851,19 @@ def api_create_free_booking():
             'message': 'Payment amount is not zero. Please complete payment through Stripe.',
             'base_amount_cents': base_amount_cents
         }), 400
+
+    from app.booking_validation import validate_and_normalize_booking_packages
+    packages_norm, pkg_err = validate_and_normalize_booking_packages(
+        booking_data.get('packages') or [],
+        pending_booking.trip_id,
+    )
+    if pkg_err:
+        return jsonify({'success': False, 'message': pkg_err}), 400
+    booking_data = dict(booking_data)
+    booking_data['packages'] = packages_norm
+    pending_booking.booking_data = booking_data
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(pending_booking, 'booking_data')
     
     try:
         booking = _create_booking_from_metadata(payment_intent_id)
@@ -3770,7 +3817,7 @@ def handle_checkout_completed(session):
             bp.status = 'deposit_paid'
         # 按比例分配支付金额（使用基础金额，不含手续费）
         if total_info['subtotal'] > 0:
-            package_amount = (float(bp.package.price) if bp.package and bp.package.price else 0.0) * (int(bp.quantity) if bp.quantity else 1)
+            package_amount = booking_package_unit_price(bp) * (int(bp.quantity) if bp.quantity else 1)
             bp.amount_paid = (bp.amount_paid or 0.0) + (base_amount * package_amount / total_info['subtotal'])
     
     # 如果是分期付款，创建 InstallmentPayment 记录
@@ -3839,7 +3886,7 @@ def _create_booking_from_metadata(payment_intent_id):
         current_app.logger.error(f"PendingBooking {pending_booking.id} has no booking_data")
         return None
     
-    trip_id = booking_data.get('trip_id')
+    trip_id = pending_booking.trip_id or booking_data.get('trip_id')
     trip = Trip.query.get(trip_id)
     if not trip:
         current_app.logger.error(f"Trip {trip_id} not found for payment_intent {payment_intent_id}")
@@ -3850,6 +3897,18 @@ def _create_booking_from_metadata(payment_intent_id):
     if not buyer_email:
         current_app.logger.error(f"No buyer email in payment_intent {payment_intent_id}")
         return None
+
+    from app.booking_validation import validate_and_normalize_booking_packages
+    packages_data, pkg_err = validate_and_normalize_booking_packages(
+        booking_data.get('packages', []),
+        trip.id,
+    )
+    if pkg_err:
+        current_app.logger.error(
+            f"Invalid packages when creating booking for {payment_intent_id}: {pkg_err}"
+        )
+        return None
+    booking_data['packages'] = packages_data
     
     # 查找或创建 Client（支付成功后才创建客户记录）
     client = Client.query.filter_by(email=buyer_email).first()
@@ -3870,11 +3929,13 @@ def _create_booking_from_metadata(payment_intent_id):
         db.session.flush()
     
     # 再次检查库存（支付成功时再次确认）
-    packages_data = booking_data.get('packages', [])
     for pkg_data in packages_data:
         package = TripPackage.query.get(pkg_data.get('package_id'))
         if not package:
-            continue
+            current_app.logger.error(
+                f"Package missing when processing payment_intent {payment_intent_id}"
+            )
+            return None
         
         if package.capacity:
             spots_sold = BookingPackage.query.filter(
@@ -3945,17 +4006,34 @@ def _create_booking_from_metadata(payment_intent_id):
     for pkg_data in packages_data:
         package = TripPackage.query.get(pkg_data.get('package_id'))
         if not package:
-            continue
+            current_app.logger.error(
+                f"Package missing when creating BookingPackage for {payment_intent_id}"
+            )
+            return None
+
+        plan_type, plan_err = validate_package_payment_plan_type(
+            package, pkg_data.get('payment_plan_type', 'full')
+        )
+        if plan_err:
+            raise ValueError(plan_err)
         
         booking_package = BookingPackage(
             booking_id=booking.id,
             package_id=package.id,
             quantity=pkg_data.get('quantity', 1),
-            payment_plan_type=pkg_data.get('payment_plan_type', 'full'),
+            payment_plan_type=plan_type,
             status='pending',
-            amount_paid=0.0
+            amount_paid=0.0,
+            unit_price=float(package.price) if package.price is not None else 0.0,
         )
         db.session.add(booking_package)
+
+    db.session.flush()
+    if not booking.booking_packages.count():
+        current_app.logger.error(
+            f"No BookingPackage rows created for payment_intent {payment_intent_id}"
+        )
+        return None
     
     # 先创建 BookingParticipant 记录（需要在创建 BookingAddOn 之前）
     participants_data = booking_data.get('participants', [])
@@ -4388,7 +4466,7 @@ def handle_booking_payment_intent_succeeded(payment_intent):
             bp.status = 'deposit_paid'
         # 按比例分配支付金额（使用基础金额，不含手续费）
         if total_info['subtotal'] > 0:
-            package_amount = (float(bp.package.price) if bp.package and bp.package.price else 0.0) * (int(bp.quantity) if bp.quantity else 1)
+            package_amount = booking_package_unit_price(bp) * (int(bp.quantity) if bp.quantity else 1)
             bp.amount_paid = (bp.amount_paid or 0.0) + (base_amount * package_amount / total_info['subtotal'])
 
     # 如果是分期付款，创建 InstallmentPayment 记录
@@ -4982,7 +5060,7 @@ def send_booking_confirmation_email(booking, is_full_payment):
     for bp in booking.booking_packages.all():
         if bp.package:
             qty = int(bp.quantity) if bp.quantity else 1
-            amount = float(bp.package.price) * qty
+            amount = booking_package_unit_price(bp) * qty
             line_items.append({
                 'label': f"{bp.package.name} x{qty}",
                 'amount': amount
@@ -4990,7 +5068,7 @@ def send_booking_confirmation_email(booking, is_full_payment):
     for ba in booking.addons.all():
         if ba.addon:
             qty = int(ba.quantity) if ba.quantity else 1
-            amount = float(ba.addon.price) * qty
+            amount = booking_addon_unit_price(ba) * qty
             line_items.append({
                 'label': f"{ba.addon.name} x{qty}",
                 'amount': amount

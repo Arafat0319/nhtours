@@ -177,3 +177,54 @@ def validate_participants(participants) -> list[str]:
 def validate_booking_payload(buyer_info, participants) -> list[str]:
     """Full payload check used by handle_booking_submission."""
     return validate_buyer_info(buyer_info) + validate_participants(participants)
+
+
+def validate_and_normalize_booking_packages(packages_data, trip_id):
+    """
+    Validate package lines for a trip booking.
+
+    Ensures each line has a real TripPackage belonging to trip_id, quantity >= 1,
+    and a payment_plan_type allowed by that package's config.
+
+    Returns (normalized_packages, error_message). On error, normalized is None.
+    """
+    from app.models import TripPackage
+    from app.payments import validate_package_payment_plan_type
+
+    if not packages_data:
+        return None, 'Please select at least one package'
+    if not isinstance(packages_data, list):
+        return None, 'Invalid package data'
+
+    normalized = []
+    for pkg_data in packages_data:
+        if not isinstance(pkg_data, dict):
+            return None, 'Invalid package data'
+
+        package_id = pkg_data.get('package_id')
+        package = TripPackage.query.get(package_id) if package_id is not None else None
+        if not package:
+            return None, 'One or more selected packages are invalid'
+        if int(package.trip_id) != int(trip_id):
+            return None, 'One or more selected packages do not belong to this trip'
+
+        try:
+            quantity = int(pkg_data.get('quantity', 1))
+        except (TypeError, ValueError):
+            return None, f'Invalid quantity for package "{package.name}"'
+        if quantity < 1:
+            return None, f'Quantity must be at least 1 for package "{package.name}"'
+
+        plan_type, plan_err = validate_package_payment_plan_type(
+            package, pkg_data.get('payment_plan_type', 'full')
+        )
+        if plan_err:
+            return None, plan_err
+
+        row = dict(pkg_data)
+        row['package_id'] = package.id
+        row['quantity'] = quantity
+        row['payment_plan_type'] = plan_type
+        normalized.append(row)
+
+    return normalized, None

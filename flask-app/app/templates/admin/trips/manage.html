@@ -354,7 +354,7 @@
             <!-- Controls: roster search (payment filters live on Bookings) -->
             <div class="flex justify-between items-center mb-6">
                 <div class="relative">
-                    <input type="text" id="participantSearchInput" placeholder="Search by name, email, or order number"
+                    <input type="text" id="participantSearchInput" placeholder="Search by buyer, name, email, or order number"
                         class="pl-8 pr-4 py-2 border border-gray-300 rounded text-sm w-80 focus:outline-none focus:border-wetravel-cyan text-gray-700 placeholder-gray-400">
                     <svg class="w-4 h-4 text-gray-400 absolute left-2.5 top-3" fill="none" stroke="currentColor"
                         viewBox="0 0 24 24">
@@ -371,6 +371,7 @@
                     <thead>
                         <tr
                             class="border-b border-gray-100 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">
+                            <th class="px-6 py-3 whitespace-nowrap">Buyer</th>
                             <th class="px-6 py-3 whitespace-nowrap">First Name</th>
                             <th class="px-6 py-3 whitespace-nowrap">Last Name</th>
                             <th class="px-6 py-3 whitespace-nowrap">Email</th>
@@ -391,8 +392,16 @@
                             data-first-name="{{ (participant.first_name or '')|lower }}"
                             data-last-name="{{ (participant.last_name or '')|lower }}"
                             data-email="{{ (participant.email or '')|lower }}"
+                            data-buyer="{{ (participant.buyer_name or '')|lower }}"
+                            data-buyer-email="{{ (participant.buyer_email or '')|lower }}"
                             data-order-number="{{ (participant.order_number or '')|lower }}"
                             data-participant-id="{{ participant.id }}">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-medium text-gray-800">{{ participant.buyer_name or '—' }}</div>
+                                {% if participant.buyer_email %}
+                                <div class="text-sm text-gray-500">{{ participant.buyer_email }}</div>
+                                {% endif %}
+                            </td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <div class="text-sm font-semibold text-gray-800">{{ participant.first_name or '-' }}</div>
                             </td>
@@ -444,7 +453,7 @@
                         {% endfor %}
                         {% else %}
                         <tr>
-                            {% set total_cols = 7 + (custom_questions|length) + 2 %}
+                            {% set total_cols = 8 + (custom_questions|length) + 2 %}
                             <td colspan="{{ total_cols }}" class="px-6 py-10 text-center text-sm text-wetravel-cyan font-light">
                                 No participants yet
                             </td>
@@ -1227,6 +1236,8 @@
                 const firstName = (row.getAttribute('data-first-name') || '').toLowerCase();
                 const lastName = (row.getAttribute('data-last-name') || '').toLowerCase();
                 const email = (row.getAttribute('data-email') || '').toLowerCase();
+                const buyer = (row.getAttribute('data-buyer') || '').toLowerCase();
+                const buyerEmail = (row.getAttribute('data-buyer-email') || '').toLowerCase();
                 const orderNo = (row.getAttribute('data-order-number') || '').toLowerCase();
                 
                 const matchesSearch = !searchTerm || 
@@ -1234,6 +1245,8 @@
                     firstName.includes(searchTerm) || 
                     lastName.includes(searchTerm) || 
                     email.includes(searchTerm) ||
+                    buyer.includes(searchTerm) ||
+                    buyerEmail.includes(searchTerm) ||
                     orderNo.includes(searchTerm);
                 
                 row.style.display = matchesSearch ? '' : 'none';
@@ -2298,36 +2311,112 @@
                 </div>` + paymentsHtml;
             }
             
-            // Generate installment schedule HTML
+            // Order Summary 内 Payment plan：优先已落库分期行；否则用套餐配置×数量（同日合并）
             let installmentsHtml = '';
+            const hasInstallmentPkg = (booking.packages || []).some(function(pkg) {
+                return pkg.payment_plan_type === 'deposit_installment';
+            });
+            function formatManagePlanDate(iso) {
+                if (!iso) return '-';
+                const s = String(iso).substring(0, 10);
+                if (s.length !== 10) return String(iso);
+                const d = new Date(s + 'T12:00:00');
+                if (isNaN(d.getTime())) return s;
+                return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            }
             if (booking.installments && booking.installments.length > 0) {
+                const buckets = {};
+                booking.installments.forEach(function(inst) {
+                    const dueKey = inst.due_date ? String(inst.due_date).substring(0, 10) : ('n-' + inst.installment_number);
+                    const isDeposit = (inst.installment_number === 0) || ((inst.label || '').toLowerCase().indexOf('deposit') >= 0 && (inst.installment_number || 0) === 0);
+                    const label = isDeposit
+                        ? 'Deposit · Due today'
+                        : (inst.due_date ? formatManagePlanDate(inst.due_date) : (inst.label || ('Installment #' + inst.installment_number)));
+                    if (!buckets[dueKey]) {
+                        buckets[dueKey] = {
+                            label: label,
+                            amount: 0,
+                            sort: isDeposit ? '0' : (inst.due_date || '9999'),
+                            statuses: []
+                        };
+                    }
+                    buckets[dueKey].amount += Number(inst.amount) || 0;
+                    buckets[dueKey].statuses.push(inst.status || 'pending');
+                });
+                const rows = Object.keys(buckets).map(function(k) { return buckets[k]; });
+                rows.sort(function(a, b) {
+                    if (a.sort === b.sort) return 0;
+                    return a.sort < b.sort ? -1 : 1;
+                });
                 installmentsHtml = `
-                    <div class="mt-4 pt-4 border-t border-gray-200">
-                        <h5 class="text-sm font-medium text-gray-700 mb-3">Installment Schedule</h5>
-                        <div class="space-y-2">
-                            ${booking.installments.map(inst => {
-                                const statusClass = inst.status === 'paid' ? 'bg-green-100 text-green-800' : 
-                                                    inst.status === 'overdue' ? 'bg-red-100 text-red-800' :
-                                                    inst.status === 'cancelled' ? 'bg-gray-100 text-gray-600' :
-                                                    'bg-yellow-100 text-yellow-800';
-                                const label = inst.label || (inst.installment_number === 0 ? 'Deposit' : `Installment #${inst.installment_number}`);
-                                const statusText = (inst.status === 'cancelled' && settledViaPayoff)
-                                    ? 'cancelled (payoff)'
-                                    : inst.status;
-                                return `<div class="flex justify-between items-center py-1.5 px-3 bg-gray-50 rounded">
-                                    <div>
-                                        <span class="text-sm text-gray-900">${label}</span>
-                                        <span class="ml-2 text-xs text-gray-500">Due: ${inst.due_date || '-'}</span>
-                                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Payment plan</label>
+                        <div class="bg-gray-50 rounded-lg p-3 space-y-2">
+                            ${rows.map(function(row) {
+                                const uniq = Array.from(new Set(row.statuses));
+                                let status = uniq.length === 1 ? uniq[0] : 'mixed';
+                                if (status === 'cancelled' && settledViaPayoff) status = 'cancelled (payoff)';
+                                const statusClass = status === 'paid' ? 'bg-green-100 text-green-800' :
+                                    status === 'overdue' ? 'bg-red-100 text-red-800' :
+                                    (status.indexOf('cancelled') === 0) ? 'bg-gray-100 text-gray-600' :
+                                    status === 'mixed' ? 'bg-orange-100 text-orange-800' :
+                                    'bg-yellow-100 text-yellow-800';
+                                return `<div class="flex justify-between items-center py-1.5">
+                                    <span class="text-sm text-gray-900">${row.label}</span>
                                     <div class="flex items-center space-x-2">
-                                        <span class="text-sm font-medium text-gray-900">$${inst.amount.toFixed(2)}</span>
-                                        <span class="px-1.5 py-0.5 text-xs rounded ${statusClass}">${statusText}</span>
+                                        <span class="text-sm font-medium text-gray-900">$${row.amount.toFixed(2)}</span>
+                                        <span class="px-1.5 py-0.5 text-xs rounded ${statusClass}">${status}</span>
                                     </div>
                                 </div>`;
                             }).join('')}
                         </div>
                     </div>
                 `;
+            } else if (hasInstallmentPkg) {
+                const dueBuckets = {};
+                (booking.packages || []).forEach(function(pkg) {
+                    if (pkg.payment_plan_type !== 'deposit_installment') return;
+                    const ppc = pkg.payment_plan_config || {};
+                    if (!ppc.enabled) return;
+                    const qty = Math.max(1, parseInt(pkg.quantity, 10) || 1);
+                    const depositAmount = parseFloat(ppc.deposit_amount || ppc.deposit || 0) || 0;
+                    if (!dueBuckets['deposit-today']) {
+                        dueBuckets['deposit-today'] = { label: 'Deposit · Due today', amount: 0, sort: '0' };
+                    }
+                    dueBuckets['deposit-today'].amount += depositAmount * qty;
+                    (ppc.installments || []).forEach(function(inst) {
+                        if (!inst || !inst.date) return;
+                        const dueStr = String(inst.date).substring(0, 10);
+                        if (!dueBuckets['inst-' + dueStr]) {
+                            dueBuckets['inst-' + dueStr] = {
+                                label: formatManagePlanDate(dueStr),
+                                amount: 0,
+                                sort: dueStr
+                            };
+                        }
+                        dueBuckets['inst-' + dueStr].amount += (parseFloat(inst.amount) || 0) * qty;
+                    });
+                });
+                const rows = Object.keys(dueBuckets).map(function(k) { return dueBuckets[k]; });
+                rows.sort(function(a, b) {
+                    if (a.sort === b.sort) return 0;
+                    return a.sort < b.sort ? -1 : 1;
+                });
+                if (rows.length) {
+                    installmentsHtml = `
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Payment plan</label>
+                            <div class="bg-gray-50 rounded-lg p-3 space-y-2">
+                                ${rows.map(function(row) {
+                                    return `<div class="flex justify-between items-center py-1.5">
+                                        <span class="text-sm text-gray-900">${row.label}</span>
+                                        <span class="text-sm font-medium text-gray-900">$${row.amount.toFixed(2)}</span>
+                                    </div>`;
+                                }).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
             }
             
             // Get buyer info
@@ -2384,6 +2473,8 @@
                             </div>` : ''}
                         </div>
                     </div>
+
+                    ${installmentsHtml}
                     
                     <!-- Add-ons -->
                     <div class="mb-4">
@@ -2501,7 +2592,6 @@
                             </div>
                         </div>
                         
-                        ${installmentsHtml}
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Special Requests</label>
                             <p class="text-xs text-gray-500 mb-2">Special requirements provided by the customer at booking time (e.g., dietary restrictions, accommodation preferences, medical needs, etc.)</p>

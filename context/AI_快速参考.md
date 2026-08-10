@@ -17,6 +17,7 @@
 | 启动 | `cd flask-app && python run.py` |
 | 端口 | **8080**（`PORT` 环境变量可改；不是 5000） |
 | 后台 | `http://localhost:8080/admin/login` |
+| 老师只读名单 | Basics → **Teacher view link** → `/teacher/trips/<teacher_view_slug>`（无登录；Reset 吊销） |
 | 迁移 | `flask db upgrade`（在 flask-app 目录，激活 venv 后） |
 | 开发 DB | 本机 **MySQL 8**；当前常用库名 **`nhtours`**（可从生产整库复制；见下） |
 | SSH 生产 | 本机 `ssh nhtours`（`~/.ssh/config` → `54.69.40.218`，见 `手册/安全手册.md`） |
@@ -67,10 +68,10 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 - `PendingBooking.payment_intent_id`（可以是 `pi_…` 或 `free_…`）
 - 折扣抵「现在应付」；`$0` 勿建 Stripe PI
 - 未支付草稿：`expires_at=+24h`；03:00 cleanup → `expired` + `safe_cancel_payment_intent`
-- 报名在 `/trips/<slug>` **弹窗内** 5 步；正式页 `use_experimental_modal=True` → `_modal_steps_experimental.html`（套餐卡 + Travelers 步进器）
+- 报名在 `/trips/<slug>` **弹窗内** 5 步；正式页 `use_experimental_modal=True` → `_modal_steps_experimental.html`（产品套餐 + Travelers；有分期时产品内选 Pay in full / Deposit+installments）
 - File Upload：`POST /api/booking/upload`（UI：自定义 dropzone，见 `05` / `booking-modal.css`）
 - DOB 日历：月/年 Uiverse 下拉（同 Gender）；选月年不关日历；逻辑在 `trip_booking.html`
-- 付款后摘要 `GET /api/booking/<id>/summary`：须 `token` 或 `payment_intent_id`；`trip_total` 用套餐+附加**目录价**（$0 Payment 时勿用 `base_amount_cents`）
+- 付款后摘要 `GET /api/booking/<id>/summary`：须 `token` 或 `payment_intent_id`；`trip_total` 用订单套餐/附加**快照单价**（$0 Payment 时勿用 `base_amount_cents`）
 - Download receipt（站内）：`.nh-receipt-download-btn`（`site-nav.css`；勿只靠 Tailwind 灰边类，见 `05`）
 - 静态 CSS/JS 部署后若样式「没变」：先 **Ctrl+F5**（无版本号时易缓存）
 
@@ -97,6 +98,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | Copy | 不拷订单；现仅拷行程壳字段（非套餐/表单深拷） |
 | 代码 | `app/trip_status.py`；后台入口 `admin/routes.py` |
 | 业务单号 | `app/order_numbers.py` |
+| 清库脚本 | `scripts/wipe_business_data.py`：默认保留 `leads`/`testimonials`/`users`/`cities`/`alembic_version`；行程导入用 `export_trips_bundle.py` / `import_trips_bundle.py` |
 
 ## 后台 Excel 导出
 

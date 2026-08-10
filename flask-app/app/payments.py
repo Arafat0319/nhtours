@@ -1155,17 +1155,50 @@ def booking_payments_plan_kind(booking_id):
     return 'one_time'
 
 
+def validate_package_payment_plan_type(package, requested_type):
+    """
+    Validate client payment_plan_type against TripPackage.payment_plan_config.
+    Returns (normalized_type, error_message|None).
+    allow_full_payment defaults to True when omitted (legacy configs).
+    """
+    if not package:
+        return None, 'Package not found'
+    plan = (requested_type or 'full').strip()
+    if plan not in ('full', 'deposit_installment'):
+        return None, f'Invalid payment plan for package "{package.name}"'
+    ppc = package.payment_plan_config or {}
+    enabled = bool(ppc.get('enabled'))
+    allow_full = ppc.get('allow_full_payment', True)
+    if plan == 'deposit_installment':
+        if not enabled:
+            return None, f'Package "{package.name}" does not offer installment payments'
+        return 'deposit_installment', None
+    if enabled and allow_full is False:
+        return None, f'Package "{package.name}" requires installment payment'
+    return 'full', None
+
+
 def booking_payment_type_display(booking):
     """
     Manage Booking「Payment Type」展示（比 Full/Installment 更细）：
     - Full：一次付清
     - Deposit + Final：定金 + 单笔尾款
     - Installment (N)：定金后 N 期尾款（N>1）
+    - Mixed：同一单里既有全款又有分期套餐
     若尚无分期行但套餐选了 deposit_installment，显示 Installment（计划待生成）。
     返回 dict: { key, label }；key 用于样式。
     """
     if not booking:
         return {'key': 'full', 'label': 'Full'}
+    try:
+        packages = list(booking.booking_packages) if booking.booking_packages else []
+    except Exception:
+        packages = []
+    has_full = any((getattr(bp, 'payment_plan_type', None) or 'full') != 'deposit_installment' for bp in packages)
+    has_inst = any((getattr(bp, 'payment_plan_type', None) or '') == 'deposit_installment' for bp in packages)
+    if has_full and has_inst:
+        return {'key': 'mixed', 'label': 'Mixed'}
+
     kind = booking_payments_plan_kind(booking.id)
     n = booking_post_deposit_installment_count(booking.id)
     if kind == 'multi':
@@ -1173,11 +1206,7 @@ def booking_payment_type_display(booking):
     if kind == 'deposit_balance':
         return {'key': 'deposit_final', 'label': 'Deposit + Final'}
     # one_time：看套餐是否声明了分期计划（Manual / 尚未建 schedule）
-    try:
-        packages = list(booking.booking_packages) if booking.booking_packages else []
-    except Exception:
-        packages = []
-    if any((getattr(bp, 'payment_plan_type', None) or '') == 'deposit_installment' for bp in packages):
+    if has_inst:
         return {'key': 'installment', 'label': 'Installment'}
     return {'key': 'full', 'label': 'Full'}
 
@@ -1295,6 +1324,44 @@ def apply_refund_to_ledger(payment, booking, refund_amount, reason=None, stripe_
     }
 
 
+def booking_package_unit_price(bp):
+    """订单套餐单价：优先 BookingPackage.unit_price 快照，否则 live TripPackage.price。"""
+    if bp is None:
+        return 0.0
+    snap = getattr(bp, 'unit_price', None)
+    if snap is not None:
+        try:
+            return float(snap)
+        except (TypeError, ValueError):
+            pass
+    pkg = getattr(bp, 'package', None)
+    if pkg is not None and getattr(pkg, 'price', None) is not None:
+        try:
+            return float(pkg.price)
+        except (TypeError, ValueError):
+            return 0.0
+    return 0.0
+
+
+def booking_addon_unit_price(ba):
+    """订单附加项单价：优先 price_at_booking 快照，否则 live TripAddOn.price。"""
+    if ba is None:
+        return 0.0
+    snap = getattr(ba, 'price_at_booking', None)
+    if snap is not None:
+        try:
+            return float(snap)
+        except (TypeError, ValueError):
+            pass
+    addon = getattr(ba, 'addon', None)
+    if addon is not None and getattr(addon, 'price', None) is not None:
+        try:
+            return float(addon.price)
+        except (TypeError, ValueError):
+            return 0.0
+    return 0.0
+
+
 def calculate_booking_total(booking):
     """
     计算 Booking 的总金额（包括套餐、附加项、折扣）
@@ -1307,7 +1374,7 @@ def calculate_booking_total(booking):
             'subtotal': 小计（套餐 + 附加项）,
             'discount': 折扣金额,
             'total': 总计（净金额，不含 Stripe 手续费），
-            'amount_paid': 已支付金额（不含 Stripe 手续费），
+            'amount_paid': 已支付金额（不含 Stripe 手续费）,
             'amount_due': 待支付金额
         }
     
@@ -1315,22 +1382,21 @@ def calculate_booking_total(booking):
     - total 是客户应付的净金额，不包含 Stripe 手续费
     - amount_paid 来自 Booking.amount_paid，也是不含手续费的基础金额
     - Stripe 手续费是在支付时额外收取的，由客户承担，但不进入我们的收入
+    - 套餐/附加项单价优先用下单快照（unit_price / price_at_booking）
     """
     subtotal = 0.0
     
     # 计算套餐金额
     for bp in booking.booking_packages.all():
-        if bp.package and bp.package.price:
-            package_price = float(bp.package.price)
-            quantity = int(bp.quantity) if bp.quantity else 1
-            subtotal += package_price * quantity
+        package_price = booking_package_unit_price(bp)
+        quantity = int(bp.quantity) if bp.quantity else 1
+        subtotal += package_price * quantity
     
     # 计算附加项金额
     for addon in booking.addons.all():
-        if addon.addon and addon.addon.price:
-            addon_price = float(addon.addon.price)
-            quantity = int(addon.quantity) if addon.quantity else 1
-            subtotal += addon_price * quantity
+        addon_price = booking_addon_unit_price(addon)
+        quantity = int(addon.quantity) if addon.quantity else 1
+        subtotal += addon_price * quantity
     
     # 应用折扣码（从 Booking.discount_amount 获取）
     discount = float(booking.discount_amount) if booking.discount_amount else 0.0
@@ -1388,19 +1454,17 @@ def calculate_initial_payment_amount(booking, payment_plan='full'):
             'deposit': 0.0,
             'overdue_installments': 0.0,
             'addons': total_info['subtotal'] - sum(
-                float(bp.package.price) * (int(bp.quantity) if bp.quantity else 1)
+                booking_package_unit_price(bp) * (int(bp.quantity) if bp.quantity else 1)
                 for bp in booking.booking_packages.all()
-                if bp.package and bp.package.price
             ),
             'overdue_details': []
         }
     
     # 计算附加项金额
     for addon in booking.addons.all():
-        if addon.addon and addon.addon.price:
-            addon_price = float(addon.addon.price)
-            quantity = int(addon.quantity) if addon.quantity else 1
-            addons_total += addon_price * quantity
+        addon_price = booking_addon_unit_price(addon)
+        quantity = int(addon.quantity) if addon.quantity else 1
+        addons_total += addon_price * quantity
     
     # 遍历所有 BookingPackage，检查分期付款计划
     for bp in booking.booking_packages.all():
@@ -1442,11 +1506,10 @@ def calculate_initial_payment_amount(booking, payment_plan='full'):
                         current_app.logger.error(f"Invalid installment date or amount: {due_date_str}, {str(e)}")
                         continue
         else:
-            # 如果没有分期付款计划，使用套餐全价作为首付款
-            if bp.package and bp.package.price:
-                package_price = float(bp.package.price)
-                quantity = int(bp.quantity) if bp.quantity else 1
-                deposit_amount += package_price * quantity
+            # 如果没有分期付款计划，使用套餐全价（快照）作为首付款
+            package_price = booking_package_unit_price(bp)
+            quantity = int(bp.quantity) if bp.quantity else 1
+            deposit_amount += package_price * quantity
     
     # 计算首付款总额：定金 + 过期分期 + 附加项
     initial_amount = deposit_amount + overdue_installments_total + addons_total

@@ -4,7 +4,7 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/booking-modal.css') }}?v=file-btn-1">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/booking-modal.css') }}?v=pay-plan-2">
 <style>
     .flatpickr-calendar {
         font-size: 16px !important;
@@ -221,6 +221,14 @@
     .trip-hero { min-height: 40.32vh; width: 100%; position: relative; z-index: 0; overflow: hidden; }
     .trip-hero .trip-hero-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; }
     .trip-sidebar-card { border: none; box-shadow: none; border-radius: 0; }
+    .trip-sidebar-from-label {
+        margin: 0 0 0.35rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #64748b;
+    }
     .trip-package-card { transition: box-shadow 0.2s, border-color 0.2s; }
     .trip-package-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); border-color: #d97706; }
     .hero-price-card { background: rgba(255,255,255,0.95); border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
@@ -533,44 +541,83 @@
         color: #6b7280;
         margin-top: 0.35rem;
     }
-    /* 下面一块：Payment plan 明细，与上方价格列对齐 */
-    .trip-packages-box .package-installment-block {
-        margin-top: 0.75rem;
-        padding-top: 0.5rem;
-        border-top: 1px dashed #e5e7eb;
+    .trip-packages-box .package-pay-hint {
+        margin-top: 0.5rem;
         font-size: 0.8125rem;
+        color: #6b7280;
+        line-height: 1.45;
     }
-    .trip-packages-box .package-installment-block .installment-title {
+    .trip-packages-box .package-schedule-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.2rem;
+        margin-left: 0.2rem;
+        padding: 0;
+        border: none;
+        background: none;
+        color: #0d9488;
+        font-size: inherit;
         font-weight: 600;
-        color: #374151;
-        margin: 0 0 0.35rem 0;
+        cursor: pointer;
     }
-    .trip-packages-box .package-installment-row {
+    .trip-packages-box .package-schedule-toggle:hover { color: #0f766e; }
+    .trip-packages-box .package-schedule-toggle .package-schedule-toggle-label {
+        text-decoration: underline;
+        text-underline-offset: 2px;
+    }
+    .trip-packages-box .package-schedule-chevron {
+        display: inline-block;
+        font-size: 0.7em;
+        line-height: 1;
+        transition: transform 0.2s ease;
+    }
+    .trip-packages-box .package-schedule-toggle[aria-expanded="true"] .package-schedule-chevron {
+        transform: rotate(180deg);
+    }
+    .trip-packages-box .package-schedule-panel {
+        margin-top: 0.65rem;
+        padding-top: 0.55rem;
+        border-top: 1px dashed #e5e7eb;
+        overflow: hidden;
+        max-height: 0;
+        opacity: 0;
+        transition: max-height 0.28s ease, opacity 0.2s ease, margin 0.2s ease, padding 0.2s ease;
+    }
+    .trip-packages-box .package-schedule-panel.is-open {
+        max-height: 20rem;
+        opacity: 1;
+    }
+    .trip-packages-box .package-schedule-panel[hidden] {
+        display: block !important;
+        max-height: 0;
+        opacity: 0;
+        margin-top: 0;
+        padding-top: 0;
+        border-top-color: transparent;
+        pointer-events: none;
+    }
+    .trip-packages-box .package-schedule-panel .package-installment-row {
         display: flex;
-        align-items: flex-start;
         justify-content: space-between;
-        gap: 1rem;
+        gap: 1.25rem;
+        max-width: 18rem;
     }
-    .trip-packages-box .package-installment-row .installment-labels,
-    .trip-packages-box .package-installment-row .installment-amounts {
+    .trip-packages-box .package-schedule-panel .installment-labels,
+    .trip-packages-box .package-schedule-panel .installment-amounts {
         list-style: none;
         margin: 0;
         padding: 0;
+        font-size: 0.8125rem;
     }
-    .trip-packages-box .package-installment-row .installment-labels { color: #4b5563; }
-    .trip-packages-box .package-installment-row .installment-labels li { padding: 0.15rem 0; }
-    .trip-packages-box .package-installment-row .installment-amounts {
-        width: 8.5rem;
-        min-width: 8.5rem;
+    .trip-packages-box .package-schedule-panel .installment-labels { color: #4b5563; }
+    .trip-packages-box .package-schedule-panel .installment-labels li,
+    .trip-packages-box .package-schedule-panel .installment-amounts li { padding: 0.15rem 0; }
+    .trip-packages-box .package-schedule-panel .installment-amounts {
         text-align: right;
-        padding-right: 10.6rem;
-        box-sizing: border-box;
-    }
-    .trip-packages-box .package-installment-row .installment-amounts li {
-        padding: 0.15rem 0;
-        font-weight: 500;
+        font-weight: 600;
         color: #111827;
     }
+
     /* Book Now：白底、青绿边框与文字；高 40px、宽 100px；字稍大 */
     .trip-packages-box .package-book-now,
     .book-now-trigger.package-book-now {
@@ -659,8 +706,6 @@
 
 {# ========== Hero：与主站 index 一致，nav 自然叠在上方 ========== #}
 {% set hero_bg = url_for('static', filename=trip.hero_image) if trip.hero_image else url_for('static', filename='images/backgrounds/tibet_background.jpg') %}
-{% set first_pkg = packages[0] if packages else None %}
-{% set has_installment = first_pkg and first_pkg.payment_plan_config and first_pkg.payment_plan_config.get('enabled') %}
 <div class="relative w-full trip-hero">
     <img src="{{ hero_bg }}" alt="" class="trip-hero-img" loading="eager" decoding="async" fetchpriority="high">
     {# 仅底部渐变，不覆盖顶部导航区 #}
@@ -782,33 +827,43 @@
                                 {% if spots is not none %}<span class="{% if spots < 5 %}only-left{% endif %}">Only {{ spots }} left</span>{% endif %}
                             </div>
                             {% if package.description %}<div class="package-desc">{{ package.description }}</div>{% endif %}
+                            {% if package.payment_plan_config and package.payment_plan_config.get('enabled') %}
+                            {% set allow_full = package.payment_plan_config.get('allow_full_payment', true) %}
+                            {% set ppc = package.payment_plan_config %}
+                            <div class="package-pay-hint">
+                                {% if allow_full %}
+                                Full payment or deposit + installments available.
+                                {% else %}
+                                Deposit + installments available.
+                                {% endif %}
+                                <button type="button" class="package-schedule-toggle" aria-expanded="false" aria-controls="pkg-schedule-{{ package.id }}">
+                                    <span class="package-schedule-toggle-label">View schedule</span>
+                                    <span class="package-schedule-chevron" aria-hidden="true">▾</span>
+                                </button>
+                            </div>
+                            <div id="pkg-schedule-{{ package.id }}" class="package-schedule-panel" hidden>
+                                <div class="package-installment-row">
+                                    <ul class="installment-labels">
+                                        {% if ppc.get('deposit_amount') is not none %}<li>Due today</li>{% endif %}
+                                        {% for inst in (ppc.get('installments') or []) %}
+                                        <li>{{ inst.get('date', '')|format_iso_date }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                    <ul class="installment-amounts">
+                                        {% if ppc.get('deposit_amount') is not none %}<li class="inst-amount">${{ "%.2f"|format(ppc.get('deposit_amount') or 0) }}</li>{% endif %}
+                                        {% for inst in (ppc.get('installments') or []) %}
+                                        <li class="inst-amount">${{ "%.2f"|format(inst.get('amount') or 0) }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                            </div>
+                            {% endif %}
                         </div>
                         <div class="package-right">
                             <span class="package-price">${{ "%.2f"|format(package.price) }}</span>
                             <button type="button" class="package-book-now book-now-trigger"{% if registration_open is defined and not registration_open %} disabled aria-disabled="true"{% endif %}>Book Now</button>
                         </div>
                     </div>
-                    {# 下面一块：仅在有 Payment plan 时显示明细 #}
-                    {% if package.payment_plan_config and package.payment_plan_config.get('enabled') %}
-                    {% set ppc = package.payment_plan_config %}
-                    <div class="package-installment-block">
-                        <div class="installment-title">Payment plan</div>
-                        <div class="package-installment-row">
-                            <ul class="installment-labels">
-                                {% if ppc.get('deposit_amount') is not none %}<li>Deposit</li>{% endif %}
-                                {% for inst in (ppc.get('installments') or []) %}
-                                <li>{{ inst.get('date', '')|format_iso_date }}</li>
-                                {% endfor %}
-                            </ul>
-                            <ul class="installment-amounts">
-                                {% if ppc.get('deposit_amount') is not none %}<li class="inst-amount">${{ "%.2f"|format(ppc.get('deposit_amount') or 0) }}</li>{% endif %}
-                                {% for inst in (ppc.get('installments') or []) %}
-                                <li class="inst-amount">${{ "%.2f"|format(inst.get('amount') or 0) }}</li>
-                                {% endfor %}
-                            </ul>
-                        </div>
-                    </div>
-                    {% endif %}
                 </div>
                 {% endfor %}
             </div>
@@ -860,13 +915,12 @@
         {# ========== 右侧固定栏：仅总价 + Book Now，风格与参考图一致 ========== #}
         <div class="trip-sidebar-col md:col-span-4">
             <div class="trip-sidebar-inner md:sticky md:top-24 trip-sidebar-card p-6 bg-white">
-            {# 顶部总价 + Deposit（WeTravel 风格） #}
+            {# 多产品时展示最低价 + Buy from #}
             <div class="text-center pb-4">
                 {% if packages %}
-                <div class="font-bold text-gray-800" id="sidebar-total-price" style="font-size: 2.25rem;">${{ "%.2f"|format(packages[0].price) }}</div>
-                {% if has_installment and first_pkg.payment_plan_config and first_pkg.payment_plan_config.get('deposit_amount') is not none %}
-                <div class="text-sm text-gray-500 mt-1">Deposit: <span class="font-semibold text-gray-700">${{ "%.2f"|format(first_pkg.payment_plan_config.get('deposit_amount') or 0) }}</span></div>
-                {% endif %}
+                {% set from_price = packages|map(attribute='price')|min %}
+                <p class="trip-sidebar-from-label">Buy from</p>
+                <div class="font-bold text-gray-800 leading-none" id="sidebar-total-price" style="font-size: 2.25rem;">${{ "%.2f"|format(from_price) }}</div>
                 {% else %}
                 <div class="text-xl font-semibold text-gray-500">—</div>
                 {% endif %}
@@ -1031,6 +1085,7 @@
                             <div id="order-summary" class="space-y-2 text-sm text-gray-700 py-2">
                                 <p class="text-gray-500">Select packages to see total.</p>
                             </div>
+                            <div id="booking-payment-plan" class="booking-payment-plan hidden"></div>
                             <section class="py-4 border-t border-gray-200">
                                 <div class="flex justify-between items-start" data-testid="trip-total-row">
                                     <p class="font-medium text-[13px] leading-[21px] text-gray-900">Trip Total</p>
@@ -1063,6 +1118,37 @@
 
 {% block extra_scripts %}
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+(function () {
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.package-schedule-toggle');
+        if (!btn) return;
+        e.preventDefault();
+        var panelId = btn.getAttribute('aria-controls');
+        var panel = panelId ? document.getElementById(panelId) : null;
+        if (!panel) return;
+        var open = btn.getAttribute('aria-expanded') === 'true';
+        var next = !open;
+        btn.setAttribute('aria-expanded', next ? 'true' : 'false');
+        var label = btn.querySelector('.package-schedule-toggle-label');
+        if (label) label.textContent = next ? 'Hide schedule' : 'View schedule';
+        if (next) {
+            panel.hidden = false;
+            // force reflow so transition runs
+            void panel.offsetHeight;
+            panel.classList.add('is-open');
+        } else {
+            panel.classList.remove('is-open');
+            var onEnd = function (ev) {
+                if (ev.propertyName !== 'max-height') return;
+                panel.removeEventListener('transitionend', onEnd);
+                if (btn.getAttribute('aria-expanded') !== 'true') panel.hidden = true;
+            };
+            panel.addEventListener('transitionend', onEnd);
+        }
+    });
+})();
+</script>
 <script>
 (function() {
     /** 两位数年 pivot：30–99 → 1930–1999，0–29 → 2000–2029，避免 88 被当成 2088、08 被当成 1908 */
@@ -1490,7 +1576,7 @@
     window.initFlatpickrOnDates = initFlatpickrOnDates;
 })();
 </script>
-<script src="{{ url_for('static', filename='js/booking.js') }}?v=ach-2"></script>
+<script src="{{ url_for('static', filename='js/booking.js') }}?v=pkg-plan-2"></script>
 <script src="{{ url_for('static', filename='js/booking-modal.js') }}?v=file-upload-2"></script>
 <script src="https://js.stripe.com/v3/"></script>
 <script>

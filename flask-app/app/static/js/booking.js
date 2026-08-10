@@ -22,6 +22,15 @@
         return (Math.round(n * 100) / 100).toFixed(2);
     }
 
+    function formatPlanDate(iso) {
+        if (!iso) return '';
+        var s = String(iso).substring(0, 10);
+        if (s.length !== 10) return String(iso);
+        var d = new Date(s + 'T12:00:00');
+        if (isNaN(d.getTime())) return s;
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
     // 全局状态
     let currentStep = 1;
     let bookingData = {
@@ -290,6 +299,11 @@
                 var step1 = document.querySelector('.booking-step[data-step="1"]');
                 if (step1) savePackagesData(step1);
                 updateParticipantCount();
+                if (typeof updateOrderSummary === 'function') updateOrderSummary();
+            }
+            if (e.target.matches('input.package-pay-radio')) {
+                var step1Pay = document.querySelector('.booking-step[data-step="1"]');
+                if (step1Pay) savePackagesData(step1Pay);
                 if (typeof updateOrderSummary === 'function') updateOrderSummary();
             }
             // Uiverse 数量单选：同步到 hidden、更新显示、移除错误态、触发订单逻辑
@@ -1261,6 +1275,35 @@
     }
 
     /**
+     * Resolve payment_plan_type for a package from DOM + tripData config.
+     * enabled + allow_full_payment (default true) → customer radio; else forced.
+     */
+    function resolvePaymentPlanTypeForPackage(packageId) {
+        const packageData = (tripData.packages || []).find(function(p) {
+            return Number(p.id) === Number(packageId);
+        });
+        const ppc = packageData && packageData.payment_plan_config;
+        if (!ppc || !ppc.enabled) {
+            return 'full';
+        }
+        if (ppc.allow_full_payment === false) {
+            return 'deposit_installment';
+        }
+        const card = document.querySelector('.package-card[data-package-id="' + packageId + '"]');
+        if (card) {
+            const checked = card.querySelector('input.package-pay-radio[type="radio"]:checked');
+            if (checked && checked.value) {
+                return checked.value;
+            }
+            const hidden = card.querySelector('input.package-pay-radio[type="hidden"]');
+            if (hidden && hidden.value) {
+                return hidden.value;
+            }
+        }
+        return 'full';
+    }
+
+    /**
      * 保存套餐数据
      */
     function savePackagesData(container) {
@@ -1283,16 +1326,8 @@
             
             // 只保存数量大于0的套餐
             if (quantity > 0 && packageId) {
-                // 从 tripData 中获取套餐的支付计划配置
-                const packageData = tripData.packages?.find(p => p.id === packageId);
-                let payment_plan_type = 'full';
-                
-                // 如果套餐有启用的分期付款配置，使用 deposit_installment
-                if (packageData && packageData.payment_plan_config && 
-                    packageData.payment_plan_config.enabled) {
-                    payment_plan_type = 'deposit_installment';
-                    console.log(`Package ${packageId} has enabled payment plan, using deposit_installment`);
-                }
+                const payment_plan_type = resolvePaymentPlanTypeForPackage(packageId);
+                console.log(`Package ${packageId} payment_plan_type=${payment_plan_type}`);
                 
                 bookingData.packages.push({
                     package_id: packageId,
@@ -2069,8 +2104,7 @@
                 var packageId = parseInt(el.getAttribute('data-package-id'), 10);
                 var quantity = parseInt(el.value, 10) || 0;
                 if (quantity <= 0 || !packageId) return;
-                var pkgInfo = tripData.packages && tripData.packages.find(function(p) { return Number(p.id) === Number(packageId); });
-                var payment_plan_type = (pkgInfo && pkgInfo.payment_plan_config && pkgInfo.payment_plan_config.enabled) ? 'deposit_installment' : 'full';
+                var payment_plan_type = resolvePaymentPlanTypeForPackage(packageId);
                 bookingData.packages.push({ package_id: packageId, quantity: quantity, payment_plan_type: payment_plan_type });
             });
         }
@@ -2083,6 +2117,39 @@
                 bookingData.addons.push({ addon_id: addonId, quantity: quantity });
             });
         }
+    }
+
+    /**
+     * Scale pay-option labels + installment schedule amounts by traveler quantity.
+     */
+    function updatePackageScaledAmounts() {
+        document.querySelectorAll('#booking-modal .package-card').forEach(function(card) {
+            var pid = card.getAttribute('data-package-id');
+            var input = card.querySelector('input.package-quantity[data-package-id="' + pid + '"]')
+                || document.querySelector('input.package-quantity[data-package-id="' + pid + '"]');
+            var qty = input ? (parseInt(input.value, 10) || 0) : 0;
+            var scale = qty > 0 ? qty : 1;
+
+            var fullLabel = card.querySelector('.pkg-pay-label-full');
+            if (fullLabel && fullLabel.getAttribute('data-unit-amount') != null) {
+                var fullUnit = parseFloat(fullLabel.getAttribute('data-unit-amount')) || 0;
+                fullLabel.textContent = 'Pay in full ($' + formatCurrency(fullUnit * scale) + ')';
+            }
+            var depLabel = card.querySelector('.pkg-pay-label-deposit');
+            if (depLabel && depLabel.getAttribute('data-unit-amount') != null) {
+                var depUnit = parseFloat(depLabel.getAttribute('data-unit-amount')) || 0;
+                depLabel.textContent = 'Deposit + installments (deposit $' + formatCurrency(depUnit * scale) + ')';
+            }
+            var depOnly = card.querySelector('.pkg-pay-label-deposit-only');
+            if (depOnly && depOnly.getAttribute('data-unit-amount') != null) {
+                var onlyUnit = parseFloat(depOnly.getAttribute('data-unit-amount')) || 0;
+                depOnly.textContent = 'Installment plan required · Deposit $' + formatCurrency(onlyUnit * scale);
+            }
+            card.querySelectorAll('.installment-schedule-amount[data-unit-amount]').forEach(function(el) {
+                var unit = parseFloat(el.getAttribute('data-unit-amount')) || 0;
+                el.textContent = '$' + formatCurrency(unit * scale);
+            });
+        });
     }
 
     /**
@@ -2148,6 +2215,7 @@
                 if (lineDueNow !== depositAmount * qty) displayName = packageData.name + ' (Deposit + Overdue)';
             } else {
                 lineDueNow = price * qty;
+                if (ppc && ppc.enabled) displayName = packageData.name + ' (Pay in full)';
             }
             dueNowTotal += lineDueNow;
             html += '<div class="flex justify-between"><span>' + displayName + ' x' + qty + '</span><span>$' + formatCurrency(lineDueNow) + '</span></div>';
@@ -2172,17 +2240,74 @@
         }
         orderSummaryEl.innerHTML = html;
 
-        // 弹窗内：仅当该套餐数量 > 0 时显示 Payment plan 明细（含 Deposit 金额），否则隐藏
+        // Your Booking：选分期时直接显示 Payment plan（同日金额合并）
+        var planWrap = document.getElementById('booking-payment-plan');
+        if (planWrap) {
+            var dueBuckets = {}; // key -> { label, amount, sort }
+            function addDue(key, label, amount, sort) {
+                if (!dueBuckets[key]) {
+                    dueBuckets[key] = { label: label, amount: 0, sort: sort };
+                }
+                dueBuckets[key].amount += amount;
+            }
+            var hasPlan = false;
+            bookingData.packages.forEach(function(pkg) {
+                if (pkg.payment_plan_type !== 'deposit_installment') return;
+                var packageData = tripData.packages && tripData.packages.find(function(p) {
+                    return Number(p.id) === Number(pkg.package_id);
+                });
+                if (!packageData) return;
+                var ppc = packageData.payment_plan_config;
+                if (!ppc || !ppc.enabled) return;
+                var qty = Math.max(0, parseInt(pkg.quantity, 10) || 0);
+                if (qty <= 0) return;
+                hasPlan = true;
+                var depositAmount = parseFloat(ppc.deposit_amount || ppc.deposit || 0) || 0;
+                addDue('deposit-today', 'Deposit · Due today', depositAmount * qty, '0');
+                (ppc.installments || []).forEach(function(inst) {
+                    if (!inst) return;
+                    var dueStr = inst.date ? String(inst.date).substring(0, 10) : '';
+                    if (!dueStr) return;
+                    addDue(
+                        'inst-' + dueStr,
+                        formatPlanDate(dueStr),
+                        (parseFloat(inst.amount) || 0) * qty,
+                        dueStr
+                    );
+                });
+            });
+            if (hasPlan) {
+                var rows = Object.keys(dueBuckets).map(function(k) { return dueBuckets[k]; });
+                rows.sort(function(a, b) {
+                    if (a.sort === b.sort) return 0;
+                    return a.sort < b.sort ? -1 : 1;
+                });
+                var rowsHtml = rows.map(function(r) {
+                    return '<div class="booking-payment-plan-row"><span>' + r.label + '</span><span class="amt">$' + formatCurrency(r.amount) + '</span></div>';
+                }).join('');
+                planWrap.classList.remove('hidden');
+                planWrap.innerHTML =
+                    '<div class="booking-payment-plan-title">Payment plan</div>' +
+                    rowsHtml;
+            } else {
+                planWrap.classList.add('hidden');
+                planWrap.innerHTML = '';
+            }
+        }
+
+        // 弹窗内：数量 > 0 且选了分期时显示 Payment plan 明细；金额随人数缩放
         document.querySelectorAll('#booking-modal .package-card').forEach(function(card) {
             var pid = card.getAttribute('data-package-id');
             var input = document.querySelector('input.package-quantity[data-package-id="' + pid + '"]');
             var qty = input ? (parseInt(input.value, 10) || 0) : 0;
             var detailEl = card.querySelector('.package-installment-detail');
+            var planType = resolvePaymentPlanTypeForPackage(pid);
             if (detailEl) {
-                if (qty > 0) detailEl.classList.remove('hidden');
+                if (qty > 0 && planType === 'deposit_installment') detailEl.classList.remove('hidden');
                 else detailEl.classList.add('hidden');
             }
         });
+        updatePackageScaledAmounts();
 
         var tripTotalEl = document.getElementById('trip-total-amount');
         if (tripTotalEl) tripTotalEl.textContent = '$' + formatCurrency(tripTotalFull);

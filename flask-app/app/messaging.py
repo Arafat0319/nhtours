@@ -8,6 +8,7 @@ from flask import current_app
 
 from app import db
 from app.models import InstallmentPayment, Message
+from app.payments import booking_package_unit_price, booking_addon_unit_price
 from app.utils import (
     is_noreply_sender,
     render_branded_customer_message,
@@ -46,20 +47,20 @@ def booking_expected_amount(booking):
     seen_addon_ids = set()
     for bp in booking.booking_packages:
         if bp.package:
-            package_price = float(bp.package.price) if bp.package.price is not None else 0.0
+            package_price = booking_package_unit_price(bp)
             quantity = int(bp.quantity) if bp.quantity is not None else 1
             booking_gross += package_price * quantity
             has_packages = True
     for participant in booking.participants:
         for booking_addon in participant.addons:
             if booking_addon.addon and booking_addon.id not in seen_addon_ids:
-                addon_price = float(booking_addon.addon.price) if booking_addon.addon.price is not None else 0.0
+                addon_price = booking_addon_unit_price(booking_addon)
                 quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 0
                 booking_gross += addon_price * quantity
                 seen_addon_ids.add(booking_addon.id)
     for booking_addon in booking.addons:
         if booking_addon.addon and booking_addon.id not in seen_addon_ids:
-            addon_price = float(booking_addon.addon.price) if booking_addon.addon.price is not None else 0.0
+            addon_price = booking_addon_unit_price(booking_addon)
             quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 0
             booking_gross += addon_price * quantity
             seen_addon_ids.add(booking_addon.id)

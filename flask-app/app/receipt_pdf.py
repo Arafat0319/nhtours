@@ -5,6 +5,8 @@ from pathlib import Path
 
 from fpdf import FPDF
 
+from app.payments import booking_package_unit_price, booking_addon_unit_price
+
 _EMAIL_LOGO_NAME = "nexus-horizons-email.png"
 _HEADER_LOGO_NAME = "nexus-horizons-receipt-header.png"
 
@@ -300,7 +302,7 @@ def build_booking_receipt_pdf(ctx_or_booking=None, trip=None, expected_amount=No
         packages_subtotal = 0.0
         for bp in list(booking.booking_packages) if booking.booking_packages else []:
             if bp.package:
-                packages_subtotal += float(bp.package.price or 0) * int(bp.quantity or 1)
+                packages_subtotal += booking_package_unit_price(bp) * int(bp.quantity or 1)
 
     if addons_total is None:
         addons_total = 0.0
@@ -310,12 +312,12 @@ def build_booking_receipt_pdf(ctx_or_booking=None, trip=None, expected_amount=No
                 if booking_addon.id in seen or not booking_addon.addon:
                     continue
                 seen.add(booking_addon.id)
-                addons_total += float(booking_addon.addon.price or 0) * int(booking_addon.quantity or 0)
+                addons_total += booking_addon_unit_price(booking_addon) * int(booking_addon.quantity or 0)
         for booking_addon in booking.addons:
             if booking_addon.id in seen or not booking_addon.addon:
                 continue
             seen.add(booking_addon.id)
-            addons_total += float(booking_addon.addon.price or 0) * int(booking_addon.quantity or 0)
+            addons_total += booking_addon_unit_price(booking_addon) * int(booking_addon.quantity or 0)
 
     order_no = getattr(booking, "order_number", None) or booking.id
     from app.utils import format_pacific_date
@@ -394,7 +396,7 @@ def build_booking_receipt_pdf(ctx_or_booking=None, trip=None, expected_amount=No
             if not bp.package:
                 continue
             qty = int(bp.quantity or 1)
-            price = float(bp.package.price or 0) * qty
+            price = booking_package_unit_price(bp) * qty
             _kv_row(pdf, f"{bp.package.name} x{qty}", _money(price))
     else:
         pdf.cell(0, 6, "No Package", new_x="LMARGIN", new_y="NEXT")

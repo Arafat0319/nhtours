@@ -14,6 +14,7 @@ class LoginForm(FlaskForm):
 class TripBasicsForm(FlaskForm):
     title = StringField('Trip Title', validators=[DataRequired(), Length(max=128)])
     slug = StringField('URL Slug', validators=[DataRequired(), Length(max=128)])
+    teacher_view_slug = StringField('Teacher view', validators=[Optional(), Length(max=64)])
     trip_abbr = StringField('Trip ID', validators=[Optional(), Length(max=8)])
     destination_text = StringField('Destination', validators=[DataRequired(), Length(max=128)])
     start_date = DateField('Start Date', validators=[DataRequired()])
@@ -35,6 +36,15 @@ class TripBasicsForm(FlaskForm):
                 'Trip ID must be 2–4 characters with at least one letter '
                 '(you can paste a full id like 2609SS).'
             )
+        field.data = cleaned
+
+    def validate_teacher_view_slug(self, field):
+        from app.trip_roster import normalize_teacher_view_slug
+        if not field.data:
+            return
+        cleaned = normalize_teacher_view_slug(field.data)
+        if not cleaned:
+            raise ValidationError('Use letters, numbers, hyphens, or underscores.')
         field.data = cleaned
 
 

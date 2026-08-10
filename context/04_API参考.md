@@ -41,6 +41,7 @@
 | `/admin/trips/json` | GET | 日历/列表用 JSON 数据 |
 | `/admin/trips/new` | GET | 创建新行程，跳转 Trip Builder |
 | `/admin/trips/<id>/manage` | GET | 行程详情 / 订单管理页 |
+| `/admin/trips/<id>/teacher-view/reset` | POST | （保留）换新老师只读短码；日常改码在 Basics 直接编辑 `teacher_view_slug` |
 | `/admin/trips/<id>/publish` | POST | 显式上线：仅 `unpublished` 且必填齐全 → `published` |
 | `/admin/trips/<id>/unpublish` | POST | 下架 → `unpublished`（不完整则 `draft`）。**不**取消已有订单；未付分期/催款/Pay now 仍可用 |
 | `/admin/trips/<id>/deactivate` | POST | 兼容旧入口，等同 unpublish |
@@ -273,6 +274,7 @@ stripe listen --forward-to localhost:8080/webhooks/stripe
 |------|------|------|
 | `/trips/<slug>` | GET/POST | 行程详情页（GET 展示；POST 为 AJAX 报名提交，创建 PendingBooking + PaymentIntent） |
 | `/trips/<slug>/design-preview` | GET/POST | 设计预览实验页（与正式页同数据，渲染实验模板；POST 逻辑同正式页） |
+| `/teacher/trips/<teacher_view_slug>` | GET | 老师只读名单（Bookings + Participants）；凭 `Trip.teacher_view_slug`；无登录；无效码 404 |
 
 > 无 `/trips` 列表页、无 `/trips/<slug>/book` 独立向导；报名在详情页弹窗内完成（5 步）。
 

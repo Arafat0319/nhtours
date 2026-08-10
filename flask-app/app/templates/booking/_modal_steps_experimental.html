@@ -10,15 +10,11 @@
             {% for package in packages %}
             {% set ppc = package.payment_plan_config %}
             {% set has_installment = ppc and ppc.get('enabled') %}
+            {% set allow_full = (ppc.get('allow_full_payment', true) if ppc else true) %}
             {% set deposit_amt = (ppc.get('deposit_amount') or ppc.get('deposit') or 0) if ppc else 0 %}
             {% set spots = package_spots_available.get(package.id, package.capacity) if package.capacity is not none else none %}
             {% set max_qty = [5, package.capacity or 100]|min %}
-            <div class="package-card relative w-full border-2 rounded-xl p-4 lg:p-6 transition-all cursor-pointer group min-w-0 {{ 'border-[#0066ff] bg-blue-50/30 shadow-sm' if has_installment else 'border-slate-100 hover:border-[#0066ff]/30' }} bg-white" data-package-id="{{ package.id }}" data-has-installment="{{ 'true' if has_installment else 'false' }}" data-deposit="{{ deposit_amt }}" data-testid="package-row-{{ loop.index0 }}">
-                {% if has_installment %}
-                <div class="absolute top-4 right-4 shrink-0">
-                    <svg fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-                </div>
-                {% endif %}
+            <div class="package-card relative w-full border-2 rounded-xl p-4 lg:p-6 transition-all group min-w-0 border-slate-100 hover:border-[#0066ff]/30 bg-white" data-package-id="{{ package.id }}" data-has-installment="{{ 'true' if has_installment else 'false' }}" data-allow-full="{{ 'true' if allow_full else 'false' }}" data-deposit="{{ deposit_amt }}" data-testid="package-row-{{ loop.index0 }}">
                 <div class="flex flex-col gap-2 min-w-0">
                     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 sm:gap-4">
                         <div class="flex-1 min-w-0">
@@ -31,7 +27,7 @@
                             <span class="text-lg sm:text-xl font-bold text-slate-900" data-testid="option-price">${{ (package.price)|format_price }}</span>
                         </div>
                     </div>
-                    <div class="pkg-card-stepper-row mt-4 sm:mt-6 flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-slate-100 {{ 'opacity-100' if has_installment else 'opacity-50 group-hover:opacity-100' }} transition-opacity">
+                    <div class="pkg-card-stepper-row mt-4 sm:mt-6 flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-slate-100 opacity-100 transition-opacity">
                         <span class="text-sm font-semibold text-slate-700">Travelers</span>
                         <div class="pkg-stepper-wrapper flex items-center border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm shrink-0" data-package-id="{{ package.id }}" data-max-qty="{{ max_qty }}">
                             <input type="hidden" name="package_quantity_{{ package.id }}" value="0" class="package-quantity" data-package-id="{{ package.id }}">
@@ -41,8 +37,25 @@
                         </div>
                     </div>
                     {% if spots is not none %}<p class="pkg-card-detail text-sm text-orange-600 font-medium mt-1" data-testid="package-availability-info">Only {{ spots }} left</p>{% endif %}
+                    {% if has_installment %}
+                    <div class="package-pay-options mt-3 space-y-2" data-package-id="{{ package.id }}">
+                        {% if allow_full %}
+                        <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                            <input type="radio" class="package-pay-radio accent-[#0066ff]" name="pkg_pay_{{ package.id }}" value="full" data-package-id="{{ package.id }}" checked>
+                            <span class="pkg-pay-label-full" data-unit-amount="{{ package.price }}">Pay in full (${{ (package.price)|format_price }})</span>
+                        </label>
+                        <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                            <input type="radio" class="package-pay-radio accent-[#0066ff]" name="pkg_pay_{{ package.id }}" value="deposit_installment" data-package-id="{{ package.id }}">
+                            <span class="pkg-pay-label-deposit" data-unit-amount="{{ deposit_amt }}">Deposit + installments (deposit ${{ deposit_amt|format_price }})</span>
+                        </label>
+                        {% else %}
+                        <input type="hidden" class="package-pay-radio" name="pkg_pay_{{ package.id }}" value="deposit_installment" data-package-id="{{ package.id }}">
+                        <p class="text-sm text-slate-600 pkg-pay-label-deposit-only" data-unit-amount="{{ deposit_amt }}">Installment plan required · Deposit ${{ deposit_amt|format_price }}</p>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                     {% if has_installment and ppc %}
-                    <div class="package-installment-detail pkg-card-detail mt-6 pt-6 border-t border-slate-100" data-package-id="{{ package.id }}">
+                    <div class="package-installment-detail pkg-card-detail hidden mt-6 pt-6 border-t border-slate-100" data-package-id="{{ package.id }}">
                         <h5>Payment Schedule</h5>
                         <div class="overflow-x-auto -mx-1">
                             <div class="installment-schedule">
@@ -50,14 +63,14 @@
                                     <div class="installment-schedule-item installment-schedule-item-deposit">
                                         <span class="installment-schedule-label">Deposit</span>
                                         <span class="installment-schedule-date">Due Today</span>
-                                        <span class="installment-schedule-amount" data-testid="option-deposit">${{ deposit_amt|format_price }}</span>
+                                        <span class="installment-schedule-amount" data-unit-amount="{{ deposit_amt }}" data-testid="option-deposit">${{ deposit_amt|format_price }}</span>
                                     </div>
                                     {% set plan_installments = ppc.get('installments') or [] %}
                                     {% for inst in plan_installments %}
                                     <div class="installment-schedule-item">
                                         <span class="installment-schedule-label">{% if plan_installments|length == 1 %}Final payment{% else %}Payment {{ loop.index }}{% endif %}</span>
                                         <span class="installment-schedule-date">{{ inst.get('date', '')|format_iso_date }}</span>
-                                        <span class="installment-schedule-amount">${{ (inst.get('amount') or 0)|format_price }}</span>
+                                        <span class="installment-schedule-amount" data-unit-amount="{{ inst.get('amount') or 0 }}">${{ (inst.get('amount') or 0)|format_price }}</span>
                                     </div>
                                     {% endfor %}
                                 </div>

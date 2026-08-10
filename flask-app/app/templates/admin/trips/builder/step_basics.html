@@ -226,14 +226,52 @@
         <!-- Slug (URL) -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6 items-center">
             <label for="slug" class="block text-sm font-semibold text-gray-700 md:col-span-1">URL Slug</label>
-            <div
-                class="md:col-span-3 flex rounded-md shadow-sm border border-gray-200 bg-white focus-within:ring-1 focus-within:ring-wetravel-cyan focus-within:border-wetravel-cyan">
-                <span
-                    class="inline-flex items-center px-3 rounded-l-md border-r border-gray-200 bg-gray-50 text-gray-500 sm:text-sm">
-                    .../trips/
-                </span>
-                {{ form.slug(class="flex-1 border-0 focus:ring-0 focus:outline-none block w-full min-w-0 rounded-none
-                rounded-r-md sm:text-sm py-2 px-3 bg-transparent") }}
+            <div class="md:col-span-3">
+                <div class="flex flex-wrap items-center gap-2">
+                    <div
+                        class="flex flex-1 min-w-[12rem] rounded-md shadow-sm border border-gray-200 bg-white focus-within:ring-1 focus-within:ring-wetravel-cyan focus-within:border-wetravel-cyan">
+                        <span
+                            class="inline-flex items-center px-3 rounded-l-md border-r border-gray-200 bg-gray-50 text-gray-500 sm:text-sm">
+                            .../trips/
+                        </span>
+                        {{ form.slug(class="flex-1 border-0 focus:ring-0 focus:outline-none block w-full min-w-0 rounded-none
+                        rounded-r-md sm:text-sm py-2 px-3 bg-transparent", id="slug") }}
+                    </div>
+                    <button type="button" id="url_slug_copy_btn"
+                        class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-md shadow-sm hover:bg-gray-50 hover:text-wetravel-cyan focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-wetravel-cyan"
+                        title="Copy public trip URL">
+                        Copy
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Teacher view (same visual form as URL Slug; editable) -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 items-center">
+            <label for="teacher_view_slug" class="block text-sm font-semibold text-gray-700 md:col-span-1">Teacher view</label>
+            <div class="md:col-span-3">
+                <div class="flex flex-wrap items-center gap-2">
+                    <div
+                        class="flex flex-1 min-w-[12rem] rounded-md shadow-sm border border-gray-200 bg-white focus-within:ring-1 focus-within:ring-wetravel-cyan focus-within:border-wetravel-cyan">
+                        <span
+                            class="inline-flex items-center px-3 rounded-l-md border-r border-gray-200 bg-gray-50 text-gray-500 sm:text-sm whitespace-nowrap">
+                            .../teacher/trips/
+                        </span>
+                        {{ form.teacher_view_slug(class="flex-1 border-0 focus:ring-0 focus:outline-none block w-full min-w-0 rounded-none rounded-r-md sm:text-sm py-2 px-3 bg-transparent text-gray-700", id="teacher_view_slug", autocomplete="off", spellcheck="false", maxlength="64") }}
+                    </div>
+                    <button type="button" id="teacher_view_copy_btn"
+                        class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-md shadow-sm hover:bg-gray-50 hover:text-wetravel-cyan focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-wetravel-cyan"
+                        title="Copy teacher view URL">
+                        Copy
+                    </button>
+                </div>
+                <p class="mt-2 text-xs text-gray-500">
+                    Share with trip teachers to view Bookings and Participants only (no login, no edit).
+                    Changing the code invalidates the old link. Do not post publicly — includes student contact info.
+                </p>
+                {% for error in form.teacher_view_slug.errors %}
+                <p class="mt-1 text-sm text-red-600">{{ error }}</p>
+                {% endfor %}
             </div>
         </div>
     </div>
@@ -582,6 +620,7 @@
             const fd = new FormData();
             fd.append('title', document.getElementById('title')?.value || '');
             fd.append('slug', document.getElementById('slug')?.value || '');
+            fd.append('teacher_view_slug', document.getElementById('teacher_view_slug')?.value || '');
             fd.append('trip_abbr', document.getElementById('trip_abbr')?.value || '');
             fd.append('trip_abbr_reset', document.getElementById('trip_abbr_reset_flag')?.value || '0');
             fd.append('destination_text', document.getElementById('destination_text')?.value || '');
@@ -622,7 +661,7 @@
             if (el) { el.textContent = 'Saving...'; el.className = 'text-xs text-amber-600 mr-auto'; }
             basicsAutosaveTimer = setTimeout(doBasicsAutosave, 1500);
         }
-        ['title','slug','destination_text','capacity','trip_abbr'].forEach(id => {
+        ['title','slug','teacher_view_slug','destination_text','capacity','trip_abbr'].forEach(id => {
             const el = document.getElementById(id);
             if (el) { el.addEventListener('input', scheduleBasicsAutosave); el.addEventListener('change', scheduleBasicsAutosave); }
         });
@@ -880,6 +919,41 @@
                     heroImageInput.dispatchEvent(event);
                 }
             }
+        }
+
+        // URL Slug + Teacher view: Copy full URLs from current field values
+        function copyUrlFromPath(path, btn) {
+            const url = window.location.origin + path;
+            const finish = () => {
+                const prev = btn.textContent;
+                btn.textContent = 'Copied';
+                setTimeout(() => { btn.textContent = prev; }, 1500);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(url).then(finish).catch(() => {
+                    window.prompt('Copy this URL:', url);
+                });
+            } else {
+                window.prompt('Copy this URL:', url);
+            }
+        }
+        const urlSlugCopyBtn = document.getElementById('url_slug_copy_btn');
+        const slugInput = document.getElementById('slug');
+        if (urlSlugCopyBtn && slugInput) {
+            urlSlugCopyBtn.addEventListener('click', () => {
+                const s = (slugInput.value || '').trim();
+                if (!s) return;
+                copyUrlFromPath('/trips/' + encodeURIComponent(s), urlSlugCopyBtn);
+            });
+        }
+        const teacherSlugInput = document.getElementById('teacher_view_slug');
+        const teacherCopyBtn = document.getElementById('teacher_view_copy_btn');
+        if (teacherCopyBtn && teacherSlugInput) {
+            teacherCopyBtn.addEventListener('click', () => {
+                const s = (teacherSlugInput.value || '').trim();
+                if (!s) return;
+                copyUrlFromPath('/teacher/trips/' + encodeURIComponent(s), teacherCopyBtn);
+            });
         }
     });
 </script>

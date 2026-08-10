@@ -13,7 +13,7 @@ from app import db
 from app.admin import bp
 from app.admin.forms import LoginForm, TripForm, CityForm, ClientForm, TripBasicsForm, TripDescriptionForm, TripPackagesForm, TripAddonsForm, TripParticipantForm, TripCouponForm, EditBookingForm, TestimonialForm
 from app.models import User, Trip, City, Client, Lead, Testimonial, TripPackage, TripAddOn, CustomQuestion, DiscountCode, Booking, BookingParticipant, BookingAddOn, BookingPackage, Payment, Message, InstallmentPayment, PendingBooking
-from app.payments import create_checkout_session
+from app.payments import create_checkout_session, booking_package_unit_price, booking_addon_unit_price
 from app.utils import (
     save_image,
     send_email_via_ses,
@@ -163,7 +163,7 @@ def calculate_trip_stats(trip):
         # Calculate expected amount from BookingPackages
         for bp in bp_by_booking.get(b.id, []):
             if bp.package:
-                package_price = float(bp.package.price) if bp.package.price is not None else 0.0
+                package_price = booking_package_unit_price(bp)
                 quantity = int(bp.quantity) if bp.quantity is not None else 1
                 booking_gross += package_price * quantity
                 has_packages = True
@@ -173,14 +173,14 @@ def calculate_trip_stats(trip):
         
         for booking_addon in participant_addons_by_booking.get(b.id, []):
             if booking_addon.addon and booking_addon.id not in seen_addon_ids:
-                addon_price = float(booking_addon.addon.price) if booking_addon.addon.price is not None else 0.0
+                addon_price = booking_addon_unit_price(booking_addon)
                 quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 1
                 booking_gross += addon_price * quantity
                 seen_addon_ids.add(booking_addon.id)
         
         for booking_addon in booking_addons_by_booking.get(b.id, []):
             if booking_addon.addon and booking_addon.id not in seen_addon_ids:
-                addon_price = float(booking_addon.addon.price) if booking_addon.addon.price is not None else 0.0
+                addon_price = booking_addon_unit_price(booking_addon)
                 quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 1
                 booking_gross += addon_price * quantity
                 seen_addon_ids.add(booking_addon.id)
@@ -403,7 +403,7 @@ def manage_trip(id):
         # Calculate expected amount from BookingPackages
         for bp in b.booking_packages:
             if bp.package:  # Check if package exists
-                package_price = float(bp.package.price) if bp.package.price is not None else 0.0
+                package_price = booking_package_unit_price(bp)
                 quantity = int(bp.quantity) if bp.quantity is not None else 1
                 booking_gross += package_price * quantity
                 has_packages = True
@@ -412,7 +412,7 @@ def manage_trip(id):
         for participant in b.participants:
             for booking_addon in participant.addons:
                 if booking_addon.addon and booking_addon.id not in seen_addon_ids:
-                    addon_price = float(booking_addon.addon.price) if booking_addon.addon.price is not None else 0.0
+                    addon_price = booking_addon_unit_price(booking_addon)
                     quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 0
                     booking_gross += addon_price * quantity
                     seen_addon_ids.add(booking_addon.id)
@@ -420,7 +420,7 @@ def manage_trip(id):
         # Add add-ons prices (直接通过 booking.addons)
         for booking_addon in b.addons:
             if booking_addon.addon and booking_addon.id not in seen_addon_ids:
-                addon_price = float(booking_addon.addon.price) if booking_addon.addon.price is not None else 0.0
+                addon_price = booking_addon_unit_price(booking_addon)
                 quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 0
                 booking_gross += addon_price * quantity
                 seen_addon_ids.add(booking_addon.id)
@@ -504,7 +504,7 @@ def manage_trip(id):
                     participant_addons.append({
                         'name': booking_addon.addon.name,
                         'quantity': booking_addon.quantity,
-                        'price': float(booking_addon.addon.price) if booking_addon.addon.price else 0.0
+                        'price': booking_addon_unit_price(booking_addon)
                     })
                     seen_addon_ids.add(booking_addon.id)
             for booking_addon in booking.addons:
@@ -516,7 +516,7 @@ def manage_trip(id):
                     participant_addons.append({
                         'name': booking_addon.addon.name,
                         'quantity': booking_addon.quantity,
-                        'price': float(booking_addon.addon.price) if booking_addon.addon.price else 0.0
+                        'price': booking_addon_unit_price(booking_addon)
                     })
                     seen_addon_ids.add(booking_addon.id)
 
@@ -526,6 +526,11 @@ def manage_trip(id):
                 name_parts = (participant.name or '').strip().split(None, 1)
                 first_name = name_parts[0] if name_parts else ''
                 last_name = name_parts[1] if len(name_parts) > 1 else ''
+
+            buyer_name = (booking.buyer_name or '').strip()
+            if not buyer_name and booking.client:
+                buyer_name = (booking.client.name or '').strip()
+            buyer_email = (booking.get_buyer_email() or '').strip()
 
             all_participants.append({
                 'id': participant.id,
@@ -539,6 +544,8 @@ def manage_trip(id):
                 'registration_type': getattr(participant, 'registration_type', None) or '',
                 'booking_id': booking.id,
                 'order_number': booking.order_number or f'#{booking.id}',
+                'buyer_name': buyer_name,
+                'buyer_email': buyer_email,
                 'addons': participant_addons,
                 'question_answers': participant.question_answers or {},
             })
@@ -602,6 +609,19 @@ def manage_trip(id):
 
 
 
+@bp.route('/trips/<int:id>/teacher-view/reset', methods=['POST'])
+@login_required
+def reset_teacher_view(id):
+    """换新老师只读链接；旧 teacher_view_slug 立即失效。"""
+    trip = Trip.query.get_or_404(id)
+    from app.trip_roster import reset_teacher_view_slug
+
+    slug = reset_teacher_view_slug(trip)
+    db.session.commit()
+    url = url_for('main.teacher_trip_roster', teacher_view_slug=slug, _external=True)
+    return jsonify({'ok': True, 'slug': slug, 'url': url})
+
+
 @bp.route('/trips/new')
 @login_required
 def new_trip():
@@ -633,6 +653,7 @@ def trip_builder(id, step):
             trip.slug = request.form.get('slug') or trip.slug or ''
             trip.destination_text = request.form.get('destination_text') or trip.destination_text or ''
             from app.order_numbers import apply_trip_abbr_from_input, reset_trip_abbr
+            from app.trip_roster import apply_teacher_view_slug
             # Title first so reset/suggest uses the latest title
             if request.form.get('trip_abbr_reset') == '1':
                 reset_trip_abbr(trip)
@@ -640,6 +661,10 @@ def trip_builder(id, step):
                 apply_trip_abbr_from_input(
                     trip, request.form.get('trip_abbr'), suggest_if_missing=True
                 )
+            try:
+                apply_teacher_view_slug(trip, request.form.get('teacher_view_slug'))
+            except ValueError as e:
+                return jsonify({'success': False, 'error': str(e)}), 400
             for f in ('start_date', 'end_date', 'registration_date'):
                 v = request.form.get(f)
                 if v:
@@ -666,6 +691,7 @@ def trip_builder(id, step):
                 'status': trip.status,
                 'publish_gaps': get_trip_publish_gaps(trip),
                 'trip_abbr': trip.trip_abbr,
+                'teacher_view_slug': trip.teacher_view_slug,
             })
 
         if form.validate_on_submit():
@@ -694,7 +720,7 @@ def trip_builder(id, step):
                         trip.hero_image = image_path
                 except ValueError as e:
                     flash(str(e), 'error')
-                    return render_template('admin/trips/builder/step_basics.html', title='Trip Basics', trip=trip, form=form, current_step='basics', min_date=date.today().isoformat(), trip_counts=trip_counts)
+                    return render_template('admin/trips/builder/step_basics.html', title='Trip Basics', trip=trip, form=form, current_step='basics', min_date=date.today().isoformat(), trip_counts=trip_counts, teacher_view_url=url_for('main.teacher_trip_roster', teacher_view_slug=trip.teacher_view_slug, _external=True) if trip.teacher_view_slug else None)
             
             # Manual Populate to avoid overwriting image with FileStorage or issues
             trip.title = form.title.data
@@ -708,6 +734,7 @@ def trip_builder(id, step):
             trip.color = form.color.data
 
             from app.order_numbers import apply_trip_abbr_from_input, reset_trip_abbr
+            from app.trip_roster import apply_teacher_view_slug
             if request.form.get('trip_abbr_reset') == '1':
                 reset_trip_abbr(trip)
             else:
@@ -715,6 +742,25 @@ def trip_builder(id, step):
                     trip,
                     form.trip_abbr.data,
                     suggest_if_missing=True,
+                )
+            try:
+                apply_teacher_view_slug(trip, form.teacher_view_slug.data)
+            except ValueError as e:
+                flash(str(e), 'error')
+                form.teacher_view_slug.errors.append(str(e))
+                return render_template(
+                    'admin/trips/builder/step_basics.html',
+                    title='Trip Basics',
+                    trip=trip,
+                    form=form,
+                    current_step='basics',
+                    min_date=date.today().isoformat(),
+                    trip_counts=trip_counts,
+                    teacher_view_url=url_for(
+                        'main.teacher_trip_roster',
+                        teacher_view_slug=trip.teacher_view_slug,
+                        _external=True,
+                    ) if trip.teacher_view_slug else None,
                 )
             
             db.session.commit()
@@ -727,14 +773,25 @@ def trip_builder(id, step):
             return redirect(url_for('admin.trip_builder', id=trip.id, step='description'))
         # Prefill abbr: input holds letters only; YYMM shown as read-only prefix in UI
         abbr_follows_title = True
+        from app.order_numbers import sanitize_stored_trip_abbr, trip_abbr_follows_title
+        from app.trip_roster import ensure_teacher_view_slug
+        letters = sanitize_stored_trip_abbr(trip)
+        if letters != (trip.trip_abbr or ''):
+            trip.trip_abbr = letters
+        ensure_teacher_view_slug(trip)
+        if db.session.is_modified(trip):
+            db.session.commit()
         if request.method == 'GET':
-            from app.order_numbers import sanitize_stored_trip_abbr, trip_abbr_follows_title
-            letters = sanitize_stored_trip_abbr(trip)
-            if letters != (trip.trip_abbr or ''):
-                trip.trip_abbr = letters
-                db.session.commit()
             form.trip_abbr.data = letters
-            abbr_follows_title = trip_abbr_follows_title(trip)
+            form.teacher_view_slug.data = trip.teacher_view_slug or ''
+        abbr_follows_title = trip_abbr_follows_title(trip)
+        teacher_view_url = None
+        if trip.teacher_view_slug:
+            teacher_view_url = url_for(
+                'main.teacher_trip_roster',
+                teacher_view_slug=trip.teacher_view_slug,
+                _external=True,
+            )
         return render_template(
             'admin/trips/builder/step_basics.html',
             title='Trip Basics',
@@ -744,6 +801,7 @@ def trip_builder(id, step):
             min_date=date.today().isoformat(),
             trip_counts=trip_counts,
             abbr_follows_title=abbr_follows_title,
+            teacher_view_url=teacher_view_url,
         )
     
     elif step == 'description':
@@ -885,11 +943,36 @@ def trip_builder(id, step):
                         )
                         db.session.add(new_pkg)
                 
-                # Delete removed packages
+                # Delete removed packages (block if any booking still references them)
+                blocked = []
                 for pid, pkg in current_packages.items():
                     if pid not in processed_ids:
-                        db.session.delete(pkg)
-                
+                        ref_count = BookingPackage.query.filter_by(package_id=pid).count()
+                        if ref_count:
+                            blocked.append((pkg.name or f'#{pid}', ref_count))
+                        else:
+                            db.session.delete(pkg)
+
+                if blocked:
+                    db.session.rollback()
+                    details = '; '.join(
+                        f'"{name}" ({n} booking line{"s" if n != 1 else ""})'
+                        for name, n in blocked
+                    )
+                    flash(
+                        f'Cannot delete package(s) still used by bookings: {details}. '
+                        f'Edit in place, mark unavailable, or remove those bookings first.',
+                        'error',
+                    )
+                    return render_template(
+                        'admin/trips/builder/step_packages.html',
+                        title='Packages',
+                        trip=trip,
+                        form=form,
+                        current_step='packages',
+                        trip_counts=trip_counts,
+                    )
+
                 db.session.commit()
                 # Check if trip is complete and update status
                 if not check_trip_completion(trip):
@@ -2672,20 +2755,20 @@ def export_bookings(id):
         seen_addon_ids = set()
         for bp in booking.booking_packages:
             if bp.package:
-                package_price = float(bp.package.price) if bp.package.price is not None else 0.0
+                package_price = booking_package_unit_price(bp)
                 quantity = int(bp.quantity) if bp.quantity is not None else 1
                 booking_gross += package_price * quantity
                 has_packages = True
         for participant in booking.participants:
             for booking_addon in participant.addons:
                 if booking_addon.addon and booking_addon.id not in seen_addon_ids:
-                    addon_price = float(booking_addon.addon.price) if booking_addon.addon.price is not None else 0.0
+                    addon_price = booking_addon_unit_price(booking_addon)
                     quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 0
                     booking_gross += addon_price * quantity
                     seen_addon_ids.add(booking_addon.id)
         for booking_addon in booking.addons:
             if booking_addon.addon and booking_addon.id not in seen_addon_ids:
-                addon_price = float(booking_addon.addon.price) if booking_addon.addon.price is not None else 0.0
+                addon_price = booking_addon_unit_price(booking_addon)
                 quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 0
                 booking_gross += addon_price * quantity
                 seen_addon_ids.add(booking_addon.id)
@@ -3330,13 +3413,19 @@ def add_participant(id):
                 payment_plan_type = pkg_data.get('payment_plan_type', 'full')
                 
                 if package_id and quantity > 0:
+                    package = TripPackage.query.get(package_id)
                     booking_package = BookingPackage(
                         booking_id=booking.id,
                         package_id=package_id,
                         quantity=quantity,
                         payment_plan_type=payment_plan_type,
                         amount_paid=0.0,  # Will be updated based on payment
-                        status='pending'
+                        status='pending',
+                        unit_price=(
+                            float(package.price)
+                            if package and package.price is not None
+                            else 0.0
+                        ),
                     )
                     db.session.add(booking_package)
             
@@ -3421,7 +3510,7 @@ def manage_booking(trip_id, booking_id):
                         participant_addons.append({
                             'id': ba.addon.id,
                             'name': ba.addon.name,
-                            'price': float(ba.addon.price) if ba.addon.price else 0.0,
+                            'price': booking_addon_unit_price(ba),
                             'quantity': ba.quantity
                         })
                 # Get question_answers if stored (currently not in model, but prepare for future)
@@ -3464,7 +3553,7 @@ def manage_booking(trip_id, booking_id):
             for p in booking.participants:
                 for ba in p.addons:
                     if ba.addon and ba.id not in seen_addon_ids:
-                        addon_price = float(ba.addon.price) if ba.addon.price else 0.0
+                        addon_price = booking_addon_unit_price(ba)
                         quantity = int(ba.quantity) if ba.quantity else 1
                         addons_total += addon_price * quantity
                         all_addons.append({
@@ -3480,7 +3569,7 @@ def manage_booking(trip_id, booking_id):
             # 方法2：通过 booking.addons 获取（直接关联的）
             for ba in booking.addons:
                 if ba.addon and ba.id not in seen_addon_ids:
-                    addon_price = float(ba.addon.price) if ba.addon.price else 0.0
+                    addon_price = booking_addon_unit_price(ba)
                     quantity = int(ba.quantity) if ba.quantity else 1
                     addons_total += addon_price * quantity
                     participant = ba.participant
@@ -3501,7 +3590,7 @@ def manage_booking(trip_id, booking_id):
             
             for bp in booking.booking_packages:
                 if bp.package:
-                    package_price = float(bp.package.price) if bp.package.price is not None else 0.0
+                    package_price = booking_package_unit_price(bp)
                     quantity = int(bp.quantity) if bp.quantity is not None else 1
                     subtotal = package_price * quantity
                     packages_total += subtotal
@@ -3940,7 +4029,7 @@ def get_trip_financials(id):
         # Calculate expected amount from BookingPackages
         for bp in b.booking_packages:
             if bp.package:  # Check if package exists
-                package_price = float(bp.package.price) if bp.package.price is not None else 0.0
+                package_price = booking_package_unit_price(bp)
                 quantity = int(bp.quantity) if bp.quantity is not None else 1
                 booking_gross += package_price * quantity
                 has_packages = True
@@ -3949,7 +4038,7 @@ def get_trip_financials(id):
         for participant in b.participants:
             for booking_addon in participant.addons:
                 if booking_addon.addon and booking_addon.id not in seen_addon_ids:
-                    addon_price = float(booking_addon.addon.price) if booking_addon.addon.price is not None else 0.0
+                    addon_price = booking_addon_unit_price(booking_addon)
                     quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 0
                     booking_gross += addon_price * quantity
                     seen_addon_ids.add(booking_addon.id)
@@ -3957,7 +4046,7 @@ def get_trip_financials(id):
         # Add add-ons prices (直接通过 booking.addons)
         for booking_addon in b.addons:
             if booking_addon.addon and booking_addon.id not in seen_addon_ids:
-                addon_price = float(booking_addon.addon.price) if booking_addon.addon.price is not None else 0.0
+                addon_price = booking_addon_unit_price(booking_addon)
                 quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 0
                 booking_gross += addon_price * quantity
                 seen_addon_ids.add(booking_addon.id)

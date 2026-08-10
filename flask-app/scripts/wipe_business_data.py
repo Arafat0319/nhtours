@@ -1,5 +1,5 @@
 """
-清空业务数据，保留 Testimonials / users / cities（及 alembic_version）。
+清空业务数据，保留 Testimonials / Leads / users / cities（及 alembic_version）。
 
 默认 dry-run，只打印将删除的行数，不写库。
 确认后加 --apply。可选 --clear-uploads 清理报名上传文件。
@@ -9,6 +9,7 @@
   python scripts/wipe_business_data.py --apply
   python scripts/wipe_business_data.py --apply --clear-uploads
   python scripts/wipe_business_data.py --apply --also-cities   # 连 Cities 一并清
+  python scripts/wipe_business_data.py --apply --also-leads    # 连 Leads 一并清（默认保留）
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
 
 from sqlalchemy import text
 
@@ -36,7 +37,6 @@ CLEAR_TABLES = [
     "booking_packages",
     "booking_participants",
     "bookings",
-    "leads",
     "messages",
     "custom_questions",
     "buyer_info_fields",
@@ -49,7 +49,7 @@ CLEAR_TABLES = [
     "clients",
 ]
 
-KEEP_TABLES = ("users", "testimonials", "cities", "alembic_version")
+KEEP_TABLES = ("users", "testimonials", "leads", "cities", "alembic_version")
 
 
 def _mask_db_url(url: str) -> str:
@@ -124,10 +124,13 @@ def clear_booking_uploads() -> list[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Wipe business data; keep testimonials/users/cities")
+    parser = argparse.ArgumentParser(
+        description="Wipe business data; keep testimonials/leads/users/cities"
+    )
     parser.add_argument("--apply", action="store_true", help="Actually delete (default is dry-run)")
     parser.add_argument("--clear-uploads", action="store_true", help="Also clear booking upload files")
     parser.add_argument("--also-cities", action="store_true", help="Also truncate cities")
+    parser.add_argument("--also-leads", action="store_true", help="Also truncate leads (kept by default)")
     parser.add_argument("--skip-backup", action="store_true", help="Skip SQL backup before --apply")
     parser.add_argument(
         "--backup-dir",
@@ -143,6 +146,8 @@ def main() -> int:
     tables = list(CLEAR_TABLES)
     if args.also_cities:
         tables.append("cities")
+    if args.also_leads:
+        tables.append("leads")
 
     with app.app_context():
         url = str(db.engine.url)
@@ -153,6 +158,8 @@ def main() -> int:
         print("KEEP (unchanged):")
         for t in KEEP_TABLES:
             if t == "cities" and args.also_cities:
+                continue
+            if t == "leads" and args.also_leads:
                 continue
             try:
                 print(f"  {t}: {_count(db, t)}")
@@ -213,7 +220,10 @@ def main() -> int:
         print("After wipe:")
         for t in KEEP_TABLES:
             if t == "cities" and args.also_cities:
-                print(f"  cities: 0 (cleared)")
+                print("  cities: 0 (cleared)")
+                continue
+            if t == "leads" and args.also_leads:
+                print("  leads: 0 (cleared)")
                 continue
             print(f"  {t}: {_count(db, t)}")
         for t in ("trips", "bookings", "payments", "clients", "pending_bookings"):

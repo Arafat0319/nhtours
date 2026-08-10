@@ -139,6 +139,9 @@ class Trip(db.Model):
     # Next per-trip sequence for order_number (cancelled numbers are not reused)
     next_order_seq = db.Column(db.Integer, default=1, nullable=False)
 
+    # Teacher read-only roster share code (not the public /trips/<slug>)
+    teacher_view_slug = db.Column(db.String(64), unique=True, index=True, nullable=True)
+
     @property
     def duration_days(self):
         if self.start_date and self.end_date:
@@ -177,16 +180,19 @@ class TripPackage(db.Model):
     capacity = db.Column(db.Integer) # Package specific capacity (Optional)
     status = db.Column(db.String(20), default='available') # available, sold_out, unavailable
     
-    # Payment Plan Configuration
-    # JSON Structure: 
+    # Payment Plan Configuration (package = product; plan is optional pay rhythm)
+    # JSON Structure:
     # {
-    #   "deposit": 500,
+    #   "enabled": true,
+    #   "allow_full_payment": true,  # default true when omitted: customer may pay in full or use plan
+    #   "deposit_amount": 500,
     #   "installments": [
     #       {"date": "2025-09-03", "amount": 625},
     #       {"date": "2025-10-03", "amount": 625}
     #   ],
     #   "allow_partial": false
     # }
+    # deposit + installments must equal package.price when enabled.
     # （曾有 enable_auto_billing 勾选，无后端扣款；2026-07-27 已从 Builder UI 移除）
     payment_plan_config = db.Column(db.JSON)
     
@@ -524,6 +530,8 @@ class BookingPackage(db.Model):
     payment_plan_type = db.Column(db.String(20), default='full')  # 'full' or 'deposit_installment'
     amount_paid = db.Column(db.Float, default=0.0)  # Amount paid for this specific package
     status = db.Column(db.String(20), default='pending')  # 'pending', 'deposit_paid', 'fully_paid'
+    # Unit price frozen at booking time; Expected/Balance use this, not live TripPackage.price
+    unit_price = db.Column(db.Float, nullable=True)
     
     booking = db.relationship('Booking', backref=db.backref('booking_packages', lazy='dynamic', cascade='all, delete-orphan'))
     package = db.relationship('TripPackage', backref='booking_packages')

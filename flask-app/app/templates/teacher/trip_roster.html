@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>{{ title or (trip.title ~ ' — Roster') }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'wetravel-cyan': '#00D1C1',
+                        'nh-navy': '#0B1F3A',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: "Segoe UI", Helvetica, Arial, sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <header class="bg-nh-navy text-white">
+        <div class="max-w-6xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <p class="text-xs uppercase tracking-wider text-cyan-200/90">Nexus Horizons Tours</p>
+                <h1 class="text-xl font-semibold">{{ trip.title }}</h1>
+                <p class="text-sm text-gray-300 mt-0.5">
+                    {% if trip.start_date %}
+                    {{ trip.start_date.strftime('%b %d') }}{% if trip.end_date %} – {{ trip.end_date.strftime('%b %d, %Y') }}{% endif %}
+                    {% else %}Dates TBD{% endif %}
+                </p>
+            </div>
+            <div class="flex-shrink-0">
+                <img class="h-8 w-auto"
+                    src="{{ url_for('static', filename='images/icons/logo-2-white.DyAUH4zT.svg') }}"
+                    alt="Nexus Horizons">
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 py-6 space-y-4">
+        <div class="bg-white rounded-lg shadow-sm">
+            <div class="border-b border-gray-200 px-4">
+                <nav class="-mb-px flex space-x-8">
+                    <button type="button" data-tab="bookings" class="tab-link border-wetravel-cyan text-wetravel-cyan whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                        Bookings <span class="bg-wetravel-cyan text-white rounded-full px-2 py-0.5 text-xs ml-1">{{ bookings|length }}</span>
+                    </button>
+                    <button type="button" data-tab="participants" class="tab-link border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                        Participants <span class="bg-gray-100 text-gray-600 rounded-full px-2 py-0.5 text-xs ml-1">{{ total_participants_count }}</span>
+                    </button>
+                </nav>
+            </div>
+
+            <div class="p-4 sm:p-6">
+                <!-- Bookings -->
+                <div id="tab-content-bookings" class="tab-content">
+                    <div class="mb-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+                        <h2 class="text-lg text-gray-600 font-normal">Bookings</h2>
+                        <input type="text" id="searchInput" placeholder="Search name, email, or order number"
+                            class="pl-3 pr-3 py-2 border border-gray-300 rounded text-sm w-full sm:w-72 focus:outline-none focus:border-wetravel-cyan">
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full">
+                            <thead>
+                                <tr class="border-b border-gray-100 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">
+                                    <th class="px-4 py-3 whitespace-nowrap">Order number</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">Buyer</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">Phone</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">Participants</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">Add-ons</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">Payment Type</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">Payment Status</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">Booking Date</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-100" id="bookingsTableBody">
+                                {% if bookings %}
+                                {% for booking in bookings %}
+                                {% set pay_status = booking_payment_statuses.get(booking.id, booking.status) %}
+                                {% set buyer_name = booking.buyer_name or (booking.client.name if booking.client else '') or '—' %}
+                                {% set buyer_email = booking.get_buyer_email() or '' %}
+                                {% set buyer_phone = booking.get_buyer_phone() or '-' %}
+                                <tr class="booking-row"
+                                    data-name="{{ buyer_name|lower }}"
+                                    data-email="{{ buyer_email|lower }}"
+                                    data-order-number="{{ (booking.order_number or '')|lower }}"
+                                    data-status="{{ pay_status }}">
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                                        {{ booking.order_number or ('#' ~ booking.id) }}
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        <div class="text-sm font-medium text-gray-900">{{ buyer_name }}</div>
+                                        <div class="text-sm text-gray-500">{{ buyer_email or '—' }}</div>
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ buyer_phone }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ booking.passenger_count }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                        {% set addons_map = booking_addons_summary.get(booking.id, {}) %}
+                                        {% if addons_map %}
+                                            {% for addon_name, total_qty in addons_map.items() %}
+                                            <span class="inline-block text-xs bg-gray-100 px-2 py-0.5 rounded mr-1 mb-1">{{ addon_name }}{% if total_qty > 1 %} x{{ total_qty }}{% endif %}</span>
+                                            {% endfor %}
+                                        {% else %}—{% endif %}
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        {% set ptype = booking_payment_types.get(booking.id, {'key': 'full', 'label': 'Full'}) %}
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                                            {% if ptype.key == 'installment' %}bg-purple-100 text-purple-800
+                                            {% elif ptype.key == 'deposit_final' %}bg-indigo-100 text-indigo-800
+                                            {% else %}bg-gray-100 text-gray-800{% endif %}">
+                                            {{ ptype.label }}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        <div style="display:inline-flex;flex-direction:row;align-items:center;flex-wrap:nowrap;gap:0.25rem;white-space:nowrap;">
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                                            {% if pay_status == 'fully_paid' %}bg-green-100 text-green-800
+                                            {% elif pay_status == 'deposit_paid' %}bg-blue-100 text-blue-800
+                                            {% elif pay_status == 'processing' %}bg-amber-100 text-amber-800
+                                            {% elif pay_status == 'overdue' %}bg-orange-100 text-orange-800
+                                            {% elif pay_status == 'partially_refunded' %}bg-orange-100 text-orange-800
+                                            {% elif pay_status == 'fully_refunded' or pay_status == 'refunded' %}bg-purple-100 text-purple-800
+                                            {% elif pay_status == 'cancelled' %}bg-red-100 text-red-800
+                                            {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                                            {% if pay_status == 'partially_refunded' %}Partially Refunded
+                                            {% elif pay_status == 'fully_refunded' or pay_status == 'refunded' %}Fully Refunded
+                                            {% elif pay_status == 'processing' %}Processing
+                                            {% else %}{{ pay_status|replace('_', ' ')|title }}{% endif %}
+                                        </span>
+                                        {% if booking.id in booking_payoff_ids %}
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">Payoff</span>
+                                        {% endif %}
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                        {{ booking.created_at.strftime('%Y-%m-%d') if booking.created_at else '—' }}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                                {% else %}
+                                <tr>
+                                    <td colspan="8" class="px-4 py-10 text-center text-sm text-gray-500">No bookings yet</td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Participants -->
+                <div id="tab-content-participants" class="tab-content hidden">
+                    <div class="mb-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+                        <h2 class="text-lg text-gray-600 font-normal">Participants</h2>
+                        <input type="text" id="participantSearchInput" placeholder="Search name, email, or order number"
+                            class="pl-3 pr-3 py-2 border border-gray-300 rounded text-sm w-full sm:w-80 focus:outline-none focus:border-wetravel-cyan">
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full">
+                            <thead>
+                                <tr class="border-b border-gray-100 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">
+                                    <th class="px-4 py-3 whitespace-nowrap">First Name</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">Last Name</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">Buyer</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">Email</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">Phone</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">Gender</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">Date of Birth</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">Registration Type</th>
+                                    {% for question in custom_questions %}
+                                    <th class="px-4 py-3 whitespace-nowrap">{{ question.label }}</th>
+                                    {% endfor %}
+                                    <th class="px-4 py-3 whitespace-nowrap">Add-Ons</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">Order number</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-100" id="participantsTableBody">
+                                {% if all_participants %}
+                                {% for participant in all_participants %}
+                                <tr class="participant-row"
+                                    data-name="{{ (participant.name or '')|lower }}"
+                                    data-first-name="{{ (participant.first_name or '')|lower }}"
+                                    data-last-name="{{ (participant.last_name or '')|lower }}"
+                                    data-email="{{ (participant.email or '')|lower }}"
+                                    data-buyer="{{ (participant.buyer_name or '')|lower }}"
+                                    data-order-number="{{ (participant.order_number or '')|lower }}">
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm font-semibold text-gray-800">{{ participant.first_name or '—' }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ participant.last_name or '—' }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        <div class="text-sm font-medium text-gray-900">{{ participant.buyer_name or '—' }}</div>
+                                        {% if participant.buyer_email %}
+                                        <div class="text-sm text-gray-500">{{ participant.buyer_email }}</div>
+                                        {% endif %}
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ participant.email or '—' }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ participant.phone or '—' }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ participant.gender or '—' }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ participant.dob or '—' }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ participant.registration_type or '—' }}</td>
+                                    {% for question in custom_questions %}
+                                    {% set qa = participant.question_answers or {} %}
+                                    {% set ans = qa.get(question.id) if qa.get(question.id) is not none else qa.get(question.id|string) %}
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                        {% if ans is mapping %}
+                                            {% if ans.get('type') == 'file' or (ans.get('original_filename') and ans.get('details') is none) %}
+                                                {% if ans.get('value') %}
+                                                <a href="{{ url_for('static', filename=ans.value) }}" target="_blank" rel="noopener" class="text-wetravel-cyan underline">{{ ans.get('original_filename') or 'View file' }}</a>
+                                                {% else %}—{% endif %}
+                                            {% elif ans.get('details') is not none %}
+                                                {% if ans.get('value') == 'yes' and ans.get('details') %}Yes: {{ ans.details }}{% else %}{{ ans.get('value') or '—' }}{% endif %}
+                                            {% else %}
+                                                {{ ans.get('value') or '—' }}
+                                            {% endif %}
+                                        {% else %}
+                                            {{ ans or '—' }}
+                                        {% endif %}
+                                    </td>
+                                    {% endfor %}
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                        {% if participant.addons %}
+                                            {% for addon in participant.addons %}
+                                            <span class="inline-block text-xs bg-gray-100 px-2 py-0.5 rounded mr-1 mb-1">{{ addon.name }}{% if addon.quantity > 1 %} x{{ addon.quantity }}{% endif %}</span>
+                                            {% endfor %}
+                                        {% else %}—{% endif %}
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700 font-medium">{{ participant.order_number }}</td>
+                                </tr>
+                                {% endfor %}
+                                {% else %}
+                                <tr>
+                                    <td colspan="{{ 9 + (custom_questions|length) }}" class="px-4 py-10 text-center text-sm text-gray-500">No participants yet</td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <p class="text-xs text-gray-500 text-center pb-8">
+            This page is view-only. Contact Nexus Horizons staff for changes to bookings or payments.
+        </p>
+    </main>
+
+    <script>
+    (function () {
+        function switchTab(target) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-link').forEach(el => {
+                el.classList.remove('border-wetravel-cyan', 'text-wetravel-cyan');
+                el.classList.add('border-transparent', 'text-gray-500');
+            });
+            const panel = document.getElementById('tab-content-' + target);
+            if (panel) panel.classList.remove('hidden');
+            const link = document.querySelector('.tab-link[data-tab="' + target + '"]');
+            if (link) {
+                link.classList.add('border-wetravel-cyan', 'text-wetravel-cyan');
+                link.classList.remove('border-transparent', 'text-gray-500');
+            }
+            try { history.replaceState(null, '', '#' + target); } catch (e) {}
+        }
+
+        document.querySelectorAll('.tab-link').forEach(btn => {
+            btn.addEventListener('click', () => switchTab(btn.getAttribute('data-tab')));
+        });
+
+        const hash = (location.hash || '').replace('#', '');
+        switchTab(hash === 'participants' ? 'participants' : 'bookings');
+
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) {
+            searchInput.addEventListener('input', () => {
+                const q = (searchInput.value || '').toLowerCase().trim();
+                document.querySelectorAll('#bookingsTableBody .booking-row').forEach(row => {
+                    const hay = [
+                        row.getAttribute('data-name') || '',
+                        row.getAttribute('data-email') || '',
+                        row.getAttribute('data-order-number') || '',
+                    ].join(' ');
+                    row.style.display = !q || hay.indexOf(q) !== -1 ? '' : 'none';
+                });
+            });
+        }
+
+        const pSearch = document.getElementById('participantSearchInput');
+        if (pSearch) {
+            pSearch.addEventListener('input', () => {
+                const q = (pSearch.value || '').toLowerCase().trim();
+                document.querySelectorAll('#participantsTableBody .participant-row').forEach(row => {
+                    const hay = [
+                        row.getAttribute('data-name') || '',
+                        row.getAttribute('data-first-name') || '',
+                        row.getAttribute('data-last-name') || '',
+                        row.getAttribute('data-email') || '',
+                        row.getAttribute('data-buyer') || '',
+                        row.getAttribute('data-order-number') || '',
+                    ].join(' ');
+                    row.style.display = !q || hay.indexOf(q) !== -1 ? '' : 'none';
+                });
+            });
+        }
+    })();
+    </script>
+</body>
+</html>
