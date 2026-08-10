@@ -111,6 +111,7 @@
                                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
                                             {% if ptype.key == 'installment' %}bg-purple-100 text-purple-800
                                             {% elif ptype.key == 'deposit_final' %}bg-indigo-100 text-indigo-800
+                                            {% elif ptype.key == 'mixed' %}bg-amber-100 text-amber-900
                                             {% else %}bg-gray-100 text-gray-800{% endif %}">
                                             {{ ptype.label }}
                                         </span>
@@ -119,7 +120,7 @@
                                         <div style="display:inline-flex;flex-direction:row;align-items:center;flex-wrap:nowrap;gap:0.25rem;white-space:nowrap;">
                                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
                                             {% if pay_status == 'fully_paid' %}bg-green-100 text-green-800
-                                            {% elif pay_status == 'deposit_paid' %}bg-blue-100 text-blue-800
+                                            {% elif pay_status == 'deposit_paid' or pay_status == 'partially_paid' %}bg-blue-100 text-blue-800
                                             {% elif pay_status == 'processing' %}bg-amber-100 text-amber-800
                                             {% elif pay_status == 'overdue' %}bg-orange-100 text-orange-800
                                             {% elif pay_status == 'partially_refunded' %}bg-orange-100 text-orange-800
@@ -129,6 +130,7 @@
                                             {% if pay_status == 'partially_refunded' %}Partially Refunded
                                             {% elif pay_status == 'fully_refunded' or pay_status == 'refunded' %}Fully Refunded
                                             {% elif pay_status == 'processing' %}Processing
+                                            {% elif pay_status == 'partially_paid' %}Partially Paid
                                             {% else %}{{ pay_status|replace('_', ' ')|title }}{% endif %}
                                         </span>
                                         {% if booking.id in booking_payoff_ids %}

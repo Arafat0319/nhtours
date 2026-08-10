@@ -752,7 +752,8 @@ def booking_has_overdue_amount(booking, today=None):
 def booking_payment_display_status(booking, today=None):
     """
     后台 Payment Status 展示态（不改库内 booking.status）。
-    优先级：cancelled > fully_refunded / partially_refunded > overdue > 库内 status
+    优先级：cancelled > fully_refunded / partially_refunded > overdue
+           > mixed+仍有欠款 → partially_paid > 库内 status
     """
     stored = (getattr(booking, 'status', None) or 'pending').strip() or 'pending'
     if stored == 'cancelled':
@@ -762,6 +763,23 @@ def booking_payment_display_status(booking, today=None):
         return kind
     if booking_has_overdue_amount(booking, today=today):
         return 'overdue'
+
+    # 混单（全款产品 + 分期产品）：已付一部分且仍有尾款时，勿显示 Deposit Paid
+    if stored not in ('fully_paid',):
+        try:
+            ptype = booking_payment_type_display(booking)
+            is_mixed = (ptype or {}).get('key') == 'mixed'
+        except Exception:
+            is_mixed = False
+        if is_mixed:
+            amount_paid = float(getattr(booking, 'amount_paid', 0) or 0)
+            try:
+                amount_due = float(calculate_booking_total(booking).get('amount_due') or 0)
+            except Exception:
+                amount_due = 0.0
+            if amount_paid > 0.001 and amount_due > 0.001:
+                return 'partially_paid'
+
     return stored
 
 

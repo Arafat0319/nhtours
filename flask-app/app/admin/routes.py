@@ -2698,6 +2698,7 @@ def export_bookings(id):
 
     trip = Trip.query.get_or_404(id)
     bookings = list(trip.bookings.order_by(Booking.created_at.asc()).all())
+    from app.payments import booking_payment_display_status, booking_payment_type_display
 
     wb = Workbook()
     wb.remove(wb.active)
@@ -2855,7 +2856,7 @@ def export_bookings(id):
             booking.buyer_emergency_contact_name or dash,
             booking.buyer_emergency_contact_email or dash,
             booking.buyer_emergency_contact_phone or dash,
-            (booking.status or '').replace('_', ' ').title(),
+            (booking_payment_display_status(booking) or booking.status or '').replace('_', ' ').title(),
         ]
         for col_idx, value in enumerate(contact_row_data, start=1):
             cell = ws_contact.cell(row=contact_row, column=col_idx, value=value)
@@ -2890,7 +2891,9 @@ def export_bookings(id):
         package_names = []
         for bp in booking.booking_packages:
             if bp.package:
-                package_names.append(f"{bp.package.name} x{bp.quantity}")
+                plan = (bp.payment_plan_type or 'full').strip()
+                plan_tag = 'Installment' if plan == 'deposit_installment' else 'Full'
+                package_names.append(f"{bp.package.name} x{bp.quantity} ({plan_tag})")
         package_str = ', '.join(package_names) if package_names else dash
 
         addons_map = {}
@@ -2962,7 +2965,7 @@ def export_bookings(id):
             refunds if refunds else dash,
             net_paid,
             balance_cell,
-            (booking.status or '').replace('_', ' ').title(),
+            (booking_payment_display_status(booking) or booking.status or '').replace('_', ' ').title(),
             booking_date_str,
         ]
         row_font = cancelled_font if is_cancelled else body_font
@@ -3407,6 +3410,7 @@ def add_participant(id):
             assign_order_number(booking, trip=trip)
             
             # 2a. Create BookingPackages
+            booking_packages_created = []
             for pkg_data in packages_data:
                 package_id = pkg_data.get('package_id')
                 quantity = int(pkg_data.get('quantity', 1))
@@ -3428,6 +3432,19 @@ def add_participant(id):
                         ),
                     )
                     db.session.add(booking_package)
+                    booking_packages_created.append((booking_package, package))
+            db.session.flush()
+
+            # Create installment rows for deposit_installment packages (same as customer path)
+            from app.routes import create_installment_payments
+            for booking_package, package in booking_packages_created:
+                if (
+                    booking_package.payment_plan_type == 'deposit_installment'
+                    and package
+                    and package.payment_plan_config
+                    and package.payment_plan_config.get('enabled')
+                ):
+                    create_installment_payments(booking, booking_package, package.payment_plan_config)
             
             # 3. Create Participants & Add-ons
             for p_data in participants_data:
@@ -3641,6 +3658,7 @@ def manage_booking(trip_id, booking_id):
                 payment_refunded_clamped,
                 booking_deposit_reserved,
                 booking_payment_display_status,
+                booking_payment_type_display,
                 booking_balance_due,
                 payment_step_label,
                 payment_is_payoff,
@@ -3705,17 +3723,22 @@ def manage_booking(trip_id, booking_id):
             # 有支付记录时用汇总实收作为“已付金额”显示（与 Payment 表一致，避免 DB 存错）
             amount_paid_display = round(net_received if total_charged > 0 else (float(booking.amount_paid) if booking.amount_paid else 0.0), 2)
 
-            # 定金参考：取首个套餐的 deposit
-            deposit_hint = None
+            # 定金参考：仅统计分期套餐的 deposit，多包求和（混单勿用全款包的 config）
+            deposit_hint = 0.0
+            has_inst_deposit = False
             for bp in booking.booking_packages:
+                if (bp.payment_plan_type or 'full') != 'deposit_installment':
+                    continue
                 cfg = (bp.package.payment_plan_config if bp.package else None) or {}
                 dep = cfg.get('deposit_amount') or cfg.get('deposit')
-                if dep is not None:
-                    try:
-                        deposit_hint = float(dep) * (int(bp.quantity) if bp.quantity else 1)
-                        break
-                    except (TypeError, ValueError):
-                        pass
+                if dep is None:
+                    continue
+                try:
+                    deposit_hint += float(dep) * (int(bp.quantity) if bp.quantity else 1)
+                    has_inst_deposit = True
+                except (TypeError, ValueError):
+                    pass
+            deposit_hint = deposit_hint if has_inst_deposit else None
             deposit_reserved = booking_deposit_reserved(booking, deposit_hint=deposit_hint)
 
             # 获取分期付款记录
@@ -3796,6 +3819,7 @@ def manage_booking(trip_id, booking_id):
                     # 金额信息（amount_paid 与 display 同源，避免 Save 冲掉账本）
                     'status': booking.status,
                     'payment_status': booking_payment_display_status(booking),
+                    'payment_type': booking_payment_type_display(booking),
                     'amount_paid': amount_paid_display,
                     'amount_paid_display': amount_paid_display,
                     'expected_amount': expected_amount,

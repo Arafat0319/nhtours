@@ -283,6 +283,64 @@ def test_client_cannot_force_full_when_installment_required():
     assert err is not None
 
 
+def test_display_status_mixed_partially_paid():
+    """Mixed order with balance due shows Partially Paid, not Deposit Paid."""
+    from app.payments import booking_payment_display_status
+
+    booking = SimpleNamespace(
+        status='deposit_paid',
+        amount_paid=3095.0,
+        booking_packages=[
+            SimpleNamespace(payment_plan_type='full'),
+            SimpleNamespace(payment_plan_type='deposit_installment'),
+        ],
+    )
+    with patch('app.payments.booking_refund_display_kind', return_value=None), patch(
+        'app.payments.booking_has_overdue_amount', return_value=False
+    ), patch(
+        'app.payments.booking_payment_type_display',
+        return_value={'key': 'mixed', 'label': 'Mixed'},
+    ), patch(
+        'app.payments.calculate_booking_total',
+        return_value={'amount_due': 2800.0},
+    ):
+        assert booking_payment_display_status(booking) == 'partially_paid'
+
+
+def test_display_status_installment_only_stays_deposit_paid():
+    from app.payments import booking_payment_display_status
+
+    booking = SimpleNamespace(
+        status='deposit_paid',
+        amount_paid=150.0,
+        booking_packages=[SimpleNamespace(payment_plan_type='deposit_installment')],
+    )
+    with patch('app.payments.booking_refund_display_kind', return_value=None), patch(
+        'app.payments.booking_has_overdue_amount', return_value=False
+    ), patch(
+        'app.payments.booking_payment_type_display',
+        return_value={'key': 'installment', 'label': 'Installment (3)'},
+    ):
+        assert booking_payment_display_status(booking) == 'deposit_paid'
+
+
+def test_display_status_mixed_fully_paid_unchanged():
+    from app.payments import booking_payment_display_status
+
+    booking = SimpleNamespace(
+        status='fully_paid',
+        amount_paid=5095.0,
+        booking_packages=[
+            SimpleNamespace(payment_plan_type='full'),
+            SimpleNamespace(payment_plan_type='deposit_installment'),
+        ],
+    )
+    with patch('app.payments.booking_refund_display_kind', return_value=None), patch(
+        'app.payments.booking_has_overdue_amount', return_value=False
+    ):
+        assert booking_payment_display_status(booking) == 'fully_paid'
+
+
 def test_normalize_packages_rejects_bad_qty_and_missing(app):
     from app.booking_validation import validate_and_normalize_booking_packages
     from app.models import Trip, TripPackage

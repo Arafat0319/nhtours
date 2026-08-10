@@ -210,6 +210,7 @@
                         <option value="pending">Pending</option>
                         <option value="processing">Processing</option>
                         <option value="deposit_paid">Deposit Paid</option>
+                        <option value="partially_paid">Partially Paid</option>
                         <option value="fully_paid">Fully Paid</option>
                         <option value="overdue">Overdue</option>
                         <option value="partially_refunded">Partially Refunded</option>
@@ -282,6 +283,7 @@
                                 <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
                                     {% if ptype.key == 'installment' %}bg-purple-100 text-purple-800
                                     {% elif ptype.key == 'deposit_final' %}bg-indigo-100 text-indigo-800
+                                    {% elif ptype.key == 'mixed' %}bg-amber-100 text-amber-900
                                     {% else %}bg-gray-100 text-gray-800{% endif %}">
                                     {{ ptype.label }}
                                 </span>
@@ -291,7 +293,7 @@
                                 <div style="display:inline-flex;flex-direction:row;align-items:center;flex-wrap:nowrap;gap:0.25rem;white-space:nowrap;">
                                 <span id="status-badge-{{ booking.id }}" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
                                     {% if pay_status == 'fully_paid' %}bg-green-100 text-green-800
-                                    {% elif pay_status == 'deposit_paid' %}bg-blue-100 text-blue-800
+                                    {% elif pay_status == 'deposit_paid' or pay_status == 'partially_paid' %}bg-blue-100 text-blue-800
                                     {% elif pay_status == 'processing' %}bg-amber-100 text-amber-800
                                     {% elif pay_status == 'overdue' %}bg-orange-100 text-orange-800
                                     {% elif pay_status == 'partially_refunded' %}bg-orange-100 text-orange-800
@@ -301,6 +303,7 @@
                                     {% if pay_status == 'partially_refunded' %}Partially Refunded
                                     {% elif pay_status == 'fully_refunded' or pay_status == 'refunded' %}Fully Refunded
                                     {% elif pay_status == 'processing' %}Processing
+                                    {% elif pay_status == 'partially_paid' %}Partially Paid
                                     {% else %}{{ pay_status|replace('_', ' ')|title }}{% endif %}
                                 </span>
                                 {% if booking.id in booking_payoff_ids %}
@@ -743,7 +746,7 @@
                         <label class="flex items-center space-x-2">
                             <input type="radio" name="paymentOption" value="deposit"
                                 class="text-wetravel-cyan focus:ring-wetravel-cyan">
-                            <span>Pay Deposit Only <span id="depositAmountDisplay" class="text-gray-600">(if applicable)</span></span>
+                            <span>Pay due at booking <span id="depositAmountDisplay" class="text-gray-600">(deposits + any full-pay packages)</span></span>
                         </label>
                         <label class="flex items-center space-x-2">
                             <input type="radio" name="paymentOption" value="manual"
@@ -1620,8 +1623,9 @@
             
             // Note: selectedPackages should already be up-to-date from updateSummary() which calls this function
             
-            // Calculate total deposit amount from all selected packages with payment plans
+            // Due at booking (deposit mode): installment deposits + full-price packages (align with customer booking)
             let totalDeposit = 0;
+            let dueAtBooking = 0;
             let hasPaymentPlan = false;
             
             if (!selectedPackages || selectedPackages.length === 0) {
@@ -1629,32 +1633,33 @@
             }
             
             selectedPackages.forEach((pkg, index) => {
+                const qty = pkg.quantity || 1;
+                const price = parseFloat(pkg.price) || 0;
+                const canInstallment = !!(pkg.payment_plan_config && pkg.payment_plan_config.enabled);
                 console.log(`updatePaymentAmount: Package ${index}:`, {
                     name: pkg.name,
-                    quantity: pkg.quantity,
-                    payment_plan_config: pkg.payment_plan_config,
-                    has_config: !!pkg.payment_plan_config,
-                    config_enabled: pkg.payment_plan_config?.enabled,
+                    quantity: qty,
+                    canInstallment: canInstallment,
                     deposit_amount: pkg.payment_plan_config?.deposit_amount
                 });
                 
-                if (pkg.payment_plan_config && pkg.payment_plan_config.enabled) {
+                if (canInstallment) {
                     hasPaymentPlan = true;
                     const depositAmount = parseFloat(pkg.payment_plan_config.deposit_amount || 0);
-                    console.log(`updatePaymentAmount: Package ${pkg.name} has deposit_amount:`, depositAmount);
-                    totalDeposit += depositAmount * pkg.quantity;
+                    totalDeposit += depositAmount * qty;
+                    dueAtBooking += depositAmount * qty;
                 } else {
-                    console.log(`updatePaymentAmount: Package ${pkg.name} does NOT have enabled payment plan. Config:`, pkg.payment_plan_config);
+                    dueAtBooking += price * qty;
                 }
             });
             
-            console.log('updatePaymentAmount: hasPaymentPlan =', hasPaymentPlan, 'totalDeposit =', totalDeposit);
+            console.log('updatePaymentAmount: hasPaymentPlan =', hasPaymentPlan, 'totalDeposit =', totalDeposit, 'dueAtBooking =', dueAtBooking);
             
             // Update deposit amount display
             const depositDisplay = document.getElementById('depositAmountDisplay');
             if (depositDisplay) {
-                if (hasPaymentPlan && totalDeposit > 0) {
-                    depositDisplay.textContent = `($${totalDeposit.toFixed(2)})`;
+                if (hasPaymentPlan && dueAtBooking > 0) {
+                    depositDisplay.textContent = `($${dueAtBooking.toFixed(2)})`;
                 } else {
                     depositDisplay.textContent = '(if applicable)';
                 }
@@ -1694,16 +1699,16 @@
                     console.log('updatePaymentAmount: Set amount to full total:', total.toFixed(2));
                     break;
                 case 'deposit':
-                    // Pay Deposit Only - use calculated deposit amount if available
-                    if (hasPaymentPlan && totalDeposit > 0) {
-                        manualAmountInput.value = totalDeposit.toFixed(2);
-                        console.log('updatePaymentAmount: Set amount to deposit:', totalDeposit.toFixed(2));
+                    // Due at booking: deposits for installment pkgs + full price for full pkgs
+                    if (dueAtBooking > 0) {
+                        manualAmountInput.value = dueAtBooking.toFixed(2);
+                        console.log('updatePaymentAmount: Set amount to due-at-booking:', dueAtBooking.toFixed(2));
                     } else {
                         manualAmountInput.value = '0.00';
-                        console.warn('updatePaymentAmount: No payment plan or deposit is 0, setting to 0.00');
+                        console.warn('updatePaymentAmount: dueAtBooking is 0, setting to 0.00');
                     }
                     manualAmountInput.disabled = false;
-                    manualAmountInput.placeholder = 'Enter deposit amount';
+                    manualAmountInput.placeholder = 'Enter amount due at booking';
                     break;
                 case 'manual':
                     // No payment / Manual Entry - clear and allow manual input
@@ -1968,14 +1973,12 @@
             // Collect packages data (new format: array of {package_id, quantity, payment_plan_type})
             const paymentOption = document.querySelector('input[name="paymentOption"]:checked').value;
             const packages = selectedPackages.map(pkg => {
-                // Determine payment_plan_type based on selected option and package's payment plan config
+                // Deposit mode: installment-capable pkgs → deposit_installment; others stay full (mixed OK)
                 let paymentPlanType = 'full';
                 if (paymentOption === 'deposit' && pkg.payment_plan_config && pkg.payment_plan_config.enabled) {
                     paymentPlanType = 'deposit_installment';
                 } else if (paymentOption === 'full') {
                     paymentPlanType = 'full';
-                } else {
-                    paymentPlanType = 'full'; // Default
                 }
                 
                 return {
@@ -2241,6 +2244,8 @@
                     let planBadge = '';
                     if (pkg.payment_plan_type === 'deposit_installment') {
                         planBadge = '<span class="ml-2 px-1.5 py-0.5 text-xs bg-blue-100 text-blue-800 rounded">Installment</span>';
+                    } else {
+                        planBadge = '<span class="ml-2 px-1.5 py-0.5 text-xs bg-gray-100 text-gray-700 rounded">Full</span>';
                     }
                     return `<div class="flex justify-between items-center py-1">
                         <span class="text-sm text-gray-900">${pkg.name} x${quantity}${planBadge}</span>
@@ -2329,19 +2334,22 @@
                 booking.installments.forEach(function(inst) {
                     const dueKey = inst.due_date ? String(inst.due_date).substring(0, 10) : ('n-' + inst.installment_number);
                     const isDeposit = (inst.installment_number === 0) || ((inst.label || '').toLowerCase().indexOf('deposit') >= 0 && (inst.installment_number || 0) === 0);
+                    // 定金行单独成桶，勿与同日分期合并（否则会出现 $150+$666=$816 + status mixed）
+                    const bucketKey = isDeposit ? ('deposit-' + dueKey) : ('inst-' + dueKey);
                     const label = isDeposit
-                        ? 'Deposit · Due today'
+                        ? 'Deposit'
                         : (inst.due_date ? formatManagePlanDate(inst.due_date) : (inst.label || ('Installment #' + inst.installment_number)));
-                    if (!buckets[dueKey]) {
-                        buckets[dueKey] = {
+                    if (!buckets[bucketKey]) {
+                        buckets[bucketKey] = {
                             label: label,
                             amount: 0,
-                            sort: isDeposit ? '0' : (inst.due_date || '9999'),
-                            statuses: []
+                            sort: isDeposit ? ('0-' + (inst.due_date || '')) : (inst.due_date || '9999'),
+                            statuses: [],
+                            isDeposit: isDeposit
                         };
                     }
-                    buckets[dueKey].amount += Number(inst.amount) || 0;
-                    buckets[dueKey].statuses.push(inst.status || 'pending');
+                    buckets[bucketKey].amount += Number(inst.amount) || 0;
+                    buckets[bucketKey].statuses.push(inst.status || 'pending');
                 });
                 const rows = Object.keys(buckets).map(function(k) { return buckets[k]; });
                 rows.sort(function(a, b) {
@@ -2351,21 +2359,29 @@
                 installmentsHtml = `
                     <div class="mb-4">
                         <label class="block text-sm font-medium text-gray-700 mb-2">Payment plan</label>
+                        ${(booking.payment_type && booking.payment_type.key === 'mixed') ? `
+                        <p class="text-xs text-amber-800 mb-2">Schedule below is for <strong>installment products only</strong>. Full-pay products were due at booking and are listed under Packages.</p>
+                        ` : ''}
                         <div class="bg-gray-50 rounded-lg p-3 space-y-2">
                             ${rows.map(function(row) {
                                 const uniq = Array.from(new Set(row.statuses));
-                                let status = uniq.length === 1 ? uniq[0] : 'mixed';
+                                let status = uniq.length === 1 ? uniq[0] : 'partially_paid';
                                 if (status === 'cancelled' && settledViaPayoff) status = 'cancelled (payoff)';
+                                const statusLabel = status === 'partially_paid' ? 'Partially paid'
+                                    : status === 'paid' ? 'Paid'
+                                    : status === 'pending' ? 'Pending'
+                                    : status === 'overdue' ? 'Overdue'
+                                    : status;
                                 const statusClass = status === 'paid' ? 'bg-green-100 text-green-800' :
                                     status === 'overdue' ? 'bg-red-100 text-red-800' :
                                     (status.indexOf('cancelled') === 0) ? 'bg-gray-100 text-gray-600' :
-                                    status === 'mixed' ? 'bg-orange-100 text-orange-800' :
+                                    status === 'partially_paid' ? 'bg-orange-100 text-orange-800' :
                                     'bg-yellow-100 text-yellow-800';
                                 return `<div class="flex justify-between items-center py-1.5">
                                     <span class="text-sm text-gray-900">${row.label}</span>
                                     <div class="flex items-center space-x-2">
                                         <span class="text-sm font-medium text-gray-900">$${row.amount.toFixed(2)}</span>
-                                        <span class="px-1.5 py-0.5 text-xs rounded ${statusClass}">${status}</span>
+                                        <span class="px-1.5 py-0.5 text-xs rounded ${statusClass}">${statusLabel}</span>
                                     </div>
                                 </div>`;
                             }).join('')}
@@ -2557,10 +2573,18 @@
                         ` : `
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Payment Status</label>
+                            ${booking.payment_status === 'partially_paid' ? `
+                            <p class="mb-2 text-xs text-gray-500">List &amp; exports show <span class="font-semibold text-blue-800">Partially Paid</span> (mixed full + installment; balance still due). Stored value remains Deposit Paid.</p>
+                            ` : ''}
+                            ${(booking.payment_type && booking.payment_type.key === 'mixed') ? `
+                            <p class="mb-2 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded px-2 py-1.5">Payment type: <span class="font-semibold">Mixed</span> — this order has both pay-in-full and installment products.</p>
+                            ` : (booking.payment_type && booking.payment_type.label ? `
+                            <p class="mb-2 text-xs text-gray-500">Payment type: <span class="font-medium text-gray-700">${booking.payment_type.label}</span></p>
+                            ` : '')}
                             <select id="bookingStatus" class="admin-select block w-full rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm">
                                 <option value="pending" ${booking.status === 'pending' ? 'selected' : ''}>Pending</option>
                                 <option value="processing" ${booking.status === 'processing' ? 'selected' : ''}>Processing (ACH)</option>
-                                <option value="deposit_paid" ${booking.status === 'deposit_paid' ? 'selected' : ''}>Deposit Paid</option>
+                                <option value="deposit_paid" ${booking.status === 'deposit_paid' ? 'selected' : ''}>${booking.payment_status === 'partially_paid' ? 'Partially Paid' : 'Deposit Paid'}</option>
                                 <option value="fully_paid" ${booking.status === 'fully_paid' ? 'selected' : ''}>Fully Paid</option>
                             </select>
                         </div>
@@ -2982,7 +3006,7 @@
                         const statusText = payStatus.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
                         let statusClass = 'bg-yellow-100 text-yellow-800';
                         if (payStatus === 'fully_paid') statusClass = 'bg-green-100 text-green-800';
-                        else if (payStatus === 'deposit_paid') statusClass = 'bg-blue-100 text-blue-800';
+                        else if (payStatus === 'deposit_paid' || payStatus === 'partially_paid') statusClass = 'bg-blue-100 text-blue-800';
                         else if (payStatus === 'processing') statusClass = 'bg-amber-100 text-amber-800';
                         else if (payStatus === 'overdue') statusClass = 'bg-orange-100 text-orange-800';
                         else if (payStatus === 'partially_refunded') statusClass = 'bg-orange-100 text-orange-800';
@@ -2992,6 +3016,7 @@
                         if (payStatus === 'partially_refunded') statusBadge.textContent = 'Partially Refunded';
                         else if (payStatus === 'fully_refunded' || payStatus === 'refunded') statusBadge.textContent = 'Fully Refunded';
                         else if (payStatus === 'processing') statusBadge.textContent = 'Processing';
+                        else if (payStatus === 'partially_paid') statusBadge.textContent = 'Partially Paid';
                         else statusBadge.textContent = statusText;
                     }
 
