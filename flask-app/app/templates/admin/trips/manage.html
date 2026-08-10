@@ -371,9 +371,9 @@
                     <thead>
                         <tr
                             class="border-b border-gray-100 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">
-                            <th class="px-6 py-3 whitespace-nowrap">Buyer</th>
                             <th class="px-6 py-3 whitespace-nowrap">First Name</th>
                             <th class="px-6 py-3 whitespace-nowrap">Last Name</th>
+                            <th class="px-6 py-3 whitespace-nowrap">Buyer</th>
                             <th class="px-6 py-3 whitespace-nowrap">Email</th>
                             <th class="px-6 py-3 whitespace-nowrap">Gender</th>
                             <th class="px-6 py-3 whitespace-nowrap">Date of Birth</th>
@@ -397,16 +397,16 @@
                             data-order-number="{{ (participant.order_number or '')|lower }}"
                             data-participant-id="{{ participant.id }}">
                             <td class="px-6 py-4 whitespace-nowrap">
-                                <div class="text-sm font-medium text-gray-800">{{ participant.buyer_name or '—' }}</div>
-                                {% if participant.buyer_email %}
-                                <div class="text-sm text-gray-500">{{ participant.buyer_email }}</div>
-                                {% endif %}
-                            </td>
-                            <td class="px-6 py-4 whitespace-nowrap">
                                 <div class="text-sm font-semibold text-gray-800">{{ participant.first_name or '-' }}</div>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <div class="text-sm text-gray-500">{{ participant.last_name or '-' }}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-medium text-gray-800">{{ participant.buyer_name or '—' }}</div>
+                                {% if participant.buyer_email %}
+                                <div class="text-sm text-gray-500">{{ participant.buyer_email }}</div>
+                                {% endif %}
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <div class="text-sm text-gray-500">{{ participant.email or '-' }}</div>

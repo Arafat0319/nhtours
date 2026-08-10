@@ -126,7 +126,8 @@
     flex-shrink: 0 !important;
     background-color: #f8fafc;
     border-left: 1px solid #e2e8f0;
-    padding: 16px 2rem 2rem 2rem;
+    /* 底部留白：Payment plan 变长时 Due at Booking 不贴弹窗底边 */
+    padding: 16px 2rem 1.75rem 2rem !important;
     overflow: visible;
   }
 }

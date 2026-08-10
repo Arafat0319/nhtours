@@ -4,7 +4,7 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/booking-modal.css') }}?v=pay-plan-2">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/booking-modal.css') }}?v=pay-plan-3">
 <style>
     .flatpickr-calendar {
         font-size: 16px !important;
@@ -1064,7 +1064,7 @@
                     </form>
                 </div>
                 {# 右侧：Your Booking 标题；Discount code 与 Apply 等高 #}
-                <div id="booking-modal-right" class="booking-sidebar w-full lg:w-[335px] lg:min-w-[335px] lg:min-h-[247px] flex-shrink-0 lg:sticky lg:top-[50px] lg:self-start" style="border-radius: 0 0 0.5rem 0; padding: 16px 30px 0 30px; background-color: #faf9f6;">
+                <div id="booking-modal-right" class="booking-sidebar w-full lg:w-[335px] lg:min-w-[335px] lg:min-h-[247px] flex-shrink-0 lg:sticky lg:top-[50px] lg:self-start" style="border-radius: 0 0 0.5rem 0; padding: 16px 30px 28px 30px; background-color: #faf9f6;">
                             <div class="flex flex-row justify-between items-center pb-4 border-b border-gray-200">
                                 <h3 class="booking-sidebar-title text-[16px] font-medium leading-[26px] text-gray-900" style="text-transform: none; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">Your Booking</h3>
                             </div>
@@ -1095,7 +1095,7 @@
                             <div class="pt-2 text-[13px] text-gray-600" style="border-top: 1px solid #e5e7eb;">
                                 <div class="flex justify-between"><span>Fee</span><span id="fee-amount">$0.00</span></div>
                             </div>
-                            <div class="border-t border-gray-200 pt-3">
+                            <div class="border-t border-gray-200 pt-3 pb-1">
                                 <div class="flex justify-between items-center">
                                     <span class="font-semibold text-gray-900">Due at Booking</span>
                                     <span id="total-amount" class="text-lg font-bold text-gray-900">$0.00</span>
