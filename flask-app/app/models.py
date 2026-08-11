@@ -376,6 +376,8 @@ class Payment(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     paid_at = db.Column(db.DateTime)  # 支付完成时间
     refunded_at = db.Column(db.DateTime)  # 退款时间
+    # 收据确认邮件：先 UPDATE 认领再 SES，防 status 轮询与 webhook 双发
+    receipt_email_sent_at = db.Column(db.DateTime)
     
     # 元数据（JSON 格式，存储额外信息）
     payment_metadata = db.Column(db.JSON)  # 存储 Stripe metadata 等（注意：不能使用 metadata，这是 SQLAlchemy 保留字段）

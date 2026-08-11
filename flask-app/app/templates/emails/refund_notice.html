@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>{{ subject_line }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;-webkit-font-smoothing:antialiased;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f3f4f6;padding:24px 12px;">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;border:1px solid #e5e7eb;">
+                    <tr>
+                        <td style="background:#0f172a;padding:20px 28px;">
+                            <p style="margin:0;font-size:18px;font-weight:700;color:#ffffff;letter-spacing:0.02em;">Nexus Horizons Tours</p>
+                            <p style="margin:6px 0 0;font-size:13px;color:#94a3b8;">Refund notice</p>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="padding:28px 28px 8px;">
+                            <p style="margin:0 0 8px;font-size:20px;font-weight:700;color:#111827;line-height:1.3;">
+                                {% if customer_name and customer_name != 'Customer' %}
+                                Hi {{ customer_name }},
+                                {% else %}
+                                Hi,
+                                {% endif %}
+                            </p>
+                            <p style="margin:0;font-size:14px;color:#6b7280;line-height:1.5;">{{ intro_text }}</p>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="padding:16px 28px 8px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
+                                <tr>
+                                    <td style="padding:16px 18px;">
+                                        <p style="margin:0 0 4px;font-size:12px;color:#15803d;text-transform:uppercase;letter-spacing:0.04em;font-weight:600;">
+                                            Refund amount
+                                        </p>
+                                        <p style="margin:0;font-size:28px;font-weight:700;color:#14532d;line-height:1.2;">
+                                            ${{ (refund_amount)|format_price }}
+                                        </p>
+                                        {% if payment_method_summary %}
+                                        <p style="margin:8px 0 0;font-size:13px;color:#15803d;">Returned to {{ payment_method_summary }}</p>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="padding:16px 28px 8px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #e5e7eb;padding-top:4px;">
+                                <tr>
+                                    <td style="padding:8px 0;font-size:13px;color:#6b7280;">Order</td>
+                                    <td align="right" style="padding:8px 0;font-size:13px;font-weight:600;color:#111827;">{{ order_number }}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:8px 0;font-size:13px;color:#6b7280;">Trip</td>
+                                    <td align="right" style="padding:8px 0;font-size:13px;font-weight:600;color:#111827;">{{ trip_title }}</td>
+                                </tr>
+                                {% if reason %}
+                                <tr>
+                                    <td style="padding:8px 0;font-size:13px;color:#6b7280;vertical-align:top;">Reason</td>
+                                    <td align="right" style="padding:8px 0;font-size:13px;color:#111827;">{{ reason }}</td>
+                                </tr>
+                                {% endif %}
+                            </table>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="padding:8px 28px 20px;">
+                            <p style="margin:0 0 8px;font-size:13px;color:#6b7280;line-height:1.5;">{{ timing_note }}</p>
+                            <p style="margin:0;font-size:13px;color:#6b7280;line-height:1.5;">{{ footer_note }}</p>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="padding:24px 28px;border-top:1px solid #e5e7eb;background:#fafafa;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                <tr>
+                                    <td valign="middle" style="padding-right:12px;">
+                                        <p style="margin:0 0 8px;font-size:13px;color:#6b7280;line-height:1.5;">
+                                            Questions? Please email us at
+                                            <a href="mailto:info@nhtours.com" style="color:#0066ff;text-decoration:none;">info@nhtours.com</a>
+                                            (this message was sent from a no-reply address).
+                                        </p>
+                                        <p style="margin:0;font-size:12px;color:#9ca3af;">
+                                            Nexus Horizons Tours · <a href="https://nhtours.com" style="color:#9ca3af;text-decoration:none;">nhtours.com</a>
+                                        </p>
+                                    </td>
+                                    <td valign="middle" align="right" width="140" style="width:140px;">
+                                        {% if email_logo_url %}
+                                        <a href="https://nhtours.com" style="text-decoration:none;border:0;">
+                                            <img src="{{ email_logo_url }}"
+                                                 width="120"
+                                                 height="50"
+                                                 alt="Nexus Horizons"
+                                                 style="display:block;width:120px;height:auto;border:0;outline:none;text-decoration:none;">
+                                        </a>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

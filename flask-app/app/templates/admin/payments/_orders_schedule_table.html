@@ -30,6 +30,9 @@
                         class="text-wetravel-cyan hover:underline">
                         {{ booking.order_number or ('#' ~ booking.id) }}
                     </a>
+                    {% if group.is_mixed %}
+                    <span class="ml-1.5 px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-900 align-middle">mix</span>
+                    {% endif %}
                     {% else %}
                     <span class="text-gray-400">-</span>
                     {% endif %}
@@ -47,10 +50,10 @@
                     </span>
                     {% endif %}
                 </td>
-                <td class="px-4 py-3 text-sm font-semibold">${{ ((payment.amount if payment else 0) or 0)|format_price }}</td>
+                <td class="px-4 py-3 text-sm font-semibold">${{ (group.display_amount if group.display_amount is defined and group.display_amount is not none else ((payment.amount if payment else 0) or 0))|format_price }}</td>
                 <td class="px-4 py-3 text-sm text-gray-500">
-                    {% if payment and payment.paid_at %}{{ payment.paid_at.strftime('%Y-%m-%d %H:%M') }}
-                    {% elif payment and payment.created_at %}{{ payment.created_at.strftime('%Y-%m-%d %H:%M') }}
+                    {% if payment and payment.paid_at %}{{ payment.paid_at.strftime('%Y-%m-%d') }}
+                    {% elif payment and payment.created_at %}{{ payment.created_at.strftime('%Y-%m-%d') }}
                     {% else %}-{% endif %}
                 </td>
                 <td class="px-4 py-3 text-sm whitespace-nowrap">
@@ -97,6 +100,9 @@
                                 class="text-wetravel-cyan hover:underline" onclick="event.stopPropagation();">
                                 {{ booking.order_number or ('#' ~ booking.id) }}
                             </a>
+                            {% if group.is_mixed %}
+                            <span class="ml-1.5 px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-900 align-middle">mix</span>
+                            {% endif %}
                             {% else %}
                             <span class="text-gray-400">-</span>
                             {% endif %}
@@ -108,7 +114,7 @@
                     {% if booking and booking.trip %}{{ booking.trip.title }}{% else %}<span class="text-gray-400">-</span>{% endif %}
                 </td>
                 <td class="px-4 py-3 text-sm">
-                    <span class="font-medium">Deposit</span>
+                    <span class="font-medium">{% if group.mixed_portion == 'installment' %}Installment schedule{% else %}Deposit{% endif %}</span>
                     {% if group.discount %}
                     <span class="mt-0.5 block text-xs text-green-700">
                         Discount{% if group.discount.code %} {{ group.discount.code }}{% endif %}
@@ -182,16 +188,43 @@
                 <td class="pl-8 pr-4 py-2.5 text-sm text-gray-400" colspan="3">-</td>
                 <td class="px-4 py-2.5 text-sm">
                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">Payoff</span>
+                    <span class="block text-xs text-gray-500 mt-0.5">Settled remaining balance</span>
                 </td>
                 <td class="px-4 py-2.5 text-sm font-semibold text-purple-700">${{ (item.payment.amount or 0)|format_price }}</td>
                 <td class="px-4 py-2.5 text-sm text-gray-600">
-                    {% if item.payment.paid_at %}{{ item.payment.paid_at.strftime('%Y-%m-%d %H:%M') }}
-                    {% elif item.payment.created_at %}{{ item.payment.created_at.strftime('%Y-%m-%d %H:%M') }}
+                    {% if item.payment.paid_at %}{{ item.payment.paid_at.strftime('%Y-%m-%d') }}
+                    {% elif item.payment.created_at %}{{ item.payment.created_at.strftime('%Y-%m-%d') }}
                     {% else %}-{% endif %}
                 </td>
                 <td class="px-4 py-2.5 text-sm"><span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">paid</span></td>
                 <td class="px-4 py-2.5 text-sm">
                     <a href="{{ url_for('admin.payment_detail', payment_id=item.payment.id) }}"
+                        class="text-wetravel-cyan hover:underline" onclick="event.stopPropagation();">View</a>
+                </td>
+                <td class="px-4 py-2.5 text-sm text-gray-400">-</td>
+            </tr>
+            {% elif item.type == 'payoff_merged' %}
+            {% set installment = item.installment %}
+            {% set pay = item.payment %}
+            <tr class="installment-row-{{ group.booking_id }} hidden border-l-4 border-purple-500 bg-gray-100">
+                <td class="pl-8 pr-4 py-2.5 text-sm text-gray-400" colspan="3">-</td>
+                <td class="px-4 py-2.5 text-sm whitespace-nowrap">
+                    <span class="text-indigo-700 font-medium">
+                        {% if group.post_deposit_count == 1 %}Final payment{% else %}#{{ installment.installment_number }}{% endif %}
+                    </span>
+                    <span class="ml-1.5 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 align-middle">Payoff</span>
+                    <span class="block text-xs text-gray-500 mt-0.5">Settled remaining balance in one payment</span>
+                </td>
+                <td class="px-4 py-2.5 text-sm font-semibold text-purple-700">${{ (pay.amount or 0)|format_price }}</td>
+                <td class="px-4 py-2.5 text-sm text-gray-600">
+                    {% if pay.paid_at %}{{ pay.paid_at.strftime('%Y-%m-%d') }}
+                    {% elif pay.created_at %}{{ pay.created_at.strftime('%Y-%m-%d') }}
+                    {% elif installment.due_date %}{{ installment.due_date.strftime('%Y-%m-%d') }}
+                    {% else %}-{% endif %}
+                </td>
+                <td class="px-4 py-2.5 text-sm"><span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">paid</span></td>
+                <td class="px-4 py-2.5 text-sm">
+                    <a href="{{ url_for('admin.payment_detail', payment_id=pay.id) }}"
                         class="text-wetravel-cyan hover:underline" onclick="event.stopPropagation();">View</a>
                 </td>
                 <td class="px-4 py-2.5 text-sm text-gray-400">-</td>
@@ -215,9 +248,9 @@
                 <td class="px-4 py-2.5 text-sm font-semibold text-gray-700">${{ (installment.amount or 0)|format_price }}</td>
                 <td class="px-4 py-2.5 text-sm text-gray-600">
                     {% if installment.status == 'paid' and inst_payment and inst_payment.paid_at %}
-                        {{ inst_payment.paid_at.strftime('%Y-%m-%d %H:%M') }}
+                        {{ inst_payment.paid_at.strftime('%Y-%m-%d') }}
                     {% elif installment.status == 'paid' and installment.paid_at %}
-                        {{ installment.paid_at.strftime('%Y-%m-%d %H:%M') }}
+                        {{ installment.paid_at.strftime('%Y-%m-%d') }}
                     {% elif installment.due_date %}
                         {{ installment.due_date.strftime('%Y-%m-%d') }}
                         {% if inst_is_future %}<span class="text-blue-600 text-xs ml-1">(Future)</span>

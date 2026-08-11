@@ -78,7 +78,8 @@
 | `/admin/trips/<trip_id>/bookings/<booking_id>` | GET/POST | 订单详情 / 编辑 |
 | `/admin/trips/<trip_id>/bookings/<booking_id>/receipt` | GET | 生成收据 PDF；可选 `?payment_id=` 指定当笔（省略=最近成功笔）；`?format=html` |
 | `/admin/trips/<trip_id>/bookings/<booking_id>/cancel` | POST | 取消订单（不退款）；幂等；取消未付分期 |
-| `/admin/trips/<trip_id>/bookings/<booking_id>/refund` | POST | 退款：JSON `{ amount, reason, cancel_booking?, manual_only? }`；按 PI 调 Stripe |
+| `/admin/trips/<trip_id>/bookings/<booking_id>/refund` | POST | 退款：JSON `{ amount, reason, payment_id?, full_refund?, cancel_booking?, manual_only? }`；`full_refund` 时退光各笔可退额；否则 `amount>0` 必传 `payment_id`；成功发客户 refund notice |
+| `/admin/trips/<trip_id>/bookings/<booking_id>/reconcile-ledger` | GET | 账本核对；`?stripe=1` 对比 Stripe 退款；异常时邮件提醒管理员 |
 
 ### 客户管理
 

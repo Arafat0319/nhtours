@@ -550,6 +550,13 @@ def manage_trip(id):
                 'question_answers': participant.question_answers or {},
             })
             total_participants_count += 1
+
+    # Going = 实际出行人数（未取消订单的参与者）；不含 cancelled
+    going_count = sum(
+        b.participants.count()
+        for b in bookings
+        if (b.status or '') != 'cancelled'
+    )
     
     # Prepare Add Participant Form (deprecated - now using JSON API via multi-step modal)
     from app.admin.forms import AdminBookingForm
@@ -587,6 +594,7 @@ def manage_trip(id):
                            booking_payoff_ids=booking_payoff_ids,
                            all_participants=all_participants,
                            total_participants_count=total_participants_count,
+                           going_count=going_count,
                            message_buyers=message_buyers,
                            buyer_count=buyer_count,
                            balance_due_buyer_count=balance_due_buyer_count,
@@ -2077,9 +2085,11 @@ def checkout_test(id):
 def payments():
     """
     Payments：以 order 为基本单位。
-    Full = 一次付全款 + 定金/单笔尾款；Installment = 定金后 >1 期。
+    Full = 一次付全款 + 定金/单笔尾款（纯）+ 混单全款产品行；
+    Installment = 定金后多期 + 混单分期 schedule（含混单的 deposit+final）。
     """
     from app.admin.payment_list_data import (
+        build_mixed_full_portion_groups,
         build_one_time_order_groups,
         build_schedule_order_groups,
     )
@@ -2089,12 +2099,12 @@ def payments():
     status_filter = request.args.get('status', '')
 
     if tab == 'records':
-        # Full：定金+单笔尾款（可展开看 Final payment）+ 一次付全款
-        # 只排除本页已展示的 schedule 行，避免全局 multi/single 集合把「未进 limit」的单从 one-time 也踢掉
+        # Full：纯定金+单笔尾款（排除混单 schedule）+ 一次付全款 + 混单全款产品行
         schedule_groups, today = build_schedule_order_groups(
             plan_kinds={'deposit_balance'},
             search=search,
             status_filter=status_filter,
+            mixed_mode='exclude',
         )
         schedule_ids = {g['booking_id'] for g in schedule_groups}
         one_time_groups, _ = build_one_time_order_groups(
@@ -2102,7 +2112,11 @@ def payments():
             status_filter=status_filter,
             exclude_booking_ids=schedule_ids,
         )
-        orders_grouped = schedule_groups + one_time_groups
+        mixed_full_groups, _ = build_mixed_full_portion_groups(
+            search=search,
+            status_filter=status_filter,
+        )
+        orders_grouped = schedule_groups + one_time_groups + mixed_full_groups
         orders_grouped.sort(
             key=lambda g: (
                 (g.get('deposit') and g['deposit'].created_at)
@@ -2122,10 +2136,26 @@ def payments():
         )
 
     if tab == 'installments':
-        orders_grouped, today = build_schedule_order_groups(
+        # 多期 + 混单的定金/单笔尾款（纯 deposit_balance 仍在 Full）
+        multi_groups, today = build_schedule_order_groups(
             plan_kinds={'multi'},
             search=search,
             status_filter=status_filter,
+            mixed_mode='include',
+        )
+        mixed_balance_groups, _ = build_schedule_order_groups(
+            plan_kinds={'deposit_balance'},
+            search=search,
+            status_filter=status_filter,
+            mixed_mode='only',
+        )
+        orders_grouped = multi_groups + mixed_balance_groups
+        orders_grouped.sort(
+            key=lambda g: (
+                (g.get('deposit') and g['deposit'].created_at)
+                or datetime.min
+            ),
+            reverse=True,
         )
         return render_template(
             'admin/payments/list.html',
@@ -2573,9 +2603,11 @@ def export_payments():
             bottom=Side(style='thin', color='E5E7EB'),
         )
         money_format = '#,##0.00'
-        money_cols = {5, 6, 7, 8, 9}  # Base / Fee / Charged / Refunded / Net
+        # Base / Fee / Charged / Net，以及退款块：Refunded / Reason / Refunded At
+        money_cols = {5, 6, 7, 11, 12}
         dash = '-'
 
+        # 付款信息在前（含 Net）；退款相关列集中在末尾
         headers = [
             'Order Number',
             'Client Name',
@@ -2584,13 +2616,13 @@ def export_payments():
             'Base Amount',
             'Card Fee',
             'Charged',
-            'Refunded (base)',
-            'Net (base)',
             'Status',
-            'Refund Reason',
             'Paid At',
-            'Refunded At',
             'Created',
+            'Net (base)',
+            'Refunded (base)',
+            'Refund Reason',
+            'Refunded At',
         ]
         ws.row_dimensions[1].height = 28
         for col_idx, header in enumerate(headers, start=1):
@@ -2607,11 +2639,15 @@ def export_payments():
             payment_refunded_clamped,
         )
 
+        # 按付款时间升序（无 paid_at 则用 created_at），与 Payment History 一致
         payments = Payment.query.options(
             joinedload(Payment.client),
             joinedload(Payment.trip),
             joinedload(Payment.booking),
-        ).order_by(Payment.created_at.desc()).all()
+        ).order_by(
+            func.coalesce(Payment.paid_at, Payment.created_at).asc(),
+            Payment.id.asc(),
+        ).all()
 
         for row_idx, payment in enumerate(payments, start=2):
             booking = payment.booking
@@ -2635,13 +2671,13 @@ def export_payments():
                 base,
                 fee,
                 charged,
-                refunded if refunded else dash,
-                net,
                 (payment.status or 'pending').replace('_', ' '),
-                reason,
                 payment.paid_at.strftime('%Y-%m-%d %H:%M') if payment.paid_at else dash,
-                payment.refunded_at.strftime('%Y-%m-%d %H:%M') if payment.refunded_at else dash,
                 payment.created_at.strftime('%Y-%m-%d %H:%M') if payment.created_at else dash,
+                net,
+                refunded if refunded else dash,
+                reason,
+                payment.refunded_at.strftime('%Y-%m-%d %H:%M') if payment.refunded_at else dash,
             ]
             for col_idx, value in enumerate(row_data, start=1):
                 cell = ws.cell(row=row_idx, column=col_idx, value=value)
@@ -2779,14 +2815,18 @@ def export_bookings(id):
         return round(max(0.0, booking_gross - discount), 2)
 
     def _booking_payment_totals(booking):
-        """返回 (payments_received 实扣合计, refunds 已退合计)。"""
+        """返回 (payments_received 实扣合计, card_fees 卡费合计, refunds 已退合计)。"""
+        from app.payments import payment_fee_amount
+
         received = 0.0
+        card_fees = 0.0
         refunds = 0.0
         for payment in Payment.query.filter_by(booking_id=booking.id).all():
             if payment.status in ('succeeded', 'partially_refunded', 'refunded'):
                 received += float(payment.amount or 0.0)
+                card_fees += payment_fee_amount(payment)
                 refunds += float(payment.refunded_amount or 0.0)
-        return round(received, 2), round(refunds, 2)
+        return round(received, 2), round(card_fees, 2), round(refunds, 2)
 
     def _participant_names(booking, mark_cancelled=False):
         names = []
@@ -2871,14 +2911,15 @@ def export_bookings(id):
     booking_headers = [
         'Order number', 'Internal ID', 'Buyer First Name', 'Buyer Last Name',
         'Participant Names', 'Packages', 'Participants', 'Add-ons',
-        'Expected', 'Payments Received', 'Refunds', 'Net Paid', 'Balance due',
+        'Expected', 'Payments Received', 'Card Fee', 'Refunds', 'Net Paid', 'Balance due',
         'Status', 'Booking Date',
     ]
     _write_header(ws_bookings, booking_headers)
 
-    money_cols = {9, 10, 11, 12, 13}  # Expected … Balance due
+    money_cols = {9, 10, 11, 12, 13, 14}  # Expected … Balance due
     total_expected = 0.0
     total_received = 0.0
+    total_card_fees = 0.0
     total_refunds = 0.0
     total_net_paid = 0.0
     total_balance = 0.0
@@ -2914,7 +2955,7 @@ def export_bookings(id):
         ) if addons_map else dash
 
         expected = _booking_expected(booking)
-        payments_received, refunds = _booking_payment_totals(booking)
+        payments_received, card_fees, refunds = _booking_payment_totals(booking)
         net_paid = round(float(booking.amount_paid) if booking.amount_paid is not None else 0.0, 2)
         is_cancelled = booking.status == 'cancelled'
         pax_count = int(booking.passenger_count or booking.participants.count() or 0)
@@ -2935,6 +2976,7 @@ def export_bookings(id):
             cancelled_bookings += 1
             # 退款合计仍计入汇总（便于对账）
             total_received += payments_received
+            total_card_fees += card_fees
             total_refunds += refunds
         else:
             expected_cell = expected
@@ -2944,6 +2986,7 @@ def export_bookings(id):
             names_cell = _participant_names(booking)
             total_expected += expected
             total_received += payments_received
+            total_card_fees += card_fees
             total_refunds += refunds
             total_net_paid += net_paid
             total_balance += balance_cell
@@ -2962,6 +3005,7 @@ def export_bookings(id):
             addons_str,
             expected_cell,
             payments_received if payments_received else dash,
+            card_fees if card_fees else dash,
             refunds if refunds else dash,
             net_paid,
             balance_cell,
@@ -2995,9 +3039,10 @@ def export_bookings(id):
     for col_idx, value in (
         (9, total_expected),
         (10, total_received),
-        (11, total_refunds),
-        (12, total_net_paid),
-        (13, total_balance),
+        (11, total_card_fees),
+        (12, total_refunds),
+        (13, total_net_paid),
+        (14, total_balance),
     ):
         cell = ws_bookings.cell(row=totals_row, column=col_idx, value=round(value, 2))
         cell.font = body_bold
@@ -3016,16 +3061,20 @@ def export_bookings(id):
     c = ws_bookings.cell(row=summary_row + 2, column=2, value=round(total_received, 2))
     c.number_format = money_format
     c.font = body_font
-    ws_bookings.cell(row=summary_row + 3, column=1, value='Refunds:').font = body_font
-    c = ws_bookings.cell(row=summary_row + 3, column=2, value=round(total_refunds, 2))
+    ws_bookings.cell(row=summary_row + 3, column=1, value='Card fee:').font = body_font
+    c = ws_bookings.cell(row=summary_row + 3, column=2, value=round(total_card_fees, 2))
     c.number_format = money_format
     c.font = body_font
-    ws_bookings.cell(row=summary_row + 4, column=1, value='Net paid (active):').font = body_font
-    c = ws_bookings.cell(row=summary_row + 4, column=2, value=round(total_net_paid, 2))
+    ws_bookings.cell(row=summary_row + 4, column=1, value='Refunds:').font = body_font
+    c = ws_bookings.cell(row=summary_row + 4, column=2, value=round(total_refunds, 2))
     c.number_format = money_format
     c.font = body_font
-    ws_bookings.cell(row=summary_row + 5, column=1, value='Balance due (active):').font = body_font
-    c = ws_bookings.cell(row=summary_row + 5, column=2, value=round(total_balance, 2))
+    ws_bookings.cell(row=summary_row + 5, column=1, value='Net paid (active):').font = body_font
+    c = ws_bookings.cell(row=summary_row + 5, column=2, value=round(total_net_paid, 2))
+    c.number_format = money_format
+    c.font = body_font
+    ws_bookings.cell(row=summary_row + 6, column=1, value='Balance due (active):').font = body_font
+    c = ws_bookings.cell(row=summary_row + 6, column=2, value=round(total_balance, 2))
     c.number_format = money_format
     c.font = body_font
 
@@ -3036,14 +3085,14 @@ def export_bookings(id):
     canceled_headers = [
         'Order number', 'Buyer First Name', 'Buyer Last Name',
         'Participant First Name', 'Participant Last Name', 'Email',
-        'Package', 'Payments Received', 'Refunds', 'Net Paid', 'Status', 'Booking Date',
+        'Package', 'Payments Received', 'Card Fee', 'Refunds', 'Net Paid', 'Status', 'Booking Date',
     ]
     _write_header(ws_canceled, canceled_headers)
     canceled_row = 2
     for booking in bookings:
         if booking.status != 'cancelled':
             continue
-        payments_received, refunds = _booking_payment_totals(booking)
+        payments_received, card_fees, refunds = _booking_payment_totals(booking)
         net_paid = round(float(booking.amount_paid) if booking.amount_paid is not None else 0.0, 2)
         buyer_first = booking.buyer_first_name or ''
         buyer_last = booking.buyer_last_name or ''
@@ -3084,6 +3133,7 @@ def export_bookings(id):
                 email,
                 package_str,
                 payments_received if payments_received else dash,
+                card_fees if card_fees else dash,
                 refunds if refunds else dash,
                 net_paid,
                 'Cancelled',
@@ -3093,7 +3143,7 @@ def export_bookings(id):
                 cell = ws_canceled.cell(row=canceled_row, column=col_idx, value=value)
                 cell.font = cancelled_font
                 cell.border = thin
-                if col_idx in (8, 9, 10) and isinstance(value, (int, float)):
+                if col_idx in (8, 9, 10, 11) and isinstance(value, (int, float)):
                     cell.number_format = money_format
                     cell.alignment = money_align
                 else:
@@ -3668,7 +3718,7 @@ def manage_booking(trip_id, booking_id):
             for payment in (
                 Payment.query.options(joinedload(Payment.installment_payment))
                 .filter_by(booking_id=booking.id)
-                .order_by(Payment.created_at.desc())
+                .order_by(Payment.paid_at.asc(), Payment.created_at.asc(), Payment.id.asc())
                 .all()
             ):
                 amt = payment_charged_amount(payment)
@@ -3696,6 +3746,7 @@ def manage_booking(trip_id, booking_id):
                     'fee_cents': payment.fee_cents,
                     'funding': payment.funding,
                     'brand': payment.brand,
+                    'payment_method_type': payment.payment_method_type,
                     'refunded_amount': refunded,
                     'refundable_remaining': remaining,
                     # 默认不含定金的可退上限；勾选 include_deposit 后用 refundable_remaining
@@ -3985,14 +4036,21 @@ def generate_receipt(trip_id, booking_id):
 @bp.route('/trips/<int:trip_id>/bookings/<int:booking_id>/reconcile-ledger')
 @login_required
 def reconcile_booking_ledger_route(trip_id, booking_id):
-    """只读核对：Booking.amount_paid vs Σ(payment base − refunded)。"""
+    """只读核对：Booking.amount_paid vs Σ(payment base − refunded)；?stripe=1 时对比 Stripe。"""
     from app.payments import reconcile_booking_ledger
 
     trip = Trip.query.get_or_404(trip_id)
     booking = Booking.query.get_or_404(booking_id)
     if booking.trip_id != trip.id:
         return jsonify({'success': False, 'message': 'Booking does not belong to this trip'}), 400
-    result = reconcile_booking_ledger(booking)
+    check_stripe = (request.args.get('stripe') or '').strip().lower() in ('1', 'true', 'yes')
+    result = reconcile_booking_ledger(booking, check_stripe=check_stripe)
+    if not result.get('ok'):
+        try:
+            from app.ledger_alerts import notify_ledger_mismatch
+            notify_ledger_mismatch(booking, result, source='reconcile_api')
+        except Exception as e:
+            current_app.logger.warning('ledger alert after reconcile failed: %s', e)
     return jsonify({'success': True, 'reconcile': result})
 
 
@@ -4111,8 +4169,8 @@ def get_trip_financials(id):
 def refund_booking(trip_id, booking_id):
     """
     处理预订退款：
-    - 管理员手填与客户谈好的退款金额（基础口径；卡费永不退）
-    - 系统按订单可退总额校验，并自动分摊到各笔 Payment（无需选手动选哪一笔）
+    - 部分退款：传 payment_id + 手填金额（只退该笔）
+    - 全额退款：full_refund=true，对该订单每笔可退 Payment 退光剩余额（各原路返回）
     - $0 时允许仅 cancel_booking
     """
     trip = Trip.query.get_or_404(trip_id)
@@ -4130,12 +4188,14 @@ def refund_booking(trip_id, booking_id):
     reason = (data.get('reason') or '').strip()
     manual_only = bool(data.get('manual_only'))
     cancel_booking = bool(data.get('cancel_booking'))
+    full_refund = bool(data.get('full_refund'))
+    payment_id_raw = data.get('payment_id')
 
     if not reason:
         return jsonify({'success': False, 'message': 'Refund reason is required'}), 400
 
     # --- $0 / 仅取消：无退款金额时只改订单状态 ---
-    if refund_amount <= 0.001:
+    if refund_amount <= 0.001 and not full_refund:
         if not cancel_booking:
             return jsonify({
                 'success': False,
@@ -4170,85 +4230,109 @@ def refund_booking(trip_id, booking_id):
         retrieve_payment_intent,
     )
 
-    payments = (
-        Payment.query.filter(
-            Payment.booking_id == booking.id,
-            Payment.status.in_(('succeeded', 'partially_refunded')),
+    def _refundable_payments():
+        rows = (
+            Payment.query.filter(
+                Payment.booking_id == booking.id,
+                Payment.status.in_(('succeeded', 'partially_refunded')),
+            )
+            .order_by(Payment.created_at.asc(), Payment.id.asc())
+            .all()
         )
-        .order_by(Payment.created_at.asc(), Payment.id.asc())
-        .all()
-    )
-    slices = []
-    remaining = round(refund_amount, 2)
-    total_available = 0.0
-    for payment in payments:
-        avail = payment_refundable_remaining(payment)
-        if avail <= 0.001:
-            continue
-        total_available += avail
-        if remaining <= 0.001:
-            continue
-        take = round(min(remaining, avail), 2)
-        if take > 0.001:
-            slices.append((payment, take))
-            remaining = round(remaining - take, 2)
+        out = []
+        for p in rows:
+            avail = payment_refundable_remaining(p)
+            if avail > 0.001:
+                out.append((p, avail))
+        return out
 
-    if total_available <= 0.001:
+    def _stripe_refund_payment(payment, slice_amount):
+        pi = payment.stripe_payment_intent_id
+        if not pi or not str(pi).startswith('pi_'):
+            return None, (
+                f'Payment #{payment.id} has no Stripe PaymentIntent. '
+                'Use “Manual only” to record a local refund, or refund in Stripe Dashboard.'
+            )
+        if not payment.stripe_charge_id:
+            try:
+                intent = retrieve_payment_intent(pi)
+                charge_id = extract_stripe_charge_id(intent)
+                if charge_id:
+                    payment.stripe_charge_id = charge_id
+            except Exception as e:
+                current_app.logger.warning(f'Could not fetch charge for {pi}: {e}')
+        stripe_refund, err = process_refund(pi, slice_amount, reason)
+        if err or not stripe_refund:
+            return None, f'Stripe refund failed on payment #{payment.id}: {err or "unknown error"}'
+        return getattr(stripe_refund, 'id', None), None
+
+    refundable = _refundable_payments()
+    if not refundable:
         return jsonify({
             'success': False,
             'message': (
                 'Nothing left to refund on this booking. '
                 'You can still cancel with amount 0 + Cancel booking checked.'
-            )
+            ),
         }), 400
 
-    if refund_amount > total_available + 0.001:
-        return jsonify({
-            'success': False,
-            'message': f'Refund amount cannot exceed ${total_available:.2f} (refundable total)',
-        }), 400
+    # 构建 (payment, amount) 列表
+    slices = []
+    if full_refund:
+        slices = [(p, avail) for p, avail in refundable]
+        expected_total = round(sum(a for _, a in slices), 2)
+        # 前端应填 booking 可退总额；允许省略或与总额一致
+        if refund_amount > 0.001 and abs(refund_amount - expected_total) > 0.02:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'Full refund amount must be ${expected_total:.2f} '
+                    f'(all remaining refundable payments).'
+                ),
+            }), 400
+        refund_amount = expected_total
+    else:
+        try:
+            payment_id = int(payment_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({
+                'success': False,
+                'message': 'Select which payment to refund (payment_id required).',
+            }), 400
 
-    if remaining > 0.001 or not slices:
-        return jsonify({
-            'success': False,
-            'message': 'Could not allocate refund across payments',
-        }), 400
+        match = next(((p, a) for p, a in refundable if p.id == payment_id), None)
+        if not match:
+            return jsonify({
+                'success': False,
+                'message': 'Selected payment was not found or has nothing left to refund.',
+            }), 400
+        payment, available = match
+        refund_amount = round(refund_amount, 2)
+        if refund_amount <= 0.001:
+            return jsonify({'success': False, 'message': 'Invalid refund amount'}), 400
+        if refund_amount > available + 0.001:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'Refund amount cannot exceed ${available:.2f} '
+                    f'for the selected payment (#{payment.id}).'
+                ),
+            }), 400
+        slices = [(payment, refund_amount)]
 
     try:
         stripe_refund_ids = []
         last_ledger = None
+        refunded_pairs = []
         for idx, (payment, slice_amount) in enumerate(slices):
             is_last = idx == len(slices) - 1
             stripe_refund_id = None
 
             if not manual_only:
-                pi = payment.stripe_payment_intent_id
-                if not pi or not str(pi).startswith('pi_'):
-                    return jsonify({
-                        'success': False,
-                        'message': (
-                            f'Payment #{payment.id} has no Stripe PaymentIntent. '
-                            'Use “Manual only” to record a local refund, or refund in Stripe Dashboard.'
-                        )
-                    }), 400
-
-                if not payment.stripe_charge_id:
-                    try:
-                        intent = retrieve_payment_intent(pi)
-                        charge_id = extract_stripe_charge_id(intent)
-                        if charge_id:
-                            payment.stripe_charge_id = charge_id
-                    except Exception as e:
-                        current_app.logger.warning(f'Could not fetch charge for {pi}: {e}')
-
-                stripe_refund, err = process_refund(pi, slice_amount, reason)
-                if err or not stripe_refund:
+                stripe_refund_id, err = _stripe_refund_payment(payment, slice_amount)
+                if err:
                     db.session.rollback()
-                    return jsonify({
-                        'success': False,
-                        'message': f'Stripe refund failed on payment #{payment.id}: {err or "unknown error"}'
-                    }), 400
-                stripe_refund_id = getattr(stripe_refund, 'id', None)
+                    return jsonify({'success': False, 'message': err}), 400
                 if stripe_refund_id:
                     stripe_refund_ids.append(stripe_refund_id)
 
@@ -4261,18 +4345,51 @@ def refund_booking(trip_id, booking_id):
                 cancel_booking=(cancel_booking and is_last),
                 manual_only=manual_only,
             )
+            refunded_pairs.append((payment, slice_amount))
 
         db.session.commit()
 
+        try:
+            from app.routes import send_refund_notice_email
+            send_refund_notice_email(
+                booking,
+                refunded_pairs[0][0] if refunded_pairs else None,
+                refund_amount,
+                reason=reason,
+                manual_only=manual_only,
+                refunded_payments=refunded_pairs,
+            )
+        except Exception as mail_err:
+            current_app.logger.exception(
+                'Refund notice email raised after successful refund booking=%s: %s',
+                booking.id,
+                mail_err,
+            )
+
         return jsonify({
             'success': True,
-            'message': 'Refund processed successfully' if not manual_only else 'Manual refund recorded',
+            'message': (
+                'Full refund processed successfully'
+                if full_refund and not manual_only
+                else (
+                    'Full manual refund recorded'
+                    if full_refund
+                    else (
+                        'Refund processed successfully'
+                        if not manual_only
+                        else 'Manual refund recorded'
+                    )
+                )
+            ),
             'stripe_refund_id': stripe_refund_ids[0] if len(stripe_refund_ids) == 1 else None,
             'stripe_refund_ids': stripe_refund_ids,
             'manual_only': manual_only,
+            'full_refund': full_refund,
+            'payment_id': refunded_pairs[0][0].id if len(refunded_pairs) == 1 else None,
+            'payment_ids': [p.id for p, _ in refunded_pairs],
             'new_amount_paid': last_ledger['booking_amount_paid'] if last_ledger else float(booking.amount_paid or 0),
             'booking_status': last_ledger['booking_status'] if last_ledger else booking.status,
-            'payment_refunded_amount': None,
+            'payment_refunded_amount': last_ledger.get('payment_refunded_amount') if last_ledger else None,
         })
 
     except ValueError as e:

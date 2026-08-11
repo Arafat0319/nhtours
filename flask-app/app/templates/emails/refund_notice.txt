@@ -1,0 +1,18 @@
+{{ subject_line }}
+
+Hi{% if customer_name and customer_name != 'Customer' %} {{ customer_name }}{% endif %},
+
+{{ intro_text }}
+
+Refund amount: ${{ (refund_amount)|format_price }}
+{% if payment_method_summary %}Returned to: {{ payment_method_summary }}
+{% endif %}Order: {{ order_number }}
+Trip: {{ trip_title }}
+{% if reason %}Reason: {{ reason }}
+{% endif %}
+{{ timing_note }}
+
+{{ footer_note }}
+
+Questions? Please email us at info@nhtours.com (this message was sent from a no-reply address).
+Nexus Horizons Tours · https://nhtours.com

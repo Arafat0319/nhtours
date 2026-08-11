@@ -827,10 +827,10 @@ def booking_ids_with_payoff(booking_ids):
     return out
 
 
-def reconcile_booking_ledger(booking):
+def reconcile_booking_ledger(booking, *, check_stripe=False):
     """
-    只读核对：amount_paid 是否等于 Σ(base − refunded)。
-    同时报告异常 refunded_amount（超出 base）。
+    核对：amount_paid 是否等于 Σ(base − refunded)；异常 refunded_amount。
+    check_stripe=True 时再拉 Stripe Charge.amount_refunded 与本地已退对比。
     """
     stored = round(float(booking.amount_paid or 0.0), 2)
     computed = computed_booking_amount_paid(booking)
@@ -856,6 +856,11 @@ def reconcile_booking_ledger(booking):
                 'issue': 'missing_refund_history',
                 'refunded_amount': clamped,
             })
+        if check_stripe:
+            stripe_issue = compare_payment_refund_to_stripe(payment)
+            if stripe_issue:
+                anomalies.append(stripe_issue)
+
     return {
         'booking_id': booking.id,
         'order_number': getattr(booking, 'order_number', None),
@@ -864,6 +869,95 @@ def reconcile_booking_ledger(booking):
         'delta': delta,
         'ok': abs(delta) < 0.015 and not anomalies,
         'anomalies': anomalies,
+        'checked_stripe': bool(check_stripe),
+    }
+
+
+def compare_payment_refund_to_stripe(payment):
+    """
+    对比本地已退基础额与 Stripe Charge.amount_refunded（换算为基础口径）。
+    无 PI / 拉失败时返回 anomaly 或 None（跳过）。
+    """
+    pi_id = getattr(payment, 'stripe_payment_intent_id', None)
+    if not pi_id or not str(pi_id).startswith('pi_'):
+        return None
+    if (payment.status or '') not in ('succeeded', 'partially_refunded', 'refunded'):
+        return None
+
+    intent = retrieve_payment_intent(pi_id)
+    if not intent:
+        return {
+            'payment_id': payment.id,
+            'issue': 'stripe_retrieve_failed',
+            'error': 'PaymentIntent retrieve returned empty',
+        }
+
+    charge_id = extract_stripe_charge_id(intent)
+    amount_refunded_cents = None
+    try:
+        if isinstance(intent, dict):
+            charges = (intent.get('charges') or {}).get('data') or []
+            latest = charges[0] if charges else None
+            if latest:
+                amount_refunded_cents = latest.get('amount_refunded')
+        else:
+            charges_obj = getattr(intent, 'charges', None)
+            data = getattr(charges_obj, 'data', None) if charges_obj else None
+            if data:
+                latest = data[0]
+                amount_refunded_cents = getattr(latest, 'amount_refunded', None)
+            # expand latest_charge if needed
+            if amount_refunded_cents is None:
+                latest_charge = getattr(intent, 'latest_charge', None)
+                if latest_charge and not isinstance(latest_charge, str):
+                    amount_refunded_cents = getattr(latest_charge, 'amount_refunded', None)
+    except Exception as e:
+        return {
+            'payment_id': payment.id,
+            'issue': 'stripe_retrieve_failed',
+            'error': str(e)[:200],
+        }
+
+    if amount_refunded_cents is None and charge_id:
+        try:
+            stripe.api_key = current_app.config.get('STRIPE_SECRET_KEY')
+            if stripe.api_key:
+                ch = stripe.Charge.retrieve(charge_id)
+                amount_refunded_cents = getattr(ch, 'amount_refunded', None)
+                if amount_refunded_cents is None and isinstance(ch, dict):
+                    amount_refunded_cents = ch.get('amount_refunded')
+        except Exception as e:
+            return {
+                'payment_id': payment.id,
+                'issue': 'stripe_retrieve_failed',
+                'error': str(e)[:200],
+            }
+
+    if amount_refunded_cents is None:
+        return None
+
+    stripe_charged = round(float(amount_refunded_cents) / 100.0, 2)
+    stripe_base = stripe_refunded_as_base(payment, stripe_charged)
+    local = payment_refunded_clamped(payment)
+    diff = round(local - stripe_base, 2)
+    if abs(diff) < 0.02:
+        return None
+    if diff > 0:
+        return {
+            'payment_id': payment.id,
+            'issue': 'local_ahead_of_stripe_refund',
+            'local_refunded': local,
+            'stripe_refunded_base': stripe_base,
+            'stripe_refunded_charged': stripe_charged,
+            'severity': 'manual_review',
+        }
+    return {
+        'payment_id': payment.id,
+        'issue': 'local_behind_stripe_refund',
+        'local_refunded': local,
+        'stripe_refunded_base': stripe_base,
+        'stripe_refunded_charged': stripe_charged,
+        'severity': 'sync_from_stripe',
     }
 
 

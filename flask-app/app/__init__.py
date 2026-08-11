@@ -170,6 +170,7 @@ def create_app(config_name=None):
                     send_installment_reminders,
                     cleanup_expired_pending_bookings,
                     send_scheduled_messages,
+                    scan_ledger_anomalies,
                 )
 
                 scheduler = BackgroundScheduler()
@@ -185,6 +186,10 @@ def create_app(config_name=None):
                 def _run_scheduled_messages():
                     with app.app_context():
                         send_scheduled_messages()
+
+                def _run_ledger_scan():
+                    with app.app_context():
+                        scan_ledger_anomalies()
 
                 # 每天美西上午 9 点：分期提醒（日历日亦按美西）
                 scheduler.add_job(
@@ -204,6 +209,16 @@ def create_app(config_name=None):
                     minute=0,
                     timezone='America/Los_Angeles',
                     id='cleanup_expired_pending_bookings',
+                    replace_existing=True,
+                )
+                # 每天美西凌晨 4 点：账本/Stripe 对账扫描 → 异常邮件提醒管理员
+                scheduler.add_job(
+                    _run_ledger_scan,
+                    'cron',
+                    hour=4,
+                    minute=0,
+                    timezone='America/Los_Angeles',
+                    id='scan_ledger_anomalies',
                     replace_existing=True,
                 )
                 # 每分钟：到期 Trip Message 群发

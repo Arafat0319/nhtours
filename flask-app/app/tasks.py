@@ -465,3 +465,72 @@ def send_scheduled_messages():
     except Exception as e:
         current_app.logger.error(f"send_scheduled_messages failed: {e}", exc_info=True)
         return 0
+
+
+def scan_ledger_anomalies():
+    """
+    每日账本扫描：本地 reconcile + 抽样/近期单 Stripe 退款对比；发现异常则邮件提醒管理员。
+    美西凌晨由 APScheduler 调用。
+    """
+    from datetime import datetime, timedelta
+    from sqlalchemy import or_
+    from app.models import Booking, Payment, db
+    from app.payments import reconcile_booking_ledger
+    from app.ledger_alerts import notify_ledger_mismatch
+
+    if not current_app.config.get('LEDGER_ALERTS_ENABLED', True):
+        current_app.logger.info('scan_ledger_anomalies skipped (LEDGER_ALERTS_ENABLED=false)')
+        return {'scanned': 0, 'mismatches': 0, 'alerted': 0}
+
+    days = int(current_app.config.get('LEDGER_SCAN_DAYS', 120))
+    max_bookings = int(current_app.config.get('LEDGER_SCAN_MAX_BOOKINGS', 300))
+    check_stripe = bool(current_app.config.get('LEDGER_SCAN_CHECK_STRIPE', True))
+    since = datetime.utcnow() - timedelta(days=days)
+
+    pay_q = (
+        db.session.query(Payment.booking_id)
+        .filter(
+            Payment.status.in_(('succeeded', 'partially_refunded', 'refunded')),
+            or_(
+                Payment.paid_at >= since,
+                Payment.created_at >= since,
+                Payment.refunded_at >= since,
+            ),
+        )
+        .distinct()
+        .limit(max_bookings)
+    )
+    booking_ids = [row[0] for row in pay_q.all() if row[0]]
+    if not booking_ids:
+        current_app.logger.info('scan_ledger_anomalies: no candidate bookings')
+        return {'scanned': 0, 'mismatches': 0, 'alerted': 0}
+
+    scanned = 0
+    mismatches = 0
+    alerted = 0
+    for bid in booking_ids:
+        booking = Booking.query.get(bid)
+        if not booking:
+            continue
+        try:
+            result = reconcile_booking_ledger(booking, check_stripe=check_stripe)
+            scanned += 1
+            if result.get('ok'):
+                continue
+            mismatches += 1
+            ok, status = notify_ledger_mismatch(booking, result, source='daily_scan')
+            if ok or status == 'deduped':
+                alerted += 1
+        except Exception as e:
+            current_app.logger.exception(
+                'scan_ledger_anomalies failed booking_id=%s: %s', bid, e
+            )
+
+    current_app.logger.info(
+        'scan_ledger_anomalies done scanned=%s mismatches=%s alerted=%s stripe=%s',
+        scanned,
+        mismatches,
+        alerted,
+        check_stripe,
+    )
+    return {'scanned': scanned, 'mismatches': mismatches, 'alerted': alerted}

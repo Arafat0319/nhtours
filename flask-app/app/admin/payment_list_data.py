@@ -50,6 +50,30 @@ def _line_display_status(inst, payment=None, *, covered_by_catch_up=False):
     return (getattr(inst, 'status', None) or 'pending') if inst is not None else 'pending'
 
 
+def _booking_is_mixed(booking):
+    from app.payments import booking_payment_type_display
+    return (booking_payment_type_display(booking) or {}).get('key') == 'mixed'
+
+
+def booking_full_packages_amount(booking):
+    """混单 Full 侧：仅全款套餐合计（不含 deposit_installment）。"""
+    from app.payments import booking_package_unit_price
+
+    if not booking:
+        return 0.0
+    total = 0.0
+    try:
+        packages = list(booking.booking_packages) if booking.booking_packages else []
+    except Exception:
+        packages = []
+    for bp in packages:
+        if (getattr(bp, 'payment_plan_type', None) or 'full') == 'deposit_installment':
+            continue
+        qty = int(bp.quantity) if bp.quantity is not None else 1
+        total += booking_package_unit_price(bp) * qty
+    return round(total, 2)
+
+
 def _matches_search(booking, search):
     if not search:
         return True
@@ -84,6 +108,8 @@ def _filter_by_schedule_status(group, status_filter):
 
 
 def _attach_payments_and_sub_items(groups, payments_map, *, covered_ids=None):
+    from app.payments import payment_is_payoff
+
     covered_ids = covered_ids or set()
     for group in groups:
         deposit = group.get('deposit')
@@ -141,26 +167,49 @@ def _attach_payments_and_sub_items(groups, payments_map, *, covered_ids=None):
         group['next_action_installment'] = unpaid[0] if unpaid else None
         group['has_unpaid'] = bool(unpaid)
 
+        payoff = group.get('payoff_payment')
+        payoff_id = payoff.id if payoff else None
+
+        def _is_payoff_payment(payment):
+            if not payment:
+                return False
+            if payoff_id and payment.id == payoff_id:
+                return True
+            return payment_is_payoff(payment)
+
         sub_items = []
-        if group.get('payoff_payment'):
-            payoff = group['payoff_payment']
-            sub_items.append({
-                'type': 'payoff',
-                'payment': payoff,
-                'payment_time': payoff.paid_at or payoff.created_at or datetime.max,
-                'installment': None,
-                'display_status': 'paid',
-                'covered_by_catch_up': False,
-            })
+        merged_payoff = False
         for inst in group.get('others') or []:
             payment = group['others_payments'].get(inst.id)
             covered = bool(group['others_covered'].get(inst.id))
+            inst_status = (inst.status or '')
+
+            # Payoff 结清后：跳过被取消的后续期，避免「又付了一期」的错觉
+            if payoff and inst_status == 'cancelled' and not _is_payoff_payment(payment):
+                continue
+
             if payment and payment.paid_at:
                 payment_time = payment.paid_at
             elif inst.paid_at:
                 payment_time = inst.paid_at
             else:
                 payment_time = None
+
+            # 锚定期挂了 payoff Payment：与 Payoff 合并为一行（显示实扣金额）
+            if _is_payoff_payment(payment):
+                merged_payoff = True
+                sub_items.append({
+                    'type': 'payoff_merged',
+                    'payment': payment,
+                    'payment_time': payment_time or (
+                        payoff.paid_at or payoff.created_at if payoff else None
+                    ),
+                    'installment': inst,
+                    'display_status': 'paid',
+                    'covered_by_catch_up': False,
+                })
+                continue
+
             sub_items.append({
                 'type': 'installment',
                 'payment': payment,
@@ -172,6 +221,17 @@ def _attach_payments_and_sub_items(groups, payments_map, *, covered_ids=None):
                 'covered_by_catch_up': covered,
             })
 
+        # 无锚定期可合并时仍单独显示 Payoff
+        if payoff and not merged_payoff:
+            sub_items.append({
+                'type': 'payoff',
+                'payment': payoff,
+                'payment_time': payoff.paid_at or payoff.created_at or datetime.max,
+                'installment': None,
+                'display_status': 'paid',
+                'covered_by_catch_up': False,
+            })
+
         def sort_key(item):
             if item['type'] == 'payoff':
                 return (2, item['payment_time'] or datetime.max)
@@ -181,10 +241,18 @@ def _attach_payments_and_sub_items(groups, payments_map, *, covered_ids=None):
         group['sub_items'] = sorted(sub_items, key=sort_key)
 
 
-def build_schedule_order_groups(*, plan_kinds, search='', status_filter='', limit=200):
+def build_schedule_order_groups(
+    *,
+    plan_kinds,
+    search='',
+    status_filter='',
+    limit=200,
+    mixed_mode='include',
+):
     """
     按付款计划组装可展开的 order 行。
     plan_kinds: {'deposit_balance'} 或 {'multi'} 或两者。
+    mixed_mode: include | exclude | only — 控制是否包含混单（全款+分期产品）。
 
     按 booking 分页（不再对 InstallmentPayment 全局 limit*4，避免丢单）。
     """
@@ -293,6 +361,12 @@ def build_schedule_order_groups(*, plan_kinds, search='', status_filter='', limi
         if kind not in plan_kinds:
             continue
 
+        is_mixed = _booking_is_mixed(booking)
+        if mixed_mode == 'exclude' and is_mixed:
+            continue
+        if mixed_mode == 'only' and not is_mixed:
+            continue
+
         raw_others = list(raw['others'] or [])
         others = list(raw_others)
         if raw['payoff_payment']:
@@ -327,10 +401,13 @@ def build_schedule_order_groups(*, plan_kinds, search='', status_filter='', limi
             'payoff_payment': raw['payoff_payment'],
             'post_deposit_count': len(raw_others),
             'is_multi_period': kind == 'multi',
+            'is_mixed': is_mixed,
+            'mixed_portion': 'installment' if is_mixed else None,
             'has_unpaid': False,
             'next_action_installment': None,
             'primary_payment': None,
-            'discount': booking_discount_info(booking),
+            # 混单折扣挂 Full 侧；Installment 侧不重复展示
+            'discount': None if is_mixed else booking_discount_info(booking),
         })
 
     # 先挂 Payment / 校正展示态，再按 status 筛选
@@ -342,6 +419,119 @@ def build_schedule_order_groups(*, plan_kinds, search='', status_filter='', limi
         reverse=True,
     )
     return result[:limit], today
+
+
+def build_mixed_full_portion_groups(*, search='', status_filter='', limit=100):
+    """
+    混单在 Full Payments 的一行：仅全款产品合计。
+    分期 schedule 仍在 Installment（含混单的 deposit_balance / multi）。
+    """
+    from app.payments import (
+        multi_period_booking_ids,
+        payment_is_payoff,
+        single_balance_booking_ids,
+    )
+
+    today = pacific_today()
+    if status_filter == 'overdue':
+        return [], today
+
+    candidate_ids = multi_period_booking_ids() | single_balance_booking_ids()
+    if not candidate_ids:
+        return [], today
+
+    bookings = (
+        Booking.query.options(
+            joinedload(Booking.trip),
+            joinedload(Booking.client),
+            joinedload(Booking.discount_code),
+        )
+        .filter(Booking.id.in_(candidate_ids))
+        .order_by(Booking.created_at.desc())
+        .limit(max(limit * 5, limit))
+        .all()
+    )
+    if search:
+        bookings = [b for b in bookings if _matches_search(b, search)]
+
+    result = []
+    for booking in bookings:
+        if not _booking_is_mixed(booking):
+            continue
+        full_amount = booking_full_packages_amount(booking)
+        if full_amount <= 0.001:
+            continue
+
+        payments = (
+            Payment.query.filter(
+                Payment.booking_id == booking.id,
+                Payment.status.in_(
+                    ('succeeded', 'pending', 'partially_refunded', 'refunded')
+                ),
+            )
+            .order_by(Payment.created_at.asc())
+            .all()
+        )
+        payments.sort(
+            key=lambda p: (
+                p.paid_at or p.created_at or datetime.min,
+                p.id or 0,
+            )
+        )
+        # 展示用：首笔非 payoff 成功款（报名/定金合并扣款）；否则任意最早成功款
+        initial = None
+        for p in payments:
+            if payment_is_payoff(p):
+                continue
+            if (p.status or '') in ('succeeded', 'partially_refunded', 'refunded'):
+                initial = p
+                break
+        if initial is None:
+            for p in payments:
+                if (p.status or '') in ('succeeded', 'partially_refunded', 'refunded', 'pending'):
+                    initial = p
+                    break
+
+        st = (initial.status if initial else 'pending') or 'pending'
+        if status_filter in ('pending', 'failed', 'refunded', 'partially_refunded', 'succeeded'):
+            if st != status_filter:
+                continue
+        elif status_filter == 'paid':
+            if st != 'succeeded':
+                continue
+
+        result.append({
+            'plan_kind': 'one_time',
+            'booking': booking,
+            'booking_id': booking.id,
+            'deposit': None,
+            'others': [],
+            'payoff_payment': None,
+            'post_deposit_count': 0,
+            'is_multi_period': False,
+            'is_mixed': True,
+            'mixed_portion': 'full',
+            'display_amount': full_amount,
+            'has_unpaid': st == 'pending',
+            'next_action_installment': None,
+            'primary_payment': initial,
+            'deposit_payment': initial,
+            'others_payments': {},
+            'sub_items': [],
+            'discount': booking_discount_info(booking),
+        })
+        if len(result) >= limit:
+            break
+
+    result.sort(
+        key=lambda g: (
+            g['primary_payment'].created_at
+            if g.get('primary_payment') and g['primary_payment'].created_at
+            else datetime.min
+        ),
+        reverse=True,
+    )
+    return result, today
 
 
 def build_one_time_order_groups(*, search='', status_filter='', limit=100, exclude_booking_ids=None):
@@ -378,6 +568,9 @@ def build_one_time_order_groups(*, search='', status_filter='', limit=100, exclu
         from app.payments import booking_payments_plan_kind
         if booking_payments_plan_kind(bid) != 'one_time':
             continue
+        if _booking_is_mixed(booking):
+            # 混单走 build_mixed_full_portion_groups，避免整笔 Initial 误当全款
+            continue
         if bid not in by_booking:
             by_booking[bid] = {
                 'plan_kind': 'one_time',
@@ -388,6 +581,8 @@ def build_one_time_order_groups(*, search='', status_filter='', limit=100, exclu
                 'payoff_payment': None,
                 'post_deposit_count': 0,
                 'is_multi_period': False,
+                'is_mixed': False,
+                'mixed_portion': None,
                 'has_unpaid': payment.status == 'pending',
                 'next_action_installment': None,
                 'primary_payment': payment,

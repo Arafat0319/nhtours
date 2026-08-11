@@ -2947,7 +2947,11 @@ def api_create_free_booking():
         )
         
         try:
-            send_booking_confirmation_email(booking, is_full_payment=(booking.status == 'fully_paid'))
+            send_booking_confirmation_email(
+                booking,
+                is_full_payment=(booking.status == 'fully_paid'),
+                payment=zero_payment,
+            )
         except Exception as e:
             current_app.logger.error(f"Failed to send confirmation email for free booking {booking.id}: {e}")
         
@@ -3831,7 +3835,7 @@ def handle_checkout_completed(session):
     
     # 发送确认邮件
     try:
-        send_booking_confirmation_email(booking, is_full_payment)
+        send_booking_confirmation_email(booking, is_full_payment, payment=payment)
     except Exception as e:
         current_app.logger.error(f"Failed to send confirmation email: {str(e)}")
     
@@ -4495,7 +4499,7 @@ def handle_booking_payment_intent_succeeded(payment_intent):
 
     # 发送确认邮件
     try:
-        send_booking_confirmation_email(booking, is_full_payment)
+        send_booking_confirmation_email(booking, is_full_payment, payment=payment)
     except Exception as e:
         current_app.logger.error(f"Failed to send confirmation email: {str(e)}")
     
@@ -4647,7 +4651,7 @@ def handle_payment_intent_succeeded(payment_intent):
     
     # 发送确认邮件（锚定期）
     try:
-        send_installment_confirmation_email(installment)
+        send_installment_confirmation_email(installment, payment=payment)
     except Exception as e:
         current_app.logger.error(f"Failed to send installment confirmation email: {str(e)}")
     
@@ -5017,18 +5021,71 @@ def send_order_processing_email(booking, payment=None, *, is_new_order=False):
     return True
 
 
-def send_booking_confirmation_email(booking, is_full_payment):
+def claim_receipt_email_send(payment):
     """
-    发送报名确认邮件
+    原子认领本笔 Payment 的收据邮件发送权（对齐 Messages：先改状态再发送）。
+    status 轮询与 Stripe webhook 常并发 finalize；仅认领成功的一方发 SES。
+    返回 True = 本进程应发送；False = 已发送或已被其他 worker 认领。
+    payment 为 None（极少数无账本行）时无法去重，返回 True。
     """
+    if payment is None or not getattr(payment, 'id', None):
+        return True
+    now = datetime.utcnow()
+    claimed = (
+        Payment.query.filter(
+            Payment.id == payment.id,
+            Payment.receipt_email_sent_at.is_(None),
+        ).update(
+            {'receipt_email_sent_at': now},
+            synchronize_session=False,
+        )
+    )
+    db.session.commit()
+    if not claimed:
+        current_app.logger.info(
+            "Receipt email already claimed/sent for payment_id=%s, skipping",
+            payment.id,
+        )
+        return False
+    return True
+
+
+def release_receipt_email_claim(payment):
+    """发送失败时释放认领，允许 webhook 重试补发。"""
+    if payment is None or not getattr(payment, 'id', None):
+        return
+    Payment.query.filter_by(id=payment.id).update(
+        {'receipt_email_sent_at': None},
+        synchronize_session=False,
+    )
+    db.session.commit()
+
+
+def send_booking_confirmation_email(booking, is_full_payment, payment=None):
+    """
+    发送报名确认邮件（含收据）。
+    payment：本笔刚成功的 Payment；缺省取最近一笔 succeeded。
+    """
+    if payment is None:
+        payment = Payment.query.filter_by(
+            booking_id=booking.id,
+            status='succeeded'
+        ).order_by(Payment.paid_at.desc()).first()
+
+    if not claim_receipt_email_send(payment):
+        return False
+
+    try:
+        return _send_booking_confirmation_email_body(booking, is_full_payment, payment)
+    except Exception:
+        release_receipt_email_claim(payment)
+        raise
+
+
+def _send_booking_confirmation_email_body(booking, is_full_payment, payment):
     subject = f"Payment Receipt - {booking.trip.title if booking.trip else 'Trip Booking'}"
     sender_email = current_app.config.get('SENDER_EMAIL') or current_app.config.get('RECIPIENT_EMAIL', 'info@nhtours.com')
     recipient_email = booking.buyer_email
-
-    payment = Payment.query.filter_by(
-        booking_id=booking.id,
-        status='succeeded'
-    ).order_by(Payment.paid_at.desc()).first()
 
     total_info = calculate_booking_total(booking)
     # 本次收据金额 = 本笔实收；无 Payment / $0 时绝不能回落到「整单余额」
@@ -5050,7 +5107,6 @@ def send_booking_confirmation_email(booking, is_full_payment):
         total_cents = 0
 
     payment_status = payment.status if payment else ('fully_paid' if is_full_payment else 'deposit_paid')
-    # 处理 $0 订单：没有 Payment 记录时使用当前时间；展示美西日期
     if payment and payment.paid_at:
         issued_at = format_pacific_date(payment.paid_at)
     else:
@@ -5091,12 +5147,9 @@ def send_booking_confirmation_email(booking, is_full_payment):
     if payment_intent_id and str(payment_intent_id).startswith('free_'):
         payment_intent_id = None
 
-    # 获取折扣信息
     discount_amount = booking.discount_amount or 0.0
     discount_code = booking.discount_code.code if booking.discount_code else None
 
-    # 有折扣时：页脚 Subtotal = 本笔应付原价（实收 + 折扣），与卡付路径一致
-    # $0 实收时 base=0，Subtotal 显示为折扣额，避免把整单余额当成已付
     context = {
         'receipt_title': 'Payment Receipt',
         'receipt_number': booking.order_number or booking.id,
@@ -5146,26 +5199,41 @@ def send_booking_confirmation_email(booking, is_full_payment):
         reply_to=current_app.config.get('REPLY_TO_EMAIL') or 'info@nhtours.com',
         attachments=attachments or None,
     )
+    return True
 
 
-def send_installment_confirmation_email(installment):
+def send_installment_confirmation_email(installment, payment=None):
     """
-    发送分期付款确认邮件
+    发送分期付款确认邮件。
+    payment：本笔刚成功的 Payment；缺省按 installment.payment_intent_id 查找。
     """
+    booking = installment.booking
+    if payment is None:
+        payment = Payment.query.filter_by(
+            stripe_payment_intent_id=installment.payment_intent_id
+        ).order_by(Payment.paid_at.desc()).first()
+
+    if not claim_receipt_email_send(payment):
+        return False
+
+    try:
+        return _send_installment_confirmation_email_body(installment, payment)
+    except Exception:
+        release_receipt_email_claim(payment)
+        raise
+
+
+def _send_installment_confirmation_email_body(installment, payment):
     booking = installment.booking
     subject = f"Installment Payment Receipt - {booking.trip.title if booking.trip else 'Trip Booking'}"
     sender_email = current_app.config.get('SENDER_EMAIL') or current_app.config.get('RECIPIENT_EMAIL', 'info@nhtours.com')
     recipient_email = booking.buyer_email
 
-    payment = Payment.query.filter_by(
-        stripe_payment_intent_id=installment.payment_intent_id
-    ).order_by(Payment.paid_at.desc()).first()
-
     base_amount_cents = payment.base_amount_cents if payment and payment.base_amount_cents is not None else int(round(float(installment.amount) * 100))
     fee_cents = payment.fee_cents if payment and payment.fee_cents is not None else 0
     total_cents = payment.final_amount_cents if payment and payment.final_amount_cents is not None else base_amount_cents + fee_cents
     payment_status = payment.status if payment else 'succeeded'
-    issued_at = format_pacific_date(payment.paid_at or datetime.utcnow())
+    issued_at = format_pacific_date((payment.paid_at if payment else None) or datetime.utcnow())
 
     payment_method_summary = None
     if payment and (payment.brand or payment.funding):
@@ -5228,3 +5296,175 @@ def send_installment_confirmation_email(installment):
         reply_to=current_app.config.get('REPLY_TO_EMAIL') or 'info@nhtours.com',
         attachments=attachments or None,
     )
+    return True
+
+
+def _payment_is_ach(payment):
+    if not payment:
+        return False
+    funding = (payment.funding or '').strip().lower()
+    brand = (payment.brand or '').strip().lower()
+    pm_type = (payment.payment_method_type or '').strip().lower()
+    return funding == 'ach' or brand == 'us_bank' or pm_type == 'us_bank_account'
+
+
+def send_refund_notice_email(
+    booking,
+    payment,
+    refund_amount,
+    reason=None,
+    manual_only=False,
+    refunded_payments=None,
+):
+    """
+    退款成功后通知客户（卡 / ACH 文案不同；失败只记日志，不回滚退款）。
+    refunded_payments: optional list of (Payment, amount) for full multi-method refunds.
+    """
+    if not booking or not booking.buyer_email:
+        current_app.logger.warning(
+            'Refund notice skipped: no buyer email for booking %s',
+            getattr(booking, 'id', None),
+        )
+        return False
+
+    try:
+        amount = round(float(refund_amount or 0), 2)
+    except (TypeError, ValueError):
+        amount = 0.0
+    if amount <= 0.001:
+        return False
+
+    pairs = list(refunded_payments or [])
+    if not pairs and payment is not None:
+        pairs = [(payment, amount)]
+
+    customer_name = (
+        f"{booking.buyer_first_name or ''} {booking.buyer_last_name or ''}".strip()
+        or 'Customer'
+    )
+    order_number = booking.order_number or f'#{booking.id}'
+    trip_title = booking.trip.title if booking.trip else 'Trip Booking'
+
+    def _method_label(p):
+        if not p:
+            return 'your original payment method'
+        if _payment_is_ach(p):
+            return 'US bank account (ACH)'
+        if (p.payment_method_type or '').lower() == 'manual':
+            return 'manual payment'
+        if p.brand or p.funding:
+            brand = (p.brand or 'card').strip()
+            brand_disp = brand.upper() if brand else 'CARD'
+            funding = (p.funding or '').strip().lower()
+            if funding and funding not in ('unknown', 'ach'):
+                return f'{brand_disp} ({funding}) card'
+            return f'{brand_disp} card'
+        return 'original payment method'
+
+    has_ach = any(_payment_is_ach(p) for p, _ in pairs)
+    has_card = any(not _payment_is_ach(p) for p, _ in pairs)
+    multi = len(pairs) > 1
+
+    if multi:
+        bits = [f'${float(a):.2f} to {_method_label(p)}' for p, a in pairs]
+        payment_method_summary = '; '.join(bits)
+        intro_text = (
+            f'We have issued a full refund of ${amount:.2f} for order {order_number}. '
+            'Each amount is returned to the original payment method used for that charge.'
+        )
+        timing_parts = []
+        if has_card:
+            timing_parts.append(
+                'Card refunds typically appear within 5–10 business days, depending on your bank.'
+            )
+        if has_ach:
+            timing_parts.append(
+                'ACH refunds usually take several business days and may appear as a credit '
+                'referencing the original payment (not always labeled “refund”).'
+            )
+        timing_note = ' '.join(timing_parts) if timing_parts else (
+            'Funds return to each original payment method; timing depends on your bank.'
+        )
+    else:
+        p0 = pairs[0][0] if pairs else payment
+        is_ach = _payment_is_ach(p0)
+        payment_method_summary = f'your {_method_label(p0)}'
+        if is_ach:
+            intro_text = (
+                f'We have issued a refund of ${amount:.2f} for order {order_number}. '
+                'The funds will be returned to the same US bank account used for that payment.'
+            )
+            timing_note = (
+                'ACH refunds usually take several business days. On your bank statement the credit '
+                'may reference the original payment and may not be labeled “refund.”'
+            )
+        else:
+            intro_text = (
+                f'We have issued a refund of ${amount:.2f} for order {order_number}. '
+                'The funds will be returned to the same card used for that payment.'
+            )
+            timing_note = (
+                'Card refunds typically appear within 5–10 business days, depending on your bank.'
+            )
+
+    if manual_only:
+        timing_note = (
+            'This refund was recorded in our system. Timing depends on how the funds are returned '
+            'to your original payment method(s).'
+        )
+
+    subject = f'Refund processed - {order_number}'
+    context = {
+        'subject_line': subject,
+        'customer_name': customer_name,
+        'intro_text': intro_text,
+        'refund_amount': amount,
+        'payment_method_summary': payment_method_summary,
+        'order_number': order_number,
+        'trip_title': trip_title,
+        'reason': (reason or '').strip() or None,
+        'timing_note': timing_note,
+        'footer_note': (
+            'Card fees are not refundable. If you have questions about this refund, '
+            'reply to info@nhtours.com.'
+        ),
+        'email_logo_url': _email_brand_logo_url(),
+    }
+
+    try:
+        html_body = render_template('emails/refund_notice.html', **context)
+        text_body = render_template('emails/refund_notice.txt', **context)
+        sender = (
+            current_app.config.get('SENDER_EMAIL')
+            or current_app.config.get('RECIPIENT_EMAIL')
+            or 'nhtours-noreply@nhtours.com'
+        )
+        success, detail = send_email_via_ses(
+            sender,
+            booking.buyer_email,
+            subject,
+            html_body,
+            text_body,
+            reply_to=current_app.config.get('REPLY_TO_EMAIL') or 'info@nhtours.com',
+        )
+        if not success:
+            current_app.logger.error(
+                'Refund notice email failed for booking %s: %s',
+                booking.id,
+                detail,
+            )
+            return False
+        current_app.logger.info(
+            'Refund notice email sent booking=%s amount=%.2f payments=%s',
+            booking.id,
+            amount,
+            [getattr(p, 'id', None) for p, _ in pairs],
+        )
+        return True
+    except Exception as e:
+        current_app.logger.exception(
+            'Refund notice email error booking=%s: %s',
+            getattr(booking, 'id', None),
+            e,
+        )
+        return False

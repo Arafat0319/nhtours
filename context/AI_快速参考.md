@@ -107,8 +107,8 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 入口 | Manage → **Download Excel**；Payments → **Export** |
 | 行程订单 | `GET /admin/trips/<id>/bookings/export`：Participants / Contact / Bookings Summary / **Canceled** |
 | Participants | Payment Status（含 Refunded）、**Refunds**、Net Paid |
-| Summary | Expected、Payments Received、**Refunds**、Net Paid、Balance due + Totals + Collected Funds |
-| Payments 导出 | `GET /admin/payments/export`：Base / Card Fee / Charged / Refunded(base) / Net(base) + Status、Refund Reason |
+| Summary | Expected、Payments Received、**Card Fee**、Refunds、Net Paid、Balance due + Totals + Collected Funds |
+| Payments 导出 | 付款列在前；末尾 Net / Refunded / Reason / Refunded At；按 paid_at 升序 |
 | 取消/退款 | 取消单在 Summary 标 cancelled 并显示退款；详表见 Canceled sheet |
 | 列宽 | 按内容撑开、不换行（`export_bookings` `_autosize`） |
 | 不再使用 | Power Query / Web 连接刷新；Manage「验证数据源」已移除 |
@@ -128,15 +128,15 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 项 | 值 |
 |----|-----|
 | 口径 | **基础金额**退款；**卡手续费永不退** |
-| 退款 | 手填金额（上限=订单可退总额；系统自动分摊到各 Payment；卡费不退） |
+| 退款 | 部分：手填 + `payment_id`；**Full refund**：退光各笔可退额（各原路）；卡费不退 |
 | Balance due | `expected − paid − refunded`（退款不产生新欠款）；`booking_balance_due` |
 | Payoff 应付 | 同 Balance due（`booking_payoff_due`）；勿用 `total − amount_paid` |
 | Mark Paid | 写 `manual` Payment；禁止跳期；结清时 cancel 未付分期 |
-| 退款状态 | 展示 `partially_refunded` / `fully_refunded`（`booking_refund_display_kind`）；Refund 弹窗可勾 Full refund 填满可退额 |
+| 退款状态 | 展示 `partially_refunded` / `fully_refunded`（`booking_refund_display_kind`）；Full refund 填满**所选 Payment** 可退额 |
 | Payment Type | Manage：`Full` / `Deposit + Final` / `Installment (N)`（`booking_payment_type_display`） |
 | 取消订单 | Manage → **Cancel order** → `POST .../bookings/<id>/cancel`（不退款）；Payment Status 下拉无 Cancelled |
 | $0 / 退款同时取消 | **仅** Refund 弹窗勾选 Cancel booking 才 cancelled；全额退完不自动取消 |
-| 代码 | `payments.py`（`payment_max_refund` / `stripe_refunded_as_base`）、`refund_booking`、`cancel_booking_order`、`handle_refund` |
+| 代码 | `payments.py`（`payment_max_refund` / `stripe_refunded_as_base`）、`refund_booking`（需 `payment_id`）、`cancel_booking_order`、`handle_refund` |
 
 ## 部署
 
@@ -157,8 +157,9 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 邮件 SES | **生产已配置**（`nhtours.com` / `us-west-2`，已出沙箱）；详见 `06` / `08` |
 | 收据邮件 | HTML+PDF；token 可绑 payment_id；Paid=当笔净付、Remaining=付完后余额；Manage 行内 Receipt；定稿 `.cursor/rules/receipt-pdf-layout.mdc` |
 | 分期付款 | 打开某期链接 **强制补齐**此前未付；Payoff=`booking_payoff_due`；Manage 显示 Payoff 徽标；Payments 列表按 booking 分页 |
-| 退款 / 取消 | **不自动发客户邮件**；退款走 Stripe/账本；需通知请用 Messages |
+| 退款 / 取消 | 退款成功发 **refund notice** 邮件（卡/ACH 文案不同）；$0 仅取消不发；取消订单本身仍不发邮件 |
 | 分期催款 | 美西日历；每天美西 9:00；**仅 1 个 Gunicorn worker 跑 APScheduler**（文件锁防重复发） |
+| 账本告警 | 每天美西 4:00 扫近期订单；本地+可选 Stripe 退款对比；异常邮件 `RECIPIENT_EMAIL`；24h 去重 |
 | Payments 标签 | 以 order 分类：Full=全款或定金+单笔尾款；Installment=定金后>1期 |
 | 报名校验 | 前端 `booking.js` + 后端 `booking_validation.py`（email/phone/name/dob/zip）；Promo 未选套餐 → `#discount-message` 琥珀提示 |
 | 安全审计 | `/var/log/nhtours/audit.log`；`nh-audit` / `nh-audit --all` / `nh-audit -f` |
@@ -186,7 +187,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 |----|-----|
 | 后台 | `/admin/customers/leads`；折叠 Show more；**批量删除** `POST .../bulk-delete`（admin） |
 | 新线索邮件 | `emails/contact_lead_notify.html` → `RECIPIENT_EMAIL`；主题 `New contact lead — …`；Reply-To=提交者 |
-| 管理员通知邮件 | 统一 `emails/admin_notify_base.html`：Contact / Newsletter / Testimonial pending / Feedback pending / Security alert |
+| 管理员通知邮件 | 统一 `emails/admin_notify_base.html`：Contact / Newsletter / Testimonial pending / Feedback pending / Security alert / **Ledger alert** |
 | 客户人工邮件 | `emails/branded_customer_message.html`：Booking 单发 + Messages 群发外壳 |
 
 ## 协作规则
@@ -203,4 +204,4 @@ push 前更新 context（至少 `07`）→ 用户确认 → 同一 commit push�
 | UI | `05` |
 | 部署 | `06` |
 
-**最后更新**: 2026-07-28（收据定稿：Due this time + Includes 说明；History 按付款方式；退款/取消不自动邮件）
+**最后更新**: 2026-08-10（退款按笔/Full refund + 退款邮件 + 账本日扫告警 + Excel Card Fee）
