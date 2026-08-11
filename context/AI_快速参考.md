@@ -158,6 +158,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 收据邮件 | HTML+PDF；token 可绑 payment_id；Paid=当笔净付、Remaining=付完后余额；Manage 行内 Receipt；定稿 `.cursor/rules/receipt-pdf-layout.mdc` |
 | 分期付款 | 打开某期链接 **强制补齐**此前未付；Payoff=`booking_payoff_due`；Manage 显示 Payoff 徽标；Payments 列表按 booking 分页 |
 | 退款 / 取消 | 退款成功发 **refund notice** 邮件（卡/ACH 文案不同）；$0 仅取消不发；取消订单本身仍不发邮件 |
+| 个人退出 | `BookingParticipant.status`=`withdrawn`；Manage Mark withdrawn / Restore；名单灰行+徽章；不计 Going；不自动退款 |
 | 分期催款 | 美西日历；每天美西 9:00；**仅 1 个 Gunicorn worker 跑 APScheduler**（文件锁防重复发） |
 | 账本告警 | 每天美西 4:00 扫近期订单；本地+可选 Stripe 退款对比；异常邮件 `RECIPIENT_EMAIL`；24h 去重 |
 | Payments 标签 | 以 order 分类：Full=全款或定金+单笔尾款；Installment=定金后>1期 |
@@ -204,4 +205,4 @@ push 前更新 context（至少 `07`）→ 用户确认 → 同一 commit push�
 | UI | `05` |
 | 部署 | `06` |
 
-**最后更新**: 2026-08-10（退款按笔/Full refund + 退款邮件 + 账本日扫告警 + Excel Card Fee）
+**最后更新**: 2026-08-10（participant withdrawn + 退款按笔/Full refund + 账本告警）

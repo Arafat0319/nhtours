@@ -38,6 +38,21 @@
         outline: 1px solid #00D1C1;
         border-radius: 2px;
     }
+    /* Withdrawn participant: entire roster row muted */
+    tr.participant-row--withdrawn td {
+        color: #9ca3af !important;
+        background-color: #f9fafb;
+    }
+    tr.participant-row--withdrawn td .text-gray-800,
+    tr.participant-row--withdrawn td .text-gray-900,
+    tr.participant-row--withdrawn td .text-gray-500,
+    tr.participant-row--withdrawn td .font-semibold,
+    tr.participant-row--withdrawn td .font-medium {
+        color: #9ca3af !important;
+    }
+    tr.participant-row--withdrawn a {
+        color: #9ca3af !important;
+    }
     /* Schedule picker: match admin inputs */
     .fp-datetime-alt {
         display: block;
@@ -390,32 +405,44 @@
                     <tbody class="bg-white divide-y divide-gray-100" id="participantsTableBody">
                         {% if all_participants %}
                         {% for participant in all_participants %}
-                        <tr class="participant-row" data-name="{{ participant.name|lower }}"
+                        <tr class="participant-row {% if participant.is_withdrawn %}participant-row--withdrawn{% endif %}"
+                            data-name="{{ participant.name|lower }}"
                             data-first-name="{{ (participant.first_name or '')|lower }}"
                             data-last-name="{{ (participant.last_name or '')|lower }}"
                             data-email="{{ (participant.email or '')|lower }}"
                             data-buyer="{{ (participant.buyer_name or '')|lower }}"
                             data-buyer-email="{{ (participant.buyer_email or '')|lower }}"
                             data-order-number="{{ (participant.order_number or '')|lower }}"
-                            data-participant-id="{{ participant.id }}">
+                            data-participant-id="{{ participant.id }}"
+                            data-withdrawn="{{ '1' if participant.is_withdrawn else '0' }}">
                             <td class="px-6 py-4 whitespace-nowrap">
-                                <div class="text-sm font-semibold text-gray-800">{{ participant.first_name or '-' }}</div>
+                                <div class="flex items-center gap-1.5 text-sm font-semibold {% if participant.is_withdrawn %}text-gray-400{% else %}text-gray-800{% endif %}">
+                                    <span>{{ participant.first_name or '-' }}</span>
+                                    {% if participant.is_withdrawn %}
+                                    <span class="inline-flex items-center gap-0.5 flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-gray-200 text-gray-500" title="Withdrawn">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+                                        </svg>
+                                        Withdrawn
+                                    </span>
+                                    {% endif %}
+                                </div>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
-                                <div class="text-sm text-gray-500">{{ participant.last_name or '-' }}</div>
+                                <div class="text-sm {% if participant.is_withdrawn %}text-gray-400{% else %}text-gray-500{% endif %}">{{ participant.last_name or '-' }}</div>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
-                                <div class="text-sm font-medium text-gray-800">{{ participant.buyer_name or '—' }}</div>
+                                <div class="text-sm font-medium {% if participant.is_withdrawn %}text-gray-400{% else %}text-gray-800{% endif %}">{{ participant.buyer_name or '—' }}</div>
                                 {% if participant.buyer_email %}
-                                <div class="text-sm text-gray-500">{{ participant.buyer_email }}</div>
+                                <div class="text-sm {% if participant.is_withdrawn %}text-gray-400{% else %}text-gray-500{% endif %}">{{ participant.buyer_email }}</div>
                                 {% endif %}
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
-                                <div class="text-sm text-gray-500">{{ participant.email or '-' }}</div>
+                                <div class="text-sm {% if participant.is_withdrawn %}text-gray-400{% else %}text-gray-500{% endif %}">{{ participant.email or '-' }}</div>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ participant.gender or '-' }}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ participant.dob or '-' }}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ participant.registration_type or '-' }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm {% if participant.is_withdrawn %}text-gray-400{% else %}text-gray-500{% endif %}">{{ participant.gender or '-' }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm {% if participant.is_withdrawn %}text-gray-400{% else %}text-gray-500{% endif %}">{{ participant.dob or '-' }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm {% if participant.is_withdrawn %}text-gray-400{% else %}text-gray-500{% endif %}">{{ participant.registration_type or '-' }}</td>
                             {% for question in custom_questions %}
                             {% set qa = participant.question_answers or {} %}
                             {% set ans = qa.get(question.id) if qa.get(question.id) is not none else qa.get(question.id|string) %}
@@ -2798,8 +2825,19 @@
                                 }
                                 
                                 return `
-                                <div class="border border-gray-200 rounded p-4" data-participant-id="${p.id}">
-                                    <h5 class="text-sm font-semibold text-gray-900 mb-3">Participant ${idx + 1}</h5>
+                                <div class="border border-gray-200 rounded p-4 ${p.is_withdrawn ? 'bg-gray-50 opacity-80' : ''}" data-participant-id="${p.id}">
+                                    <div class="flex items-center justify-between gap-2 mb-3">
+                                        <h5 class="text-sm font-semibold ${p.is_withdrawn ? 'text-gray-400' : 'text-gray-900'} flex items-center gap-2">
+                                            Participant ${idx + 1}
+                                            ${p.is_withdrawn ? '<span class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-gray-200 text-gray-500"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>Withdrawn</span>' : ''}
+                                        </h5>
+                                        <button type="button"
+                                            class="text-xs font-medium px-2.5 py-1 rounded border ${p.is_withdrawn ? 'border-gray-300 text-gray-600 hover:bg-white' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}"
+                                            data-withdraw-participant="${p.id}"
+                                            data-withdraw-restore="${p.is_withdrawn ? '1' : '0'}">
+                                            ${p.is_withdrawn ? 'Restore' : 'Mark withdrawn'}
+                                        </button>
+                                    </div>
                                     <div class="space-y-3">
                                         ${fieldsHtml}
                                     </div>
@@ -2849,6 +2887,44 @@
                         updatedInput.addEventListener('change', updatePendingAmount);
                     }
                 }
+                document.querySelectorAll('[data-withdraw-participant]').forEach(function(btn) {
+                    btn.addEventListener('click', async function() {
+                        const pid = btn.getAttribute('data-withdraw-participant');
+                        const restore = btn.getAttribute('data-withdraw-restore') === '1';
+                        const label = restore ? 'Restore this participant to active?' : 'Mark this participant as withdrawn?\n\nThis does not refund money — use Refund if needed.\nThey will be grayed out on the Participants list and excluded from Going.';
+                        const ok = await confirmBookingAction(
+                            restore ? 'Restore participant?' : 'Mark withdrawn?',
+                            label,
+                            { confirmText: restore ? 'Yes, restore' : 'Yes, mark withdrawn', cancelText: 'Go back', danger: !restore }
+                        );
+                        if (!ok || !currentBookingId) return;
+                        btn.disabled = true;
+                        try {
+                            const response = await fetch(
+                                `/admin/trips/{{ trip.id }}/bookings/${currentBookingId}/participants/${pid}/withdraw`,
+                                {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ restore: restore })
+                                }
+                            );
+                            const data = await response.json().catch(function() { return {}; });
+                            if (response.ok && data.success) {
+                                showToast(data.message || (restore ? 'Restored' : 'Marked withdrawn'), 'success');
+                                const bid = currentBookingId;
+                                reloadManagePage('participants');
+                                // page reload will close modal; Going count updates on reload
+                            } else {
+                                showToast(data.message || 'Failed to update participant', 'error');
+                                btn.disabled = false;
+                            }
+                        } catch (err) {
+                            console.error(err);
+                            showToast('Failed to update participant', 'error');
+                            btn.disabled = false;
+                        }
+                    });
+                });
             }, 10);
         }
         // Real-time update of pending amount（与 balance_due 一致：减已退）

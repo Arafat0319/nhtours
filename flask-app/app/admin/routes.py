@@ -548,15 +548,19 @@ def manage_trip(id):
                 'buyer_email': buyer_email,
                 'addons': participant_addons,
                 'question_answers': participant.question_answers or {},
+                'status': getattr(participant, 'status', None) or 'active',
+                'is_withdrawn': (getattr(participant, 'status', None) or 'active') == 'withdrawn',
             })
             total_participants_count += 1
 
-    # Going = 实际出行人数（未取消订单的参与者）；不含 cancelled
-    going_count = sum(
-        b.participants.count()
-        for b in bookings
-        if (b.status or '') != 'cancelled'
-    )
+    # Going = 未取消订单上仍 active 的参与者（withdrawn 不计）
+    going_count = 0
+    for b in bookings:
+        if (b.status or '') == 'cancelled':
+            continue
+        for p in b.participants:
+            if (getattr(p, 'status', None) or 'active') != 'withdrawn':
+                going_count += 1
     
     # Prepare Add Participant Form (deprecated - now using JSON API via multi-step modal)
     from app.admin.forms import AdminBookingForm
@@ -2836,7 +2840,9 @@ def export_bookings(id):
             )
             if not n:
                 continue
-            if mark_cancelled or booking.status == 'cancelled':
+            if (getattr(p, 'status', None) or 'active') == 'withdrawn':
+                names.append(f'{n} (withdrawn)')
+            elif mark_cancelled or booking.status == 'cancelled':
                 names.append(f'{n} (cancelled)')
             else:
                 names.append(n)
@@ -3608,7 +3614,9 @@ def manage_booking(trip_id, booking_id):
                     'dob': (lambda d: d.strftime('%Y-%m-%d') if d else '')(getattr(p, 'dob', None)),
                     'registration_type': getattr(p, 'registration_type', None) or '',
                     'question_answers': question_answers,
-                    'addons': participant_addons
+                    'addons': participant_addons,
+                    'status': getattr(p, 'status', None) or 'active',
+                    'is_withdrawn': (getattr(p, 'status', None) or 'active') == 'withdrawn',
                 })
             
             # 获取所有附加项（包括直接关联到 booking 的，不通过 participant）
@@ -4401,12 +4409,61 @@ def refund_booking(trip_id, booking_id):
         return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
 
 
+@bp.route(
+    '/trips/<int:trip_id>/bookings/<int:booking_id>/participants/<int:participant_id>/withdraw',
+    methods=['POST'],
+)
+@admin_required
+def withdraw_booking_participant(trip_id, booking_id, participant_id):
+    """
+    将参与者标为 withdrawn（软退出）。
+    JSON 可选 { restore: true } 恢复为 active。不自动退款、不改套餐数量。
+    """
+    from datetime import datetime
+
+    trip = Trip.query.get_or_404(trip_id)
+    booking = Booking.query.get_or_404(booking_id)
+    if booking.trip_id != trip.id:
+        return jsonify({'success': False, 'message': 'Booking does not belong to this trip'}), 400
+
+    participant = BookingParticipant.query.filter_by(
+        id=participant_id, booking_id=booking.id
+    ).first()
+    if not participant:
+        return jsonify({'success': False, 'message': 'Participant not found on this booking'}), 404
+
+    data = request.get_json(silent=True) or {}
+    restore = bool(data.get('restore'))
+
+    if restore:
+        participant.status = 'active'
+        participant.withdrawn_at = None
+        db.session.commit()
+        return jsonify({
+            'success': True,
+            'message': 'Participant restored to active',
+            'participant_id': participant.id,
+            'status': participant.status,
+        })
+
+    participant.status = 'withdrawn'
+    participant.withdrawn_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify({
+        'success': True,
+        'message': 'Participant marked as withdrawn',
+        'participant_id': participant.id,
+        'status': participant.status,
+        'hint': 'Refund separately if you negotiated a refund amount.',
+    })
+
+
 @bp.route('/trips/<int:trip_id>/bookings/<int:booking_id>/delete', methods=['POST'])
 @admin_required
 def delete_booking(trip_id, booking_id):
     """删除预订"""
     from app.models import BookingAddOn, BookingPackage, InstallmentPayment, Payment
-    
+       
     trip = Trip.query.get_or_404(trip_id)
     booking = Booking.query.get_or_404(booking_id)
     

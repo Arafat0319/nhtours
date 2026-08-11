@@ -20,6 +20,17 @@
     </script>
     <style>
         body { font-family: "Segoe UI", Helvetica, Arial, sans-serif; }
+        tr.participant-row--withdrawn td {
+            color: #9ca3af !important;
+            background-color: #f9fafb;
+        }
+        tr.participant-row--withdrawn td .text-gray-800,
+        tr.participant-row--withdrawn td .text-gray-900,
+        tr.participant-row--withdrawn td .text-gray-500,
+        tr.participant-row--withdrawn td .font-semibold,
+        tr.participant-row--withdrawn td .font-medium {
+            color: #9ca3af !important;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -182,14 +193,26 @@
                             <tbody class="bg-white divide-y divide-gray-100" id="participantsTableBody">
                                 {% if all_participants %}
                                 {% for participant in all_participants %}
-                                <tr class="participant-row"
+                                <tr class="participant-row {% if participant.is_withdrawn %}participant-row--withdrawn{% endif %}"
                                     data-name="{{ (participant.name or '')|lower }}"
                                     data-first-name="{{ (participant.first_name or '')|lower }}"
                                     data-last-name="{{ (participant.last_name or '')|lower }}"
                                     data-email="{{ (participant.email or '')|lower }}"
                                     data-buyer="{{ (participant.buyer_name or '')|lower }}"
                                     data-order-number="{{ (participant.order_number or '')|lower }}">
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm font-semibold text-gray-800">{{ participant.first_name or '—' }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        <div class="flex items-center gap-1.5 text-sm font-semibold {% if participant.is_withdrawn %}text-gray-400{% else %}text-gray-800{% endif %}">
+                                            <span>{{ participant.first_name or '—' }}</span>
+                                            {% if participant.is_withdrawn %}
+                                            <span class="inline-flex items-center gap-0.5 flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-gray-200 text-gray-500" title="Withdrawn">
+                                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+                                                </svg>
+                                                Withdrawn
+                                            </span>
+                                            {% endif %}
+                                        </div>
+                                    </td>
                                     <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ participant.last_name or '—' }}</td>
                                     <td class="px-4 py-3 whitespace-nowrap">
                                         <div class="text-sm font-medium text-gray-900">{{ participant.buyer_name or '—' }}</div>

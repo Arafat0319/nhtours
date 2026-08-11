@@ -518,8 +518,20 @@ class BookingParticipant(db.Model):
     
     # Add-ons selected by this participant
     addons = db.relationship('BookingAddOn', backref='participant', lazy='dynamic')
+
+    # active = going; withdrawn = 协商后退出（仍留档，不计 Going）
+    status = db.Column(db.String(20), default='active', nullable=False)
+    withdrawn_at = db.Column(db.DateTime, nullable=True)
     
     booking = db.relationship('Booking', backref=db.backref('participants', lazy='dynamic'))
+
+    @property
+    def is_withdrawn(self):
+        return (self.status or 'active') == 'withdrawn'
+
+    @property
+    def is_active(self):
+        return not self.is_withdrawn
 
 class BookingPackage(db.Model):
     """预订套餐关联模型 (Linking Booking to Package with quantity and payment plan)"""

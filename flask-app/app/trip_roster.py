@@ -167,6 +167,8 @@ def build_participants_roster(bookings):
                 'buyer_email': buyer_email,
                 'addons': participant_addons,
                 'question_answers': participant.question_answers or {},
+                'status': getattr(participant, 'status', None) or 'active',
+                'is_withdrawn': (getattr(participant, 'status', None) or 'active') == 'withdrawn',
             })
     return all_participants
 
