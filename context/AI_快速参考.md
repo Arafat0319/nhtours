@@ -128,7 +128,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 项 | 值 |
 |----|-----|
 | 口径 | **基础金额**退款；**卡手续费永不退** |
-| 退款 | 部分：手填 + `payment_id`；**Full refund**：退光各笔可退额（各原路）；卡费不退 |
+| 退款 | 部分：手填 + `payment_id`；**Full refund**：按笔 Stripe→账本→commit；失败可 `partial_success`；卡费不退 |
 | Balance due | `expected − paid − refunded`（退款不产生新欠款）；`booking_balance_due` |
 | Payoff 应付 | 同 Balance due（`booking_payoff_due`）；勿用 `total − amount_paid` |
 | Mark Paid | 写 `manual` Payment；禁止跳期；结清时 cancel 未付分期 |

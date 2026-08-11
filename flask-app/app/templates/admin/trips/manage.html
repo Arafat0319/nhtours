@@ -3908,7 +3908,13 @@
                         const errMsg = data.message
                             || (response.status === 403 ? 'Admin permission required to refund' : null)
                             || ('Failed to process refund (HTTP ' + response.status + ')');
-                        showToast('Error: ' + errMsg, 'error');
+                        showToast((data.partial_success ? 'Partial refund: ' : 'Error: ') + errMsg, data.partial_success ? 'warning' : 'error');
+                        if (data.partial_success) {
+                            closeRefundModal();
+                            closeManageBookingModal();
+                            reloadManagePage('bookings');
+                            return;
+                        }
                         confirmRefundBtn.disabled = false;
                         confirmRefundBtn.innerText = 'Process Refund';
                         updateRefundPaymentUI();

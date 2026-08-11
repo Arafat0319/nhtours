@@ -2964,7 +2964,13 @@ def export_bookings(id):
         payments_received, card_fees, refunds = _booking_payment_totals(booking)
         net_paid = round(float(booking.amount_paid) if booking.amount_paid is not None else 0.0, 2)
         is_cancelled = booking.status == 'cancelled'
-        pax_count = int(booking.passenger_count or booking.participants.count() or 0)
+        all_pax = list(booking.participants)
+        active_pax = sum(
+            1 for p in all_pax
+            if (getattr(p, 'status', None) or 'active') != 'withdrawn'
+        )
+        withdrawn_pax = len(all_pax) - active_pax
+        pax_count = int(booking.passenger_count or len(all_pax) or 0)
 
         buyer_first = booking.buyer_first_name or ''
         buyer_last = booking.buyer_last_name or ''
@@ -2988,7 +2994,10 @@ def export_bookings(id):
             expected_cell = expected
             # 退款不计入欠款：expected − net_paid − refunds
             balance_cell = round(max(0.0, expected - net_paid - refunds), 2)
-            participants_cell = pax_count
+            if withdrawn_pax:
+                participants_cell = f'{active_pax} (+{withdrawn_pax} withdrawn)'
+            else:
+                participants_cell = active_pax
             names_cell = _participant_names(booking)
             total_expected += expected
             total_received += payments_received
@@ -2997,7 +3006,7 @@ def export_bookings(id):
             total_net_paid += net_paid
             total_balance += balance_cell
             active_bookings += 1
-            total_participants += pax_count
+            total_participants += active_pax
 
         booking_date_str = booking.created_at.strftime('%d %b %Y').upper() if booking.created_at else ''
         booking_row_data = [
@@ -3198,7 +3207,7 @@ def _get_participants_export_data(trip, include_cancelled=True):
     bookings = trip.bookings.all()
     custom_questions = list(trip.questions.order_by(CustomQuestion.id).all()) if trip.questions else []
     headers = ['No', 'First Name', 'Middle Name', 'Last Name', 'Gender', 'Date of Birth', 'Registration Type',
-               'Dietary restrictions or allergies', 'Medical conditions']
+               'Status', 'Dietary restrictions or allergies', 'Medical conditions']
     for q in custom_questions:
         headers.append(q.label)
     headers.extend([
@@ -3242,12 +3251,15 @@ def _get_participants_export_data(trip, include_cancelled=True):
             gender = getattr(participant, 'gender', None) or ''
             dob_str = participant.dob.strftime('%Y-%m-%d') if getattr(participant, 'dob', None) else ''
             reg_type = getattr(participant, 'registration_type', None) or ''
+            p_status = (getattr(participant, 'status', None) or 'active')
+            if p_status == 'withdrawn':
+                first_name = f'{first_name} (withdrawn)' if first_name else '(withdrawn)'
             qa = (participant.question_answers or {}) if hasattr(participant, 'question_answers') else {}
             dietary = qa.get('dietary_restrictions_or_allergies') or {}
             medical = qa.get('medical_conditions') or {}
             dietary_str = (dietary.get('details', '') or '') if dietary.get('value') == 'yes' else 'No'
             medical_str = (medical.get('details', '') or '') if medical.get('value') == 'yes' else 'No'
-            row = [row_num, first_name, middle_name, last_name, gender, dob_str, reg_type, dietary_str, medical_str]
+            row = [row_num, first_name, middle_name, last_name, gender, dob_str, reg_type, p_status, dietary_str, medical_str]
             for q in custom_questions:
                 ans = qa.get(str(q.id), qa.get(q.id))
                 if isinstance(ans, dict):
@@ -4328,51 +4340,202 @@ def refund_booking(trip_id, booking_id):
             }), 400
         slices = [(payment, refund_amount)]
 
-    try:
-        stripe_refund_ids = []
-        last_ledger = None
-        refunded_pairs = []
-        for idx, (payment, slice_amount) in enumerate(slices):
-            is_last = idx == len(slices) - 1
-            stripe_refund_id = None
-
-            if not manual_only:
-                stripe_refund_id, err = _stripe_refund_payment(payment, slice_amount)
-                if err:
-                    db.session.rollback()
-                    return jsonify({'success': False, 'message': err}), 400
-                if stripe_refund_id:
-                    stripe_refund_ids.append(stripe_refund_id)
-
-            last_ledger = apply_refund_to_ledger(
-                payment,
-                booking,
-                slice_amount,
-                reason=reason,
-                stripe_refund_id=stripe_refund_id,
-                cancel_booking=(cancel_booking and is_last),
-                manual_only=manual_only,
+    def _alert_partial_refund(failed_message, *, stripe_ids_done, pairs_done, stripe_orphan_id=None):
+        """Stripe/本地不一致或 Full refund 中途失败时提醒管理员。"""
+        try:
+            from app.ledger_alerts import send_ledger_alert
+            order = booking.order_number or f'#{booking.id}'
+            done_ids = [p.id for p, _ in pairs_done]
+            done_amt = round(sum(a for _, a in pairs_done), 2)
+            lines = [
+                f'Source: refund_partial',
+                f'Order: {order}',
+                f'Booking id: {booking.id}',
+                f'Full refund requested: {bool(full_refund)}',
+                f'Manual only: {bool(manual_only)}',
+                f'Committed payment_ids: {done_ids}',
+                f'Committed amount: ${done_amt:.2f}',
+                f'Stripe refund ids committed: {stripe_ids_done}',
+                f'Stripe orphan (ledger not saved): {stripe_orphan_id or "-"}',
+                f'Error: {failed_message}',
+                '',
+                'Do NOT blindly retry Full refund. Reconcile Stripe Dashboard vs Manage ledger first.',
+            ]
+            manage_url = None
+            try:
+                manage_url = url_for('admin.manage_trip', id=trip.id, _external=True)
+            except Exception:
+                manage_url = None
+            send_ledger_alert(
+                f'[NH Tours] Partial refund interrupt — {order}',
+                '\n'.join(lines),
+                alert_key=f'refund_partial:{booking.id}:{len(done_ids)}:{stripe_orphan_id or "none"}',
+                headline=f'Partial refund interrupt on {order}',
+                manage_url=manage_url,
             )
-            refunded_pairs.append((payment, slice_amount))
+        except Exception as alert_err:
+            current_app.logger.exception(
+                'Failed to send partial-refund ledger alert booking=%s: %s',
+                booking.id,
+                alert_err,
+            )
 
-        db.session.commit()
-
+    def _notify_customer_refunds(pairs_done, amount_done):
+        if not pairs_done:
+            return
         try:
             from app.routes import send_refund_notice_email
             send_refund_notice_email(
                 booking,
-                refunded_pairs[0][0] if refunded_pairs else None,
-                refund_amount,
+                pairs_done[0][0],
+                amount_done,
                 reason=reason,
                 manual_only=manual_only,
-                refunded_payments=refunded_pairs,
+                refunded_payments=pairs_done,
             )
         except Exception as mail_err:
             current_app.logger.exception(
-                'Refund notice email raised after successful refund booking=%s: %s',
+                'Refund notice email raised after refund booking=%s: %s',
                 booking.id,
                 mail_err,
             )
+
+    try:
+        stripe_refund_ids = []
+        last_ledger = None
+        refunded_pairs = []
+        # 每笔：行锁 →（可选）Stripe → 写账本 → 立即 commit，避免多笔中途失败时
+        # Stripe 已退而本地被整单 rollback。
+        for idx, (payment_ref, slice_amount) in enumerate(slices):
+            is_last = idx == len(slices) - 1
+            stripe_refund_id = None
+            locked = (
+                Payment.query.filter_by(id=payment_ref.id, booking_id=booking.id)
+                .with_for_update()
+                .first()
+            )
+            if not locked:
+                db.session.rollback()
+                msg = f'Payment #{payment_ref.id} disappeared during refund.'
+                if refunded_pairs:
+                    _alert_partial_refund(msg, stripe_ids_done=stripe_refund_ids, pairs_done=refunded_pairs)
+                    done_amt = round(sum(a for _, a in refunded_pairs), 2)
+                    _notify_customer_refunds(refunded_pairs, done_amt)
+                    return jsonify({
+                        'success': False,
+                        'partial_success': True,
+                        'message': (
+                            f'{len(refunded_pairs)} payment(s) already refunded '
+                            f'(${done_amt:.2f}), then failed: {msg}. '
+                            'Do not retry Full refund blindly — check Stripe and ledger.'
+                        ),
+                        'stripe_refund_ids': stripe_refund_ids,
+                        'payment_ids': [p.id for p, _ in refunded_pairs],
+                        'new_amount_paid': float(booking.amount_paid or 0),
+                        'booking_status': booking.status,
+                    }), 409
+                return jsonify({'success': False, 'message': msg}), 400
+
+            available_now = payment_refundable_remaining(locked)
+            if slice_amount > available_now + 0.001:
+                db.session.rollback()
+                msg = (
+                    f'Payment #{locked.id} refundable is now ${available_now:.2f} '
+                    f'(requested ${slice_amount:.2f}); another refund may have raced.'
+                )
+                if refunded_pairs:
+                    _alert_partial_refund(msg, stripe_ids_done=stripe_refund_ids, pairs_done=refunded_pairs)
+                    done_amt = round(sum(a for _, a in refunded_pairs), 2)
+                    _notify_customer_refunds(refunded_pairs, done_amt)
+                    return jsonify({
+                        'success': False,
+                        'partial_success': True,
+                        'message': (
+                            f'{len(refunded_pairs)} payment(s) already refunded '
+                            f'(${done_amt:.2f}), then failed: {msg}'
+                        ),
+                        'stripe_refund_ids': stripe_refund_ids,
+                        'payment_ids': [p.id for p, _ in refunded_pairs],
+                        'new_amount_paid': float(booking.amount_paid or 0),
+                        'booking_status': booking.status,
+                    }), 409
+                return jsonify({'success': False, 'message': msg}), 400
+
+            if not manual_only:
+                stripe_refund_id, err = _stripe_refund_payment(locked, slice_amount)
+                if err:
+                    db.session.rollback()
+                    if refunded_pairs:
+                        _alert_partial_refund(err, stripe_ids_done=stripe_refund_ids, pairs_done=refunded_pairs)
+                        done_amt = round(sum(a for _, a in refunded_pairs), 2)
+                        _notify_customer_refunds(refunded_pairs, done_amt)
+                        return jsonify({
+                            'success': False,
+                            'partial_success': True,
+                            'message': (
+                                f'{len(refunded_pairs)} payment(s) already refunded '
+                                f'(${done_amt:.2f}), then Stripe failed: {err}. '
+                                'Do not retry Full refund blindly — reconcile first.'
+                            ),
+                            'stripe_refund_ids': stripe_refund_ids,
+                            'payment_ids': [p.id for p, _ in refunded_pairs],
+                            'new_amount_paid': float(booking.amount_paid or 0),
+                            'booking_status': booking.status,
+                        }), 409
+                    return jsonify({'success': False, 'message': err}), 400
+                if stripe_refund_id:
+                    stripe_refund_ids.append(stripe_refund_id)
+
+            try:
+                last_ledger = apply_refund_to_ledger(
+                    locked,
+                    booking,
+                    slice_amount,
+                    reason=reason,
+                    stripe_refund_id=stripe_refund_id,
+                    cancel_booking=(cancel_booking and is_last),
+                    manual_only=manual_only,
+                )
+                db.session.commit()
+            except Exception as ledger_err:
+                db.session.rollback()
+                msg = str(ledger_err)
+                if stripe_refund_id:
+                    _alert_partial_refund(
+                        f'Stripe refund {stripe_refund_id} succeeded but ledger save failed: {msg}',
+                        stripe_ids_done=stripe_refund_ids[:-1],
+                        pairs_done=refunded_pairs,
+                        stripe_orphan_id=stripe_refund_id,
+                    )
+                if refunded_pairs:
+                    done_amt = round(sum(a for _, a in refunded_pairs), 2)
+                    _notify_customer_refunds(refunded_pairs, done_amt)
+                    return jsonify({
+                        'success': False,
+                        'partial_success': True,
+                        'message': (
+                            f'{len(refunded_pairs)} payment(s) saved, then ledger failed '
+                            f'after Stripe: {msg}. Reconcile before retrying.'
+                        ),
+                        'stripe_refund_ids': stripe_refund_ids,
+                        'payment_ids': [p.id for p, _ in refunded_pairs],
+                        'new_amount_paid': float(booking.amount_paid or 0),
+                        'booking_status': booking.status,
+                    }), 409
+                return jsonify({
+                    'success': False,
+                    'message': (
+                        f'Refund ledger failed'
+                        + (f' after Stripe {stripe_refund_id}' if stripe_refund_id else '')
+                        + f': {msg}'
+                    ),
+                }), 500
+
+            db.session.refresh(booking)
+            refunded_pairs.append((locked, slice_amount))
+
+        done_total = round(sum(a for _, a in refunded_pairs), 2)
+        _notify_customer_refunds(refunded_pairs, done_total)
 
         return jsonify({
             'success': True,
