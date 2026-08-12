@@ -69,6 +69,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 - 折扣抵「现在应付」；`$0` 勿建 Stripe PI
 - 未支付草稿：`expires_at=+24h`；03:00 cleanup → `expired` + `safe_cancel_payment_intent`
 - 报名在 `/trips/<slug>` **弹窗内** 5 步；正式页 `use_experimental_modal=True` → `_modal_steps_experimental.html`（产品套餐 + Travelers；有分期时产品内选 Pay in full / Deposit+installments）
+- **Book Now → Parental Waiver**：滚到底 → 5s 倒计时 → 勾选（`app/parental_waiver.py`）→ 报名弹窗；订单存 `parental_waiver_accepted_at` / `version`
 - File Upload：`POST /api/booking/upload`（UI：自定义 dropzone，见 `05` / `booking-modal.css`）
 - DOB 日历：月/年 Uiverse 下拉（同 Gender）；选月年不关日历；逻辑在 `trip_booking.html`
 - 付款后摘要 `GET /api/booking/<id>/summary`：须 `token` 或 `payment_intent_id`；`trip_total` 用订单套餐/附加**快照单价**（$0 Payment 时勿用 `base_amount_cents`）

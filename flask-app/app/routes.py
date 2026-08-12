@@ -604,6 +604,7 @@ def trip_detail(slug):
         # flash('测试模式：报名信息已保存，模拟支付成功！')
         return redirect(url_for('main.booking_success'))
 
+    from app import parental_waiver as _pw
     return render_template('booking/trip_booking.html',
                          trip=trip,
                          form=form,
@@ -622,7 +623,12 @@ def trip_detail(slug):
                          ),
                          preview_booking_failure=bool(
                              current_app.debug and request.args.get('preview_booking_failure') == '1'
-                         ))
+                         ),
+                         parental_waiver_title=_pw.TITLE,
+                         parental_waiver_version=_pw.VERSION,
+                         parental_waiver_sections=_pw.SECTIONS,
+                         parental_waiver_checkbox_label=_pw.CHECKBOX_LABEL,
+                         )
 
 
 def _trip_detail_context(trip):
@@ -661,6 +667,7 @@ def _trip_detail_context(trip):
             package_spots_available[pkg.id] = max(pkg.capacity - booked, 0)
     today = date.today()
     registration_open = (trip.registration_date is None) or (today >= trip.registration_date)
+    from app import parental_waiver as _parental_waiver
     return {
         'trip': trip,
         'form': BookingForm(),
@@ -673,6 +680,10 @@ def _trip_detail_context(trip):
         'publishable_key': current_app.config.get('STRIPE_PUBLISHABLE_KEY'),
         'registration_open': registration_open,
         'registration_date': trip.registration_date,
+        'parental_waiver_title': _parental_waiver.TITLE,
+        'parental_waiver_version': _parental_waiver.VERSION,
+        'parental_waiver_sections': _parental_waiver.SECTIONS,
+        'parental_waiver_checkbox_label': _parental_waiver.CHECKBOX_LABEL,
     }
 
 
@@ -733,6 +744,22 @@ def handle_booking_submission(request, trip):
         
         if not buyer_info.get('email'):
             return jsonify({'success': False, 'error': 'Buyer email is required'}), 400
+
+        from app.parental_waiver import VERSION as WAIVER_VERSION, is_valid_acceptance
+        waiver_payload = booking_data.get('parental_waiver') or {}
+        if not is_valid_acceptance(waiver_payload):
+            return jsonify({
+                'success': False,
+                'error': (
+                    'Please read and agree to the Parental Waiver before continuing. '
+                    f'(Expected version {WAIVER_VERSION})'
+                ),
+            }), 400
+        booking_data['parental_waiver'] = {
+            'accepted': True,
+            'version': WAIVER_VERSION,
+            'accepted_at': waiver_payload.get('accepted_at') or datetime.utcnow().isoformat() + 'Z',
+        }
 
         from app.booking_validation import (
             validate_booking_payload,
@@ -949,7 +976,8 @@ def handle_booking_submission(request, trip):
             'gross_amount': gross_amount,
             'deposit_amount': initial_payment_info['deposit'],
             'overdue_installments_amount': initial_payment_info['overdue_installments'],
-            'overdue_details': initial_payment_info.get('overdue_details', [])
+            'overdue_details': initial_payment_info.get('overdue_details', []),
+            'parental_waiver': booking_data.get('parental_waiver'),
         }
         
         # 创建 PendingBooking；应付 > 0 时再创建 Stripe PaymentIntent
@@ -3989,8 +4017,19 @@ def _create_booking_from_metadata(payment_intent_id):
         buyer_emergency_contact_relationship=buyer_info.get('emergency_contact_relationship'),
         buyer_home_phone=buyer_info.get('home_phone'),
         buyer_work_phone=buyer_info.get('work_phone'),
-        buyer_custom_info=buyer_info.get('custom_info')
+        buyer_custom_info=buyer_info.get('custom_info'),
     )
+    waiver = booking_data.get('parental_waiver') or {}
+    if waiver.get('accepted') and waiver.get('version'):
+        booking.parental_waiver_version = str(waiver.get('version'))[:64]
+        raw_at = waiver.get('accepted_at')
+        parsed_at = None
+        if isinstance(raw_at, str) and raw_at.strip():
+            try:
+                parsed_at = datetime.fromisoformat(raw_at.replace('Z', '+00:00')).replace(tzinfo=None)
+            except ValueError:
+                parsed_at = None
+        booking.parental_waiver_accepted_at = parsed_at or datetime.utcnow()
     db.session.add(booking)
     db.session.flush()
 

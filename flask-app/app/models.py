@@ -462,6 +462,10 @@ class Booking(db.Model):
     # Business order number snapshot: YYMM{ABBR}-{SEQ} e.g. 2607MT-001 (immutable once set)
     order_number = db.Column(db.String(32), unique=True, nullable=True, index=True)
     order_seq = db.Column(db.Integer, nullable=True)  # sequence within trip at allocation time
+
+    # Parental waiver gate（客户报名勾选同意；无电子签名）
+    parental_waiver_accepted_at = db.Column(db.DateTime, nullable=True)
+    parental_waiver_version = db.Column(db.String(64), nullable=True)
     
     # 关联
     trip = db.relationship('Trip', backref=db.backref('bookings', lazy='dynamic'))

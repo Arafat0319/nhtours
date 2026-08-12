@@ -951,6 +951,214 @@
 </div>
 
 {# ========== 报名 Modal ========== #}
+
+{# Parental waiver gate：Book Now 后先同意再进报名弹窗 #}
+<style>
+#parental-waiver-modal {
+    font-family: "Source Sans Pro", Arial, Helvetica, sans-serif !important;
+    overflow-y: auto !important;
+}
+#parental-waiver-modal * {
+    box-sizing: border-box;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+}
+#parental-waiver-modal .pw-card {
+    width: 100%;
+    max-width: 640px;
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    display: flex;
+    flex-direction: column;
+    max-height: min(80vh, 680px);
+    margin-top: 5rem;
+    margin-bottom: 3rem;
+}
+#parental-waiver-modal .pw-shell {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    min-height: 100%;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 60px 16px;
+    box-sizing: border-box;
+}
+#parental-waiver-modal .pw-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid #e5e7eb;
+    flex-shrink: 0;
+}
+#parental-waiver-modal .pw-title {
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 18px !important;
+    font-weight: 700 !important;
+    line-height: 1.35 !important;
+    color: #111827 !important;
+    text-align: left !important;
+}
+#parental-waiver-modal .pw-sub {
+    margin: 8px 0 0 !important;
+    padding: 0 !important;
+    font-size: 14px !important;
+    font-weight: 400 !important;
+    line-height: 1.45 !important;
+    color: #6b7280 !important;
+    text-align: left !important;
+}
+#parental-waiver-modal .pw-scroll {
+    padding: 16px 24px;
+    overflow-y: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+#parental-waiver-modal .pw-heading {
+    display: block !important;
+    margin: 16px 0 8px !important;
+    padding: 0 !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    line-height: 1.4 !important;
+    color: #111827 !important;
+    text-align: left !important;
+}
+#parental-waiver-modal .pw-heading:first-child {
+    margin-top: 0 !important;
+}
+#parental-waiver-modal .pw-para {
+    display: block !important;
+    margin: 0 0 12px !important;
+    padding: 0 !important;
+    font-size: 14px !important;
+    font-weight: 400 !important;
+    line-height: 1.55 !important;
+    color: #374151 !important;
+    text-align: left !important;
+}
+#parental-waiver-modal .pw-footer {
+    padding: 16px 24px 20px;
+    border-top: 1px solid #e5e7eb;
+    background: #f9fafb;
+    flex-shrink: 0;
+}
+#parental-waiver-modal .pw-agree {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    cursor: pointer;
+    margin: 0;
+}
+#parental-waiver-modal .pw-agree.is-locked {
+    cursor: not-allowed;
+    opacity: 0.72;
+}
+#parental-waiver-modal .pw-agree input {
+    margin-top: 3px;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+#parental-waiver-modal .pw-agree input:disabled {
+    cursor: not-allowed;
+}
+#parental-waiver-modal .pw-agree-text {
+    font-size: 14px !important;
+    font-weight: 400 !important;
+    line-height: 1.45 !important;
+    color: #1f2937 !important;
+    text-align: left !important;
+}
+#parental-waiver-modal .pw-hint {
+    margin: 8px 0 0 26px !important;
+    padding: 0 !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    line-height: 1.4 !important;
+    color: #6b7280 !important;
+    text-align: left !important;
+}
+#parental-waiver-modal .pw-hint.is-ready {
+    color: #15803d !important;
+}
+#parental-waiver-modal .pw-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 16px;
+}
+#parental-waiver-modal .pw-cancel {
+    border: 0;
+    background: transparent;
+    font-size: 14px;
+    font-weight: 500;
+    color: #4b5563;
+    padding: 8px 12px;
+    cursor: pointer;
+}
+#parental-waiver-modal .pw-continue {
+    border: 0;
+    border-radius: 6px;
+    background: #16a34a;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 10px 16px;
+    cursor: pointer;
+}
+#parental-waiver-modal .pw-continue:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+</style>
+<div id="parental-waiver-modal" class="hidden fixed inset-0" style="background-color: rgba(39, 43, 43, 0.88); z-index: 10002;" aria-hidden="true">
+    <div class="fixed inset-0 z-0" id="parental-waiver-backdrop" aria-hidden="true"></div>
+    <div class="pw-shell">
+        <div class="pw-card" role="dialog" aria-modal="true" aria-labelledby="parental-waiver-title">
+            <div class="pw-header">
+                <div id="parental-waiver-title" class="pw-title">
+                    {{ parental_waiver_title|default('Parental Waiver') }}
+                </div>
+                <p class="pw-sub">Please read the following before continuing to registration.</p>
+            </div>
+            <div id="parental-waiver-scroll" class="pw-scroll">
+                {% for section in parental_waiver_sections|default([]) %}
+                    {% if section.heading %}
+                    <div class="pw-heading">{{ section.heading }}</div>
+                    {% endif %}
+                    {% for para in section.paragraphs %}
+                    <p class="pw-para">{{ para }}</p>
+                    {% endfor %}
+                {% else %}
+                    <p class="pw-para">Waiver text unavailable. Please contact us to continue.</p>
+                {% endfor %}
+            </div>
+            <div class="pw-footer">
+                <label class="pw-agree is-locked" id="parental-waiver-agree-label" for="parental-waiver-agree">
+                    <input type="checkbox" id="parental-waiver-agree" disabled>
+                    <span class="pw-agree-text">{{ parental_waiver_checkbox_label|default('I have read and agree.') }}</span>
+                </label>
+                <p class="pw-hint" id="parental-waiver-hint">Scroll to the bottom to continue.</p>
+                <div class="pw-actions">
+                    <button type="button" id="parental-waiver-cancel" class="pw-cancel">Cancel</button>
+                    <button type="button" id="parental-waiver-continue" class="pw-continue" disabled>
+                        Continue to booking
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+window.parentalWaiverConfig = {
+    version: {{ (parental_waiver_version|default(''))|tojson }},
+    required: true
+};
+</script>
+
 <div id="booking-modal" class="hidden fixed inset-0" style="background-color: rgba(39, 43, 43, 0.88); z-index: 10001; height: 100vh; border: none; outline: none;"{% if preview_booking_success|default(false) %} data-preview-booking-success="1"{% endif %}{% if preview_booking_failure|default(false) %} data-preview-booking-failure="1"{% endif %}>
     <a href="{{ url_for('main.index') }}" id="booking-modal-screen-logo" class="fixed z-[10002] flex items-center pointer-events-auto" style="left: 1.5rem; top: 1rem;" aria-label="Nexus Horizons Home">
         <img src="{{ url_for('static', filename='images/icons/logo-2-white.DyAUH4zT.svg') }}" alt="Nexus Horizons" style="width: 256px; height: 57.69px; object-fit: contain;">
@@ -1576,8 +1784,8 @@
     window.initFlatpickrOnDates = initFlatpickrOnDates;
 })();
 </script>
-<script src="{{ url_for('static', filename='js/booking.js') }}?v=pkg-plan-2"></script>
-<script src="{{ url_for('static', filename='js/booking-modal.js') }}?v=file-upload-2"></script>
+<script src="{{ url_for('static', filename='js/booking.js') }}?v=waiver-2"></script>
+<script src="{{ url_for('static', filename='js/booking-modal.js') }}?v=waiver-2"></script>
 <script src="https://js.stripe.com/v3/"></script>
 <script>
 window.tripData = {

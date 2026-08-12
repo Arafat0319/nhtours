@@ -41,7 +41,8 @@
         discount_code: null,
         discount_code_id: null,
         discount_amount: 0,
-        payment_method: 'full'
+        payment_method: 'full',
+        parental_waiver: null
     };
 
     // DOM 元素
@@ -1519,17 +1520,17 @@
         fieldsHtml += `
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div class="flex flex-col">
-                    <label class="text-sm font-medium mb-1">First Name${reqStar}</label>
+                    <label class="text-sm font-medium mb-1">Legal First Name${reqStar}</label>
                     <input type="text" name="participant_first_name_${participantIndex}" 
                         class="w-full min-w-0" required>
                 </div>
                 <div class="flex flex-col">
-                    <label class="text-sm font-medium mb-1">Middle Name</label>
+                    <label class="text-sm font-medium mb-1">Legal Middle Name</label>
                     <input type="text" name="participant_middle_name_${participantIndex}" 
                         class="w-full min-w-0" placeholder="Optional">
                 </div>
                 <div class="flex flex-col">
-                    <label class="text-sm font-medium mb-1">Last Name${reqStar}</label>
+                    <label class="text-sm font-medium mb-1">Legal Last Name${reqStar}</label>
                     <input type="text" name="participant_last_name_${participantIndex}" 
                         class="w-full min-w-0" required>
                 </div>
@@ -2624,6 +2625,9 @@
             const formData = new FormData(form);
             
             // 添加 JSON 数据
+            if (!bookingData.parental_waiver && window.__parentalWaiverAcceptance) {
+                bookingData.parental_waiver = window.__parentalWaiverAcceptance;
+            }
             formData.append('booking_data', JSON.stringify(bookingData));
 
             const response = await fetch(form.action || window.location.href, {
@@ -2725,6 +2729,9 @@
                 body: JSON.stringify({
                     booking_data: {
                         ...bookingData,
+                        parental_waiver: bookingData.parental_waiver
+                            || window.__parentalWaiverAcceptance
+                            || null,
                         payment_flow: 'embedded',
                     }
                 })
@@ -3108,6 +3115,8 @@
             bookingData.discount_code = null;
             bookingData.discount_code_id = null;
             bookingData.discount_amount = 0;
+            bookingData.parental_waiver = null;
+            window.__parentalWaiverAcceptance = null;
             var codeInput = document.getElementById('discount-code-input');
             if (codeInput) codeInput.value = '';
             var discountInputSection = document.getElementById('discount-input-section');
@@ -3500,7 +3509,13 @@
         syncModalBodyMinHeight: syncBookingModalBodyMinHeight,
         prepareNewBooking: prepareNewBooking,
         resetEmbeddedPaymentSession: resetEmbeddedPaymentSession,
-        showBookingModalResult: showBookingModalResult
+        showBookingModalResult: showBookingModalResult,
+        setParentalWaiver: function(payload) {
+            bookingData.parental_waiver = payload || null;
+            if (payload) {
+                window.__parentalWaiverAcceptance = payload;
+            }
+        }
     };
 
 })();
