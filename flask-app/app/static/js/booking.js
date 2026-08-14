@@ -3373,11 +3373,26 @@
     function pollPaymentStatusThenShowResult(paymentIntentId) {
         const statusUrl = '/api/payment/status?payment_intent_id=' + encodeURIComponent(paymentIntentId);
         var polls = 0;
+        var CONFIRM_WAIT_MSG =
+            'Payment was received, but your booking is still being confirmed. '
+            + 'Please do not pay again. Contact us with your payment confirmation if this persists.';
         function poll() {
             fetch(statusUrl)
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
                     if (data.status === 'succeeded') {
+                        if (!data.booking_id) {
+                            // Stripe 已成功但后台尚未建单：继续等 webhook/补建，勿显示假成功
+                            polls += 1;
+                            if (polls > 45) {
+                                showBookingModalResult('failure', { message: CONFIRM_WAIT_MSG });
+                                var btnMiss = submitButton || nextButton;
+                                if (btnMiss) { btnMiss.disabled = false; btnMiss.textContent = 'Confirm Booking'; }
+                                return;
+                            }
+                            setTimeout(poll, 2000);
+                            return;
+                        }
                         showBookingModalResult('success', {
                             booking_id: data.booking_id,
                             receipt_url: data.receipt_url,
@@ -3388,6 +3403,7 @@
                         return;
                     }
                     if (data.status === 'processing') {
+                        // 仅在服务端确认 ACH processing（通常已有 Payment/booking）时展示银行处理页
                         showBookingModalResult('processing', {
                             booking_id: data.booking_id,
                             payment_intent_id: paymentIntentId || data.payment_intent_id
@@ -3406,11 +3422,12 @@
                     }
                     polls += 1;
                     if (polls > 45) {
-                        // After ~90s still pending: show processing tip (ACH may lag webhook)
-                        showBookingModalResult('processing', {
-                            booking_id: data.booking_id || null,
-                            payment_intent_id: paymentIntentId
+                        // 仍 pending：不是 ACH 成功页（避免误导「银行处理中」）
+                        showBookingModalResult('failure', {
+                            message: CONFIRM_WAIT_MSG
                         });
+                        var btnT = submitButton || nextButton;
+                        if (btnT) { btnT.disabled = false; btnT.textContent = 'Confirm Booking'; }
                         return;
                     }
                     setTimeout(poll, 2000);

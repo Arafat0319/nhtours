@@ -1346,7 +1346,8 @@ def api_payment_quote():
                 if addon and addon.price:
                     addons_total += float(addon.price) * addon_data.get('quantity', 1)
             
-            base_amount = deposit_amount + overdue_installments_total + addons_total
+            discount_amount = float(booking_data.get('discount_amount') or 0)
+            base_amount = max(0.0, deposit_amount + overdue_installments_total + addons_total - discount_amount)
             base_amount_cents = int(round(base_amount * 100))
             
             # 更新PendingBooking中的金额
@@ -1356,7 +1357,7 @@ def api_payment_quote():
             current_app.logger.info(
                 f"Recalculated base_amount_cents for PendingBooking {pending_booking.id}: "
                 f"deposit={deposit_amount}, overdue={overdue_installments_total}, "
-                f"addons={addons_total}, total={base_amount_cents}"
+                f"addons={addons_total}, discount={discount_amount}, total={base_amount_cents}"
             )
         
         current_app.logger.info(
@@ -1374,10 +1375,12 @@ def api_payment_quote():
         
         installment = InstallmentPayment.query.get(installment_id)
         if not installment:
-            # 如果是测试模式（installment_id 是字符串或模拟数据），使用测试金额
-            if isinstance(installment_id, str) or (isinstance(installment_id, int) and installment_id < 1000):
-                # 从请求中获取 base_amount_cents，或使用默认值
-                base_amount_cents = data.get('base_amount_cents', 45000)  # 默认 $450.00
+            # 仅本地 debug 允许假 installment（生产禁止客户端随意报价）
+            if current_app.debug and (
+                isinstance(installment_id, str)
+                or (isinstance(installment_id, int) and installment_id < 1000)
+            ):
+                base_amount_cents = data.get('base_amount_cents', 45000)
             else:
                 return jsonify({'error': 'installment_not_found'}), 404
         elif booking_has_processing_ach_payment(installment.booking_id):
@@ -1401,15 +1404,14 @@ def api_payment_quote():
         
         booking = Booking.query.get(booking_id)
         if not booking:
-            # 如果是测试模式（booking_id 是字符串或模拟数据），使用测试金额
-            if isinstance(booking_id, str) or (isinstance(booking_id, int) and booking_id < 1000):
-                # 从请求中获取 base_amount_cents，或使用默认值
+            if current_app.debug and (
+                isinstance(booking_id, str)
+                or (isinstance(booking_id, int) and booking_id < 1000)
+            ):
                 if payment_step == 'payoff':
-                    # Payoff 模式：使用剩余余额
-                    base_amount_cents = data.get('base_amount_cents', 120000)  # 默认 $1200.00
+                    base_amount_cents = data.get('base_amount_cents', 120000)
                 else:
-                    # 正常模式：使用基础金额
-                    base_amount_cents = data.get('base_amount_cents', 45000)  # 默认 $450.00
+                    base_amount_cents = data.get('base_amount_cents', 45000)
             else:
                 return jsonify({'error': 'booking_not_found'}), 404
         elif booking_has_processing_ach_payment(booking.id):
@@ -3730,9 +3732,14 @@ def stripe_webhook():
         
         return jsonify({'status': 'success'}), 200
     except Exception as e:
+        # 5xx → Stripe 会重试。建单失败绝不能吞掉后回 200（会导致钱到账但无订单）。
         current_app.logger.error(f"Error processing webhook {event_type}: {str(e)}")
         import traceback
         traceback.print_exc()
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
         return jsonify({'error': 'Webhook processing failed'}), 500
 
 
@@ -3877,6 +3884,14 @@ def _create_booking_from_metadata(payment_intent_id):
     幂等性：如果已存在 Payment 记录，返回关联的 Booking
     """
     from app.models import PendingBooking
+
+    def _abort_create(msg):
+        current_app.logger.error(msg)
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return None
     
     # 幂等性检查：如果已存在 Payment 记录，返回关联的 Booking
     existing_payment = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
@@ -3884,51 +3899,49 @@ def _create_booking_from_metadata(payment_intent_id):
         current_app.logger.info(f"Payment already exists for {payment_intent_id}, returning existing booking {existing_payment.booking_id}")
         return Booking.query.get(existing_payment.booking_id)
     
-    # 从PendingBooking表获取完整报名数据
-    pending_booking = PendingBooking.query.filter_by(
-        payment_intent_id=payment_intent_id,
-        status='pending'
-    ).first()
+    # pending / expired 均可建单（ACH 清算可能超过 24h cleanup）；completed 只做幂等回查
+    pending_booking = (
+        PendingBooking.query.filter_by(payment_intent_id=payment_intent_id)
+        .with_for_update()
+        .first()
+    )
     
     if not pending_booking:
-        # 检查是否已经处理过（status='completed'）
-        completed_pending = PendingBooking.query.filter_by(
-            payment_intent_id=payment_intent_id,
-            status='completed'
-        ).first()
-        if completed_pending:
-            # 已处理过，优先用 processing 时写入的 booking id
-            created_id = (completed_pending.booking_data or {}).get('created_booking_id')
-            if created_id:
-                booking = Booking.query.get(created_id)
-                if booking:
-                    current_app.logger.info(
-                        f"PendingBooking already completed for {payment_intent_id}, found booking {booking.id}"
-                    )
-                    return booking
-            booking = Booking.query.filter_by(trip_id=completed_pending.trip_id).order_by(Booking.id.desc()).first()
+        return _abort_create(f"PendingBooking not found for payment_intent {payment_intent_id}")
+
+    if pending_booking.status == 'completed':
+        created_id = (pending_booking.booking_data or {}).get('created_booking_id')
+        if created_id:
+            booking = Booking.query.get(created_id)
             if booking:
-                current_app.logger.info(f"PendingBooking already completed for {payment_intent_id}, found booking {booking.id}")
+                current_app.logger.info(
+                    f"PendingBooking already completed for {payment_intent_id}, found booking {booking.id}"
+                )
                 return booking
-        current_app.logger.error(f"PendingBooking not found for payment_intent {payment_intent_id}")
-        return None
+        # 禁止「同 trip 最新一单」回退——会把支付记到别人订单上
+        return _abort_create(
+            f"PendingBooking completed for {payment_intent_id} but created_booking_id missing/invalid"
+        )
+
+    if pending_booking.status not in ('pending', 'expired'):
+        return _abort_create(
+            f"PendingBooking {pending_booking.id} status={pending_booking.status} "
+            f"cannot create booking for {payment_intent_id}"
+        )
     
     booking_data = pending_booking.booking_data
     if not booking_data:
-        current_app.logger.error(f"PendingBooking {pending_booking.id} has no booking_data")
-        return None
+        return _abort_create(f"PendingBooking {pending_booking.id} has no booking_data")
     
     trip_id = pending_booking.trip_id or booking_data.get('trip_id')
     trip = Trip.query.get(trip_id)
     if not trip:
-        current_app.logger.error(f"Trip {trip_id} not found for payment_intent {payment_intent_id}")
-        return None
+        return _abort_create(f"Trip {trip_id} not found for payment_intent {payment_intent_id}")
     
     buyer_info = booking_data.get('buyer_info', {})
     buyer_email = buyer_info.get('email')
     if not buyer_email:
-        current_app.logger.error(f"No buyer email in payment_intent {payment_intent_id}")
-        return None
+        return _abort_create(f"No buyer email in payment_intent {payment_intent_id}")
 
     from app.booking_validation import validate_and_normalize_booking_packages
     packages_data, pkg_err = validate_and_normalize_booking_packages(
@@ -3936,10 +3949,9 @@ def _create_booking_from_metadata(payment_intent_id):
         trip.id,
     )
     if pkg_err:
-        current_app.logger.error(
+        return _abort_create(
             f"Invalid packages when creating booking for {payment_intent_id}: {pkg_err}"
         )
-        return None
     booking_data['packages'] = packages_data
     
     # 查找或创建 Client（支付成功后才创建客户记录）
@@ -3964,10 +3976,9 @@ def _create_booking_from_metadata(payment_intent_id):
     for pkg_data in packages_data:
         package = TripPackage.query.get(pkg_data.get('package_id'))
         if not package:
-            current_app.logger.error(
+            return _abort_create(
                 f"Package missing when processing payment_intent {payment_intent_id}"
             )
-            return None
         
         if package.capacity:
             spots_sold = BookingPackage.query.filter(
@@ -3978,10 +3989,9 @@ def _create_booking_from_metadata(payment_intent_id):
             ).scalar() or 0
             
             if spots_sold + pkg_data.get('quantity', 1) > package.capacity:
-                current_app.logger.error(
+                return _abort_create(
                     f"Package {package.id} sold out when processing payment_intent {payment_intent_id}"
                 )
-                return None
     
     # 计算参与者总数
     total_participants = sum(p.get('quantity', 1) for p in packages_data)
@@ -4049,10 +4059,9 @@ def _create_booking_from_metadata(payment_intent_id):
     for pkg_data in packages_data:
         package = TripPackage.query.get(pkg_data.get('package_id'))
         if not package:
-            current_app.logger.error(
+            return _abort_create(
                 f"Package missing when creating BookingPackage for {payment_intent_id}"
             )
-            return None
 
         plan_type, plan_err = validate_package_payment_plan_type(
             package, pkg_data.get('payment_plan_type', 'full')
@@ -4073,10 +4082,9 @@ def _create_booking_from_metadata(payment_intent_id):
 
     db.session.flush()
     if not booking.booking_packages.count():
-        current_app.logger.error(
+        return _abort_create(
             f"No BookingPackage rows created for payment_intent {payment_intent_id}"
         )
-        return None
     
     # 先创建 BookingParticipant 记录（需要在创建 BookingAddOn 之前）
     participants_data = booking_data.get('participants', [])
@@ -4089,12 +4097,12 @@ def _create_booking_from_metadata(payment_intent_id):
         if not participant_name:
             participant_name = f"{first_name} {last_name}".strip()
         
-        # 解析 DOB
+        # 解析 DOB（勿在本函数内再 import datetime，否则会 UnboundLocalError
+        # 盖住文件顶部的 datetime，导致 waiver 落库失败、webhook 建单失败）
         dob_val = None
         dob_str = participant_data.get('dob') or ''
         if dob_str:
             try:
-                from datetime import datetime
                 dob_val = datetime.strptime(dob_str, '%Y-%m-%d').date()
             except (ValueError, TypeError):
                 pass
@@ -4297,11 +4305,9 @@ def handle_payment_intent_processing(payment_intent):
     # First booking payment (PendingBooking → Booking shell)
     booking = _create_booking_from_metadata(payment_intent_id)
     if not booking:
-        current_app.logger.error(
-            "ACH processing: failed to create booking from PendingBooking for %s",
-            payment_intent_id,
+        raise RuntimeError(
+            f"ACH processing: failed to create booking from PendingBooking for {payment_intent_id}"
         )
-        return
 
     booking.status = 'processing'
     booking.amount_paid = booking.amount_paid or 0.0
@@ -4376,12 +4382,13 @@ def handle_booking_payment_intent_succeeded(payment_intent):
     payment_intent_id = payment_intent['id']
     metadata = payment_intent.get('metadata', {}) or {}
     
-    # 检查是否已处理过此 payment_intent（防止重复处理）
-    existing_payment = Payment.query.filter_by(
-        stripe_payment_intent_id=payment_intent_id,
-        status='succeeded'
-    ).first()
-    if existing_payment:
+    # 行锁：防 webhook 与 status 轮询并发双加 amount_paid / 双建单
+    existing_payment = (
+        Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id)
+        .with_for_update()
+        .first()
+    )
+    if existing_payment and existing_payment.status == 'succeeded':
         current_app.logger.info(f"Payment Intent {payment_intent_id} already processed, skipping")
         return
     
@@ -4405,16 +4412,16 @@ def handle_booking_payment_intent_succeeded(payment_intent):
             pass
 
     # Prefer Payment row created at processing (has booking_id)
-    existing_any = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
-    if not booking and existing_any and existing_any.booking_id:
-        booking = Booking.query.get(existing_any.booking_id)
+    if not booking and existing_payment and existing_payment.booking_id:
+        booking = Booking.query.get(existing_payment.booking_id)
     
     # 如果没有Booking，从PendingBooking表创建（首次支付）
     if not booking:
         booking = _create_booking_from_metadata(payment_intent_id)
         if not booking:
-            current_app.logger.error(f"Failed to create booking from PendingBooking for payment_intent {payment_intent_id}")
-            return
+            raise RuntimeError(
+                f"Failed to create booking from PendingBooking for payment_intent {payment_intent_id}"
+            )
         
         # 标记PendingBooking为已完成
         pending_booking = PendingBooking.query.filter_by(payment_intent_id=payment_intent_id).first()
@@ -4426,22 +4433,36 @@ def handle_booking_payment_intent_succeeded(payment_intent):
         
         current_app.logger.info(f"Created booking {booking.id} from PendingBooking for payment_intent {payment_intent_id}")
 
-    total_amount_cents = payment_intent.get('amount', 0)  # 总金额（含手续费）
+    total_amount_cents = payment_intent.get('amount', 0) or 0  # 总金额（含手续费）
     base_amount_cents = _parse_int(metadata.get('base_amount'))
-    fee_cents = _parse_int(metadata.get('fee'))
+    fee_cents = _parse_int(metadata.get('fee')) or 0
     tax_amount_cents = _parse_int(metadata.get('tax_amount'))
     final_amount_cents = _parse_int(metadata.get('final_amount'))
     funding = metadata.get('funding')
     brand = metadata.get('brand')
     pm_type = _payment_method_type_from_intent(payment_intent, metadata)
+
+    # 账本以 Stripe 实扣为准；metadata 偏差时纠正 base，避免少记/多记收入
+    if final_amount_cents is not None and abs(final_amount_cents - total_amount_cents) > 1:
+        current_app.logger.warning(
+            "PI %s final_amount metadata=%s != amount=%s; using Stripe amount",
+            payment_intent_id, final_amount_cents, total_amount_cents,
+        )
+        final_amount_cents = total_amount_cents
+    if base_amount_cents is not None:
+        expected_total = base_amount_cents + fee_cents
+        if abs(expected_total - total_amount_cents) > 1:
+            current_app.logger.warning(
+                "PI %s base+fee=%s != amount=%s; deriving base from Stripe amount",
+                payment_intent_id, expected_total, total_amount_cents,
+            )
+            base_amount_cents = max(0, total_amount_cents - fee_cents)
     
     # 计算基础金额（不含手续费）：优先使用 metadata 中的 base_amount，否则从总金额减去 fee
     if base_amount_cents is not None:
         base_amount = base_amount_cents / 100.0
-    elif fee_cents is not None:
-        base_amount = (total_amount_cents - fee_cents) / 100.0
     else:
-        base_amount = total_amount_cents / 100.0
+        base_amount = max(0, total_amount_cents - fee_cents) / 100.0
     
     total_amount = total_amount_cents / 100.0  # 总金额（用于 Payment 记录）
 
@@ -4470,12 +4491,10 @@ def handle_booking_payment_intent_succeeded(payment_intent):
     
     if base_amount_cents is not None:
         payment.base_amount_cents = base_amount_cents
-    if fee_cents is not None:
-        payment.fee_cents = fee_cents
+    payment.fee_cents = fee_cents
     if tax_amount_cents is not None:
         payment.tax_amount_cents = tax_amount_cents
-    if final_amount_cents is not None:
-        payment.final_amount_cents = final_amount_cents
+    payment.final_amount_cents = final_amount_cents if final_amount_cents is not None else total_amount_cents
     if funding:
         payment.funding = funding
     if brand:
@@ -4721,8 +4740,8 @@ def handle_payment_intent_failed(payment_intent):
         if booking and booking.status == 'processing':
             booking.status = 'cancelled'
             for bp in booking.booking_packages.all():
-                if bp.status == 'processing':
-                    bp.status = 'pending'
+                if bp.status in ('processing', 'pending'):
+                    bp.status = 'cancelled'
             current_app.logger.info(
                 "Cancelled processing booking %s after ACH failure for %s",
                 booking.id,

@@ -143,6 +143,7 @@ def cleanup_expired_pending_bookings():
     """
     清理过期未支付的 PendingBooking（创建时 expires_at = now+24h）。
     - status=pending 且已过期 → 标为 expired
+    - PI 已 processing/succeeded：不 expire（ACH 清算可能超过 24h），并延长 expires_at
     - 尽量取消对应 Stripe PaymentIntent（已成功/已取消则忽略）
     每天由 APScheduler 调用。
     """
@@ -168,19 +169,34 @@ def cleanup_expired_pending_bookings():
 
         stripe.api_key = current_app.config.get('STRIPE_SECRET_KEY')
         cancelled_pi = 0
-        from app.payments import safe_cancel_payment_intent
+        skipped_active = 0
+        from app.payments import safe_cancel_payment_intent, retrieve_payment_intent
         for pb in expired:
             pi_id = pb.payment_intent_id
             if pi_id and not str(pi_id).startswith('free_'):
+                intent = retrieve_payment_intent(pi_id)
+                st = getattr(intent, 'status', None) if intent else None
+                if st in ('processing', 'succeeded', 'requires_capture'):
+                    # 保留报名草稿，等 webhook / status 补建单
+                    pb.expires_at = now + timedelta(days=14)
+                    skipped_active += 1
+                    current_app.logger.info(
+                        "PendingBooking cleanup: keep id=%s PI=%s status=%s",
+                        pb.id, pi_id, st,
+                    )
+                    continue
                 if safe_cancel_payment_intent(pi_id, reason=f'pending cleanup id={pb.id}'):
                     cancelled_pi += 1
             pb.status = 'expired'
 
         db.session.commit()
         current_app.logger.info(
-            f"PendingBooking cleanup: expired={len(expired)}, stripe_cancelled={cancelled_pi}"
+            "PendingBooking cleanup: expired=%s kept_active_pi=%s stripe_cancelled=%s",
+            len(expired) - skipped_active,
+            skipped_active,
+            cancelled_pi,
         )
-        return len(expired)
+        return len(expired) - skipped_active
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"PendingBooking cleanup failed: {e}", exc_info=True)

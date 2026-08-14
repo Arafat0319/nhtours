@@ -60,6 +60,7 @@ POST /api/payment/quote     →  算价
 POST /api/payment/intent      →  仅更新已有 PI（卡费等），不创建 PendingBooking
 Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
   （succeeded / payment_failed / **processing** / refund / checkout.completed）
+  **建单失败必须 5xx**（勿吞异常回 200，否则 Stripe 不重试 → 钱到账无订单）
 ```
 
 - PI：`payment_method_types=['card','us_bank_account']`；Element 同序；ACH 无卡费
@@ -67,14 +68,15 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 - ACH 清算中：整单锁定（提醒跳过、分期页/API 不可再付）；规则见 `手册/ACH付款规则.md`
 - `PendingBooking.payment_intent_id`（可以是 `pi_…` 或 `free_…`）
 - 折扣抵「现在应付」；`$0` 勿建 Stripe PI
-- 未支付草稿：`expires_at=+24h`；03:00 cleanup → `expired` + `safe_cancel_payment_intent`
+- 未支付草稿：`expires_at=+24h`；03:00 cleanup → `expired` + `safe_cancel_payment_intent`（**跳过** PI 已 processing/succeeded）
 - 报名在 `/trips/<slug>` **弹窗内** 5 步；正式页 `use_experimental_modal=True` → `_modal_steps_experimental.html`（产品套餐 + Travelers；有分期时产品内选 Pay in full / Deposit+installments）
-- **Book Now → Parental Waiver**：滚到底 → 5s 倒计时 → 勾选（`app/parental_waiver.py`）→ 报名弹窗；订单存 `parental_waiver_accepted_at` / `version`
+- **Book Now → Parental Waiver**：滚到底 → 5s 倒计时 → 勾选（`app/parental_waiver.py`）→ 报名弹窗；订单存 `parental_waiver_accepted_at` / `version`；滚动提示黑色加粗
 - File Upload：`POST /api/booking/upload`（UI：自定义 dropzone，见 `05` / `booking-modal.css`）
 - DOB 日历：月/年 Uiverse 下拉（同 Gender）；选月年不关日历；逻辑在 `trip_booking.html`
 - 付款后摘要 `GET /api/booking/<id>/summary`：须 `token` 或 `payment_intent_id`；`trip_total` 用订单套餐/附加**快照单价**（$0 Payment 时勿用 `base_amount_cents`）
 - Download receipt（站内）：`.nh-receipt-download-btn`（`site-nav.css`；勿只靠 Tailwind 灰边类，见 `05`）
 - 静态 CSS/JS 部署后若样式「没变」：先 **Ctrl+F5**（无版本号时易缓存）
+- `_create_booking_from_metadata`：**勿**在函数内再 `from datetime import datetime`（会 UnboundLocalError）
 
 ## 业务单号 Order number
 
