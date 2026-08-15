@@ -787,10 +787,10 @@ def handle_booking_submission(request, trip):
                 return jsonify({'success': False, 'error': 'One or more selected packages are invalid'}), 400
 
             if package.capacity:
-                # 计算已售名额（只计算已支付成功的预订）
+                # 已付 + ACH 清算中占名额（与建单侧一致；不含未付款的 pending 壳）
                 spots_sold = BookingPackage.query.filter(
                     BookingPackage.package_id == package.id,
-                    BookingPackage.status.in_(['deposit_paid', 'fully_paid'])
+                    BookingPackage.status.in_(['processing', 'deposit_paid', 'fully_paid'])
                 ).with_entities(
                     db.func.sum(BookingPackage.quantity)
                 ).scalar() or 0
@@ -3989,8 +3989,12 @@ def _create_booking_from_metadata(payment_intent_id):
             ).scalar() or 0
             
             if spots_sold + pkg_data.get('quantity', 1) > package.capacity:
-                return _abort_create(
-                    f"Package {package.id} sold out when processing payment_intent {payment_intent_id}"
+                # 支付已成功：不得因售罄丢单（否则再次「钱到账无订单」）
+                current_app.logger.warning(
+                    "Package %s over capacity for payment_intent %s; "
+                    "creating booking anyway (payment already captured)",
+                    package.id,
+                    payment_intent_id,
                 )
     
     # 计算参与者总数
@@ -4466,8 +4470,27 @@ def handle_booking_payment_intent_succeeded(payment_intent):
     
     total_amount = total_amount_cents / 100.0  # 总金额（用于 Payment 记录）
 
-    # 创建Payment记录
-    payment = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
+    # 行锁 + 仅「非 succeeded → succeeded」时入账（防 webhook 与 status 轮询双加 amount_paid）
+    payment = (
+        Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id)
+        .with_for_update()
+        .first()
+    )
+    prior_status = payment.status if payment else None
+    if prior_status == 'succeeded':
+        # 另一路已入账；仍尝试发信（claim_receipt_email_send 幂等）
+        db.session.commit()
+        total_info = calculate_booking_total(booking)
+        is_full_payment = (booking.amount_paid or 0.0) >= total_info['total']
+        try:
+            send_booking_confirmation_email(booking, is_full_payment, payment=payment)
+        except Exception as e:
+            current_app.logger.error(f"Failed to send confirmation email: {str(e)}")
+        current_app.logger.info(
+            f"Payment Intent {payment_intent_id} already succeeded (concurrent); skip ledger"
+        )
+        return
+
     if not payment:
         payment = Payment(
             booking_id=booking.id,
@@ -4508,7 +4531,7 @@ def handle_booking_payment_intent_succeeded(payment_intent):
         payment.stripe_charge_id = charge_id
 
     total_info = calculate_booking_total(booking)
-    # amount_paid 只记录基础金额（不含手续费），因为这是客户实际购买的金额
+    # amount_paid 只记录基础金额（不含手续费）；ACH 手册：processing 时为 0，此处才入账
     booking.amount_paid = (booking.amount_paid or 0.0) + base_amount
 
     # 判断是全款还是定金（首次支付）
@@ -4531,7 +4554,7 @@ def handle_booking_payment_intent_succeeded(payment_intent):
             package_amount = booking_package_unit_price(bp) * (int(bp.quantity) if bp.quantity else 1)
             bp.amount_paid = (bp.amount_paid or 0.0) + (base_amount * package_amount / total_info['subtotal'])
 
-    # 如果是分期付款，创建 InstallmentPayment 记录
+    # 如果是分期付款，创建 InstallmentPayment 记录（ACH：仅 succeeded 时创建，见手册）
     if booking.installments.count() == 0:
         for bp in booking.booking_packages.all():
             if bp.payment_plan_type == 'deposit_installment' and bp.package and bp.package.payment_plan_config:
@@ -4555,7 +4578,7 @@ def handle_booking_payment_intent_succeeded(payment_intent):
 
     db.session.commit()
 
-    # 发送确认邮件
+    # 发送确认邮件（receipt_email_sent_at 认领防双发）
     try:
         send_booking_confirmation_email(booking, is_full_payment, payment=payment)
     except Exception as e:
@@ -4595,8 +4618,12 @@ def handle_payment_intent_succeeded(payment_intent):
     
     total_amount = total_amount_cents / 100.0  # 总金额（用于 Payment 记录）
     
-    # 幂等性检查：检查是否已存在相同 payment_intent_id 且已完成的 Payment 记录
-    existing_payment = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
+    # 行锁：防 webhook 与 status 并发双加 amount_paid
+    existing_payment = (
+        Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id)
+        .with_for_update()
+        .first()
+    )
     if existing_payment and existing_payment.status == 'succeeded':
         current_app.logger.info(f"Payment for payment_intent {payment_intent_id} already succeeded (id={existing_payment.id}), skipping duplicate")
         return existing_payment
@@ -4648,20 +4675,9 @@ def handle_payment_intent_succeeded(payment_intent):
     # 锚定期确保指向本次 PI
     installment.payment_intent_id = payment_intent_id
 
-    # 更新 Booking - amount_paid 只记录基础金额（不含手续费）
-    booking.amount_paid = (booking.amount_paid or 0.0) + base_amount
-    
-    # 检查是否所有分期都已完成
-    total_info = calculate_booking_total(booking)
-    if booking.amount_paid >= total_info['total']:
-        booking.status = 'fully_paid'
-        for bp in booking.booking_packages:
-            bp.status = 'fully_paid'
-        from app.payments import cancel_unpaid_installments
-        cancel_unpaid_installments(booking)
-    
     # 创建或更新 Payment 记录 - amount 记录总金额（含手续费）；只一笔
-    if existing_payment and existing_payment.status == 'pending':
+    # 入账仅在本分支（上方已排除 prior succeeded）
+    if existing_payment and existing_payment.status in ('pending', 'processing', 'failed'):
         payment = existing_payment
         payment.amount = total_amount
         payment.status = 'succeeded'
@@ -4684,6 +4700,18 @@ def handle_payment_intent_succeeded(payment_intent):
             payment_metadata=metadata or None
         )
         db.session.add(payment)
+
+    # 更新 Booking - amount_paid 只记录基础金额（不含手续费）；仅跃迁时执行一次
+    booking.amount_paid = (booking.amount_paid or 0.0) + base_amount
+    
+    # 检查是否所有分期都已完成
+    total_info = calculate_booking_total(booking)
+    if booking.amount_paid >= total_info['total']:
+        booking.status = 'fully_paid'
+        for bp in booking.booking_packages:
+            bp.status = 'fully_paid'
+        from app.payments import cancel_unpaid_installments
+        cancel_unpaid_installments(booking)
     
     if base_amount_cents is not None:
         payment.base_amount_cents = base_amount_cents

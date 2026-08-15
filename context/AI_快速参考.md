@@ -77,6 +77,8 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 - Download receipt（站内）：`.nh-receipt-download-btn`（`site-nav.css`；勿只靠 Tailwind 灰边类，见 `05`）
 - 静态 CSS/JS 部署后若样式「没变」：先 **Ctrl+F5**（无版本号时易缓存）
 - `_create_booking_from_metadata`：**勿**在函数内再 `from datetime import datetime`（会 UnboundLocalError）
+- 入账：仅 Payment **非 succeeded → succeeded** 时累加 `amount_paid`（防 webhook+status 双加）；已扣款勿因售罄 abort 建单
+- 报名库存口径：`processing|deposit_paid|fully_paid`（ACH 占位）
 
 ## 业务单号 Order number
 
