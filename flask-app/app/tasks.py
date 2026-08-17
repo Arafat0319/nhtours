@@ -173,7 +173,7 @@ def cleanup_expired_pending_bookings():
         from app.payments import safe_cancel_payment_intent, retrieve_payment_intent
         for pb in expired:
             pi_id = pb.payment_intent_id
-            if pi_id and not str(pi_id).startswith('free_'):
+            if pi_id and not str(pi_id).startswith('free_') and not str(pi_id).startswith('pending_'):
                 intent = retrieve_payment_intent(pi_id)
                 st = getattr(intent, 'status', None) if intent else None
                 if st in ('processing', 'succeeded', 'requires_capture'):

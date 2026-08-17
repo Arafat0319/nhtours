@@ -118,7 +118,7 @@
 
 | 路由 | 方法 | 说明 |
 |------|------|------|
-| `POST /trips/<slug>` | POST | **AJAX 报名首步**：创建 PendingBooking；应付>0 时建 Stripe PaymentIntent 返回 `client_secret`；应付=$0 时 `payment_required=false` + `free_…` 占位 ID |
+| `POST /trips/<slug>` | POST | **AJAX 报名首步**：行锁校验名额 → 写 PendingBooking 占位（`pending_*` / `free_*`）→ 应付>0 再建 Stripe PI 返回 `client_secret`；Stripe 失败标 `cancelled` 释放名额 |
 | `/api/payment/quote` | POST | 根据 PendingBooking 计算报价 |
 | `/api/payment/intent` | POST | 更新已有 PaymentIntent 的金额与 metadata（用于确认前写入手续费等） |
 | `/api/payment/status` | GET | 查询支付状态 |
@@ -167,7 +167,7 @@
 查询支付状态（前端轮询）。
 
 **参数**:
-- `payment_intent_id`: PaymentIntent ID
+- `payment_intent_id`: PaymentIntent ID（或占位阶段的 `pending_*`，此时直接返回 `pending`，不调 Stripe）
 
 **响应**:
 
@@ -397,4 +397,4 @@ stripe listen --forward-to localhost:8080/webhooks/stripe
 
 ## 更新日期
 
-**最后更新**: 2026-08-06（ACH processing 邮件+清算锁定；Publish/Unpublish/Copy；trip_status）
+**最后更新**: 2026-08-17（报名占位 + pending_* 状态轮询）

@@ -1,0 +1,26 @@
+---
+description: 新功能/代码须溯源对其它模块的影响（bug、错误、性能）
+alwaysApply: true
+---
+
+# 改动影响溯源（核心准则）
+
+设计或实现**新功能、新代码、改既有逻辑**时，须先溯源是否会影响其它部分；有影响则评估是否为 **bug**、**运行时错误**或**拖累系统效能**。
+
+## 必须做
+
+1. **找触点**：共享模型/字段、路由与 webhook、Pending/Booking/账本/收据/催款、名额与并发、Stripe 回调、邮件、定时任务、前端轮询与弹窗流程。
+2. **判影响**：行为变了吗？数据口径变了吗？事务 / commit 边界变了吗？会否 N+1、长锁、重复 webhook、孤儿占位？
+3. **定性质**：兼容增强 / 需迁移 / **潜在 bug** / **性能风险** — 后两类须修或补测试/日志/文档，勿 silent ship。
+4. **验证**：相关 pytest；跨流程手测（尤其支付：**付成功 → Manage 有单 → 有邮件**）；账本与 Manage / Reconcile 对齐。
+
+## 示例（本项目）
+
+- 占位先 `commit` 再调 Stripe → 异常路径须 `cancelled` 释放名额，不能仅靠 `rollback`。
+- 函数内 `from datetime import datetime` → 可能 `UnboundLocalError`，影响 Waiver 建单。
+- 改 `amount_paid` / 分期 status → 须对照收据、催款、Reconcile。
+
+## 不要
+
+- 不要假设「只改这一处」；不要未评估就 push。
+- 不要只修表象文案而忽略账本 / 名额 / Webhook 一致性。

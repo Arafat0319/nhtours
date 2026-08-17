@@ -468,14 +468,11 @@ def trip_detail(slug):
     custom_questions = trip.questions.all() if trip.questions else []
 
     package_spots_available = {}
+    from app.package_capacity import package_spots_available as spots_left
     for package in packages:
         if package.capacity is None:
             continue
-        booked = BookingPackage.query.filter(
-            BookingPackage.package_id == package.id,
-            BookingPackage.status.in_(["pending", "deposit_paid", "fully_paid"]),
-        ).count()
-        package_spots_available[package.id] = max(package.capacity - booked, 0)
+        package_spots_available[package.id] = spots_left(package.id) or 0
 
     # Registration date check: customers can only book on or after registration_date (None = no restriction)
     today = date.today()
@@ -658,13 +655,10 @@ def _trip_detail_context(trip):
     addons = trip.add_ons.all() if trip.add_ons else []
     custom_questions = trip.questions.all() if trip.questions else []
     package_spots_available = {}
+    from app.package_capacity import package_spots_available as spots_left
     for pkg in packages:
         if pkg.capacity is not None:
-            booked = BookingPackage.query.filter(
-                BookingPackage.package_id == pkg.id,
-                BookingPackage.status.in_(["pending", "deposit_paid", "fully_paid"]),
-            ).count()
-            package_spots_available[pkg.id] = max(pkg.capacity - booked, 0)
+            package_spots_available[pkg.id] = spots_left(pkg.id) or 0
     today = date.today()
     registration_open = (trip.registration_date is None) or (today >= trip.registration_date)
     from app import parental_waiver as _parental_waiver
@@ -780,27 +774,12 @@ def handle_booking_submission(request, trip):
             return jsonify({'success': False, 'error': pkg_err}), 400
         booking_data['packages'] = packages_data
 
-        # 检查库存（不锁定，只检查）
-        for pkg_data in packages_data:
-            package = TripPackage.query.get(pkg_data.get('package_id'))
-            if not package:
-                return jsonify({'success': False, 'error': 'One or more selected packages are invalid'}), 400
+        from app.package_capacity import validate_packages_capacity
 
-            if package.capacity:
-                # 已付 + ACH 清算中占名额（与建单侧一致；不含未付款的 pending 壳）
-                spots_sold = BookingPackage.query.filter(
-                    BookingPackage.package_id == package.id,
-                    BookingPackage.status.in_(['processing', 'deposit_paid', 'fully_paid'])
-                ).with_entities(
-                    db.func.sum(BookingPackage.quantity)
-                ).scalar() or 0
-                
-                # 检查库存是否足够
-                if spots_sold + pkg_data.get('quantity', 1) > package.capacity:
-                    return jsonify({
-                        'success': False, 
-                        'error': f'Package "{package.name}" is sold out'
-                    }), 400
+        # 软校验（快速反馈）；硬校验在创建 PendingBooking 前带行锁再跑一次
+        cap_err = validate_packages_capacity(packages_data, lock=False)
+        if cap_err:
+            return jsonify({'success': False, 'error': cap_err}), 400
         
         # 计算首付款金额（使用追缴模式）
         # 直接计算，不创建临时Booking对象
@@ -1001,6 +980,27 @@ def handle_booking_submission(request, trip):
         payment_intent_id = None
 
         try:
+            # 1) 行锁占位：先写 PendingBooking 再 commit，避免 Stripe 调用期间长时间占锁
+            cap_err = validate_packages_capacity(packages_data, lock=True)
+            if cap_err:
+                db.session.rollback()
+                return jsonify({'success': False, 'error': cap_err}), 400
+
+            expires_at = datetime.utcnow() + timedelta(hours=24)
+            hold_pi = f"pending_{uuid_mod.uuid4().hex}"
+            pending_booking = PendingBooking(
+                trip_id=trip.id,
+                payment_intent_id=hold_pi,
+                booking_data=full_booking_data,
+                expires_at=expires_at,
+                status='pending',
+            )
+            db.session.add(pending_booking)
+            db.session.commit()
+
+            payment_intent = None
+            payment_intent_id = hold_pi
+
             if payment_required:
                 checkout_metadata = {
                     'payment_flow': 'payment_intent',
@@ -1013,9 +1013,11 @@ def handle_booking_submission(request, trip):
                 payment_intent = create_payment_intent(
                     amount=base_amount,
                     currency='usd',
-                    metadata=checkout_metadata
+                    metadata=checkout_metadata,
                 )
                 if not payment_intent:
+                    pending_booking.status = 'cancelled'
+                    db.session.commit()
                     current_app.logger.error(
                         f"Failed to create Payment Intent for trip {trip.id}. "
                         f"Check Stripe configuration and logs."
@@ -1023,36 +1025,31 @@ def handle_booking_submission(request, trip):
                     return jsonify({
                         'success': False,
                         'error': 'payment_intent_not_created',
-                        'message': 'Unable to create payment. Please check your payment configuration or try again later.'
+                        'message': 'Unable to create payment. Please check your payment configuration or try again later.',
                     }), 500
 
                 payment_intent_id = getattr(payment_intent, 'id', None)
                 if not payment_intent_id:
+                    pending_booking.status = 'cancelled'
+                    db.session.commit()
                     current_app.logger.error("Payment Intent created but has no ID")
                     return jsonify({
                         'success': False,
                         'error': 'payment_intent_not_created',
-                        'message': 'Payment Intent creation failed: No ID returned'
+                        'message': 'Payment Intent creation failed: No ID returned',
                     }), 500
+                pending_booking.payment_intent_id = payment_intent_id
+                db.session.commit()
             else:
-                # 免定金 / 折扣后首付为 $0：不调用 Stripe，用本地占位 ID
                 payment_intent_id = f"free_{uuid_mod.uuid4().hex}"
                 full_booking_data['payment_required'] = False
+                pending_booking.payment_intent_id = payment_intent_id
+                pending_booking.booking_data = full_booking_data
+                db.session.commit()
                 current_app.logger.info(
                     f"$0 initial payment for trip {trip.id}: skipping Stripe, "
                     f"discount={discount_amount}, gross={gross_amount}, ref={payment_intent_id}"
                 )
-
-            expires_at = datetime.utcnow() + timedelta(hours=24)
-            pending_booking = PendingBooking(
-                trip_id=trip.id,
-                payment_intent_id=payment_intent_id,
-                booking_data=full_booking_data,
-                expires_at=expires_at,
-                status='pending'
-            )
-            db.session.add(pending_booking)
-            db.session.commit()
 
             current_app.logger.info(
                 f"PendingBooking created: id={pending_booking.id}, "
@@ -1061,7 +1058,22 @@ def handle_booking_submission(request, trip):
             )
 
         except Exception as e:
-            db.session.rollback()
+            # 占位可能已在第一次 commit 落库；rollback 撤不回，须显式 cancelled
+            try:
+                pb = None
+                _pb = locals().get('pending_booking')
+                _hold = locals().get('hold_pi')
+                if _pb is not None and getattr(_pb, 'id', None):
+                    pb = PendingBooking.query.get(_pb.id)
+                if pb is None and _hold:
+                    pb = PendingBooking.query.filter_by(payment_intent_id=_hold).first()
+                if pb is not None and pb.status == 'pending':
+                    pb.status = 'cancelled'
+                    db.session.commit()
+                else:
+                    db.session.rollback()
+            except Exception:
+                db.session.rollback()
             current_app.logger.error(
                 f"Exception while creating Payment Intent or PendingBooking for trip {trip.id}: {str(e)}",
                 exc_info=True
@@ -2465,6 +2477,13 @@ def api_payment_status():
                     # 仍在处理中，返回 pending
                     return jsonify({'status': 'pending', 'payment_intent_id': payment_intent_id}), 200
             elif pending_booking.status == 'pending':
+                # 占位 ID 尚未换成 Stripe PI：勿调 Stripe API
+                if str(payment_intent_id).startswith('pending_'):
+                    return jsonify({
+                        'status': 'pending',
+                        'payment_intent_id': payment_intent_id,
+                        'message': 'Payment session is still being prepared.',
+                    }), 200
                 # 直接查询Stripe API检查Payment Intent状态（Stripe SDK 返回对象用 getattr 取 status）
                 intent = retrieve_payment_intent(payment_intent_id)
                 intent_status = getattr(intent, 'status', None) if intent else None
@@ -3972,30 +3991,28 @@ def _create_booking_from_metadata(payment_intent_id):
         db.session.add(client)
         db.session.flush()
     
-    # 再次检查库存（支付成功时再次确认）
+    # 再次检查库存（支付成功时；排除本单 Pending 占位）
+    from app.package_capacity import package_is_over_capacity_after_payment
+
     for pkg_data in packages_data:
         package = TripPackage.query.get(pkg_data.get('package_id'))
         if not package:
             return _abort_create(
                 f"Package missing when processing payment_intent {payment_intent_id}"
             )
-        
-        if package.capacity:
-            spots_sold = BookingPackage.query.filter(
-                BookingPackage.package_id == package.id,
-                BookingPackage.status.in_(['pending', 'processing', 'deposit_paid', 'fully_paid'])
-            ).with_entities(
-                db.func.sum(BookingPackage.quantity)
-            ).scalar() or 0
-            
-            if spots_sold + pkg_data.get('quantity', 1) > package.capacity:
-                # 支付已成功：不得因售罄丢单（否则再次「钱到账无订单」）
-                current_app.logger.warning(
-                    "Package %s over capacity for payment_intent %s; "
-                    "creating booking anyway (payment already captured)",
-                    package.id,
-                    payment_intent_id,
-                )
+
+        qty = int(pkg_data.get('quantity', 1) or 1)
+        if package_is_over_capacity_after_payment(
+            package.id,
+            qty,
+            exclude_pending_id=pending_booking.id,
+        ):
+            current_app.logger.warning(
+                "Package %s over capacity for payment_intent %s; "
+                "creating booking anyway (payment already captured)",
+                package.id,
+                payment_intent_id,
+            )
     
     # 计算参与者总数
     total_participants = sum(p.get('quantity', 1) for p in packages_data)
