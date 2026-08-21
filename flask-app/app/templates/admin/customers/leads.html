@@ -37,7 +37,8 @@
             </div>
             <div class="flex items-center space-x-2 flex-shrink-0">
                 <label class="text-sm text-gray-600 whitespace-nowrap" for="statusFilter">Status:</label>
-                <select name="status" id="statusFilter" class="admin-select block w-full md:w-auto rounded-md border-gray-300 shadow-sm focus:border-wetravel-cyan focus:ring-wetravel-cyan sm:text-sm">
+                <select name="status" id="statusFilter"
+                    class="admin-select block w-full md:w-auto min-w-[9rem] rounded-md border-0 h-9 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wetravel-cyan sm:text-sm">
                     <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All</option>
                     <option value="new" {% if status_filter == 'new' %}selected{% endif %}>New Leads</option>
                     <option value="replied" {% if status_filter == 'replied' %}selected{% endif %}>Replied</option>
