@@ -8,3 +8,4 @@
 - **每次更新/Debug 重中之重**：测试脏数据与流程冲突难免，但必须被发现并改进（账本/收据/分期/退款/催款对齐）；见 `.cursor/rules/ledger-consistency-on-debug.mdc`
 - **新功能 / 改代码须溯源影响**：评估对其它模块是否引入 bug、错误或性能问题；见 `.cursor/rules/change-impact-analysis.mdc`
 - **订单收据 PDF 版式已最终确认**（所有订单统一该视觉；仅内容不同）；见 `.cursor/rules/receipt-pdf-layout.mdc`
+- **后台弹窗**：一律 `customAlert` / `customConfirm`，禁止 `window.alert` / `confirm`；见 `.cursor/rules/admin-alerts-project-style.mdc`

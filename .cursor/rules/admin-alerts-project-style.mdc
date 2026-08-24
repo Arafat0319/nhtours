@@ -1,0 +1,31 @@
+---
+description: 后台弹窗一律用项目 customAlert/customConfirm，禁止 window.alert/confirm
+alwaysApply: true
+---
+
+# 后台 Alert / Confirm 须用项目风格
+
+**禁止**在后台（及 Trip Builder）使用浏览器原生 `window.alert` / `window.confirm` / `prompt` 做用户提示（调试临时除外）。
+
+## 用什么
+
+| 场景 | API | 定义处 |
+|------|-----|--------|
+| 仅告知 / 校验失败 | `customAlert(message, title)` | `admin/trips/builder/base_builder.html` |
+| 需确认（删除、Unpublish 等） | `customConfirm(message, title, type)` | 同上；`type`: `warning` \| `danger` |
+
+- `customAlert` / `customConfirm` 已挂到 `window`，Builder 各 step 可直接 `await customAlert(...)` / `.then(...)`
+- 非 Builder 页若尚无该对话框：先复用同一套 markup + JS，或抽公共片段；**不要**回退到原生 `alert`
+
+## 示例
+
+```javascript
+// ❌
+window.alert('Could not generate QR code.');
+if (!confirm('Delete?')) return;
+
+// ✅
+await customAlert('Could not generate QR code. Please try again.', 'QR Code');
+const ok = await customConfirm('Are you sure…?', 'Delete Package', 'danger');
+if (!ok) return;
+```

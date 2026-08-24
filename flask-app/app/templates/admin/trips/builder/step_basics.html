@@ -242,6 +242,11 @@
                         title="Copy public trip URL">
                         Copy
                     </button>
+                    <button type="button" id="url_slug_qr_btn"
+                        class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-md shadow-sm hover:bg-gray-50 hover:text-wetravel-cyan focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-wetravel-cyan"
+                        title="Download QR code for public trip URL">
+                        QR Code
+                    </button>
                 </div>
             </div>
         </div>
@@ -938,6 +943,7 @@
             }
         }
         const urlSlugCopyBtn = document.getElementById('url_slug_copy_btn');
+        const urlSlugQrBtn = document.getElementById('url_slug_qr_btn');
         const slugInput = document.getElementById('slug');
         if (urlSlugCopyBtn && slugInput) {
             urlSlugCopyBtn.addEventListener('click', () => {
@@ -945,6 +951,82 @@
                 if (!s) return;
                 copyUrlFromPath('/trips/' + encodeURIComponent(s), urlSlugCopyBtn);
             });
+        }
+        function loadQrCodeLib() {
+            if (typeof window.QRCode === 'function') {
+                return Promise.resolve(window.QRCode);
+            }
+            return new Promise((resolve, reject) => {
+                const existing = document.querySelector('script[data-qrcode-lib]');
+                if (existing) {
+                    existing.addEventListener('load', () => {
+                        if (typeof window.QRCode === 'function') resolve(window.QRCode);
+                        else reject(new Error('QR library missing'));
+                    });
+                    existing.addEventListener('error', () => reject(new Error('QR library failed')));
+                    return;
+                }
+                const script = document.createElement('script');
+                script.src = {{ url_for('static', filename='js/vendor/qrcode.min.js')|tojson }};
+                script.async = true;
+                script.dataset.qrcodeLib = '1';
+                script.onload = () => {
+                    if (typeof window.QRCode === 'function') resolve(window.QRCode);
+                    else reject(new Error('QR library missing'));
+                };
+                script.onerror = () => reject(new Error('QR library failed'));
+                document.head.appendChild(script);
+            });
+        }
+        function tripSlugQrDataUrl(QRCode, url) {
+            const host = document.createElement('div');
+            host.style.cssText = 'position:fixed;left:-9999px;top:0;width:512px;height:512px;';
+            document.body.appendChild(host);
+            try {
+                new QRCode(host, {
+                    text: url,
+                    width: 512,
+                    height: 512,
+                    colorDark: '#000000',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+                const canvas = host.querySelector('canvas');
+                if (canvas) return canvas.toDataURL('image/png');
+                const img = host.querySelector('img');
+                if (img && img.src && img.src.indexOf('data:') === 0) return img.src;
+                throw new Error('QR render failed');
+            } finally {
+                host.remove();
+            }
+        }
+        function downloadTripSlugQr() {
+            const s = (slugInput.value || '').trim();
+            if (!s || !urlSlugQrBtn) return;
+            const url = window.location.origin + '/trips/' + encodeURIComponent(s);
+            const prev = urlSlugQrBtn.textContent;
+            urlSlugQrBtn.disabled = true;
+            urlSlugQrBtn.textContent = '…';
+            loadQrCodeLib()
+                .then((QRCode) => tripSlugQrDataUrl(QRCode, url))
+                .then((dataUrl) => {
+                    const a = document.createElement('a');
+                    a.href = dataUrl;
+                    a.download = s + '-qr.png';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                })
+                .catch(() => {
+                    customAlert('Could not generate QR code. Please try again.', 'QR Code');
+                })
+                .finally(() => {
+                    urlSlugQrBtn.disabled = false;
+                    urlSlugQrBtn.textContent = prev;
+                });
+        }
+        if (urlSlugQrBtn && slugInput) {
+            urlSlugQrBtn.addEventListener('click', downloadTripSlugQr);
         }
         const teacherSlugInput = document.getElementById('teacher_view_slug');
         const teacherCopyBtn = document.getElementById('teacher_view_copy_btn');

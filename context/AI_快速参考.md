@@ -9,6 +9,7 @@
 | 生产 push | 未经用户明确同意，不得 `git push origin main` |
 | **每次 push 前同步 context** | **必须**按 `context/11` 更新适用文档；**至少**写 `07` 一条；与代码**同一 commit**。仅改 UI 也要更新 `05`/`07`（及必要时 `手册/`） |
 | **前端视觉** | 测试 / 优化 / 排查 / 执行任务时，**未经用户允许不得改页面视觉**（布局、文案呈现、颜色、间距、样式、模板观感等）。需要改必须先说明并征得同意 |
+| **后台弹窗** | 一律 `customAlert` / `customConfirm`（`base_builder.html`）；禁止 `window.alert` / `confirm` |
 | **改动影响溯源** | 设计新功能或改代码时，**须溯源**对其它模块的影响；有影响则判断是否为 bug、运行时错误或性能拖累；潜在问题须修或补测试/文档，勿 silent ship。详见 `.cursor/rules/change-impact-analysis.mdc` |
 
 ## 本地开发
