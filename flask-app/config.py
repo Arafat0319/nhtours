@@ -65,6 +65,10 @@ class Config:
     # 安全审计与告警（路径见 _resolve_audit_log_path）
     SECURITY_AUDIT_LOG = _resolve_audit_log_path()
     SECURITY_ALERTS_ENABLED = os.environ.get('SECURITY_ALERTS_ENABLED', 'true').lower() in ('1', 'true', 'yes')
+
+    # Testimonials 垃圾过滤（1=开；0=关）与 rejected 保留天数
+    TESTIMONIAL_SPAM_FILTER = os.environ.get('TESTIMONIAL_SPAM_FILTER', '1')
+    TESTIMONIAL_REJECT_RETENTION_DAYS = int(os.environ.get('TESTIMONIAL_REJECT_RETENTION_DAYS', '90'))
     SECURITY_ALERT_EMAIL = os.environ.get('SECURITY_ALERT_EMAIL', '')
     SECURITY_ALERT_DEDUP_SECONDS = int(os.environ.get('SECURITY_ALERT_DEDUP_SECONDS', '3600'))
     EXPORT_TOKEN_MAX_AGE_SECONDS = int(os.environ.get('EXPORT_TOKEN_MAX_AGE_SECONDS', str(90 * 24 * 3600)))

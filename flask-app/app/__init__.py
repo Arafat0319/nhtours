@@ -169,6 +169,7 @@ def create_app(config_name=None):
                 from app.tasks import (
                     send_installment_reminders,
                     cleanup_expired_pending_bookings,
+                    cleanup_old_rejected_testimonials,
                     send_scheduled_messages,
                     scan_ledger_anomalies,
                 )
@@ -182,6 +183,10 @@ def create_app(config_name=None):
                 def _run_pending_booking_cleanup():
                     with app.app_context():
                         cleanup_expired_pending_bookings()
+
+                def _run_rejected_testimonial_cleanup():
+                    with app.app_context():
+                        cleanup_old_rejected_testimonials()
 
                 def _run_scheduled_messages():
                     with app.app_context():
@@ -209,6 +214,16 @@ def create_app(config_name=None):
                     minute=0,
                     timezone='America/Los_Angeles',
                     id='cleanup_expired_pending_bookings',
+                    replace_existing=True,
+                )
+                # 每天美西凌晨 3:30：删除超过 90 天的 rejected Testimonials
+                scheduler.add_job(
+                    _run_rejected_testimonial_cleanup,
+                    'cron',
+                    hour=3,
+                    minute=30,
+                    timezone='America/Los_Angeles',
+                    id='cleanup_old_rejected_testimonials',
                     replace_existing=True,
                 )
                 # 每天美西凌晨 4 点：账本/Stripe 对账扫描 → 异常邮件提醒管理员

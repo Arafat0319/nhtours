@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, date
 from flask import current_app, render_template, url_for
 from sqlalchemy import or_, and_
 from app import db
-from app.models import Booking, InstallmentPayment, PendingBooking
+from app.models import Booking, InstallmentPayment, PendingBooking, Testimonial
 from app.utils import (
     send_email_via_ses,
     generate_installment_token,
@@ -200,6 +200,35 @@ def cleanup_expired_pending_bookings():
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"PendingBooking cleanup failed: {e}", exc_info=True)
+        return 0
+
+
+def cleanup_old_rejected_testimonials(retention_days=None):
+    """
+    删除超过 retention_days 的 rejected Testimonials（默认 90 天）。
+    每天由 APScheduler 调用。
+    """
+    try:
+        days = retention_days
+        if days is None:
+            days = int(current_app.config.get("TESTIMONIAL_REJECT_RETENTION_DAYS", 90))
+        cutoff = datetime.utcnow() - timedelta(days=max(int(days), 1))
+        deleted = (
+            Testimonial.query.filter(
+                Testimonial.status == "rejected",
+                Testimonial.created_at < cutoff,
+            ).delete(synchronize_session=False)
+        )
+        db.session.commit()
+        current_app.logger.info(
+            "Testimonial cleanup: deleted %s rejected older than %s days",
+            deleted,
+            days,
+        )
+        return deleted
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Testimonial cleanup failed: {e}", exc_info=True)
         return 0
 
 

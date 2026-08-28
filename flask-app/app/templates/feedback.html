@@ -37,6 +37,10 @@
 
 		<form id="feedback-form" class="feedback-form" action="{{ url_for('main.feedback') }}" method="POST">
 			<input name="form" type="hidden" value="feedback" />
+			<div aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;">
+				<label for="feedback_website">Website</label>
+				<input type="text" name="website" id="feedback_website" tabindex="-1" autocomplete="off" value="" />
+			</div>
 
 			<div class="feedback-form__row">
 				<label class="feedback-form__field">

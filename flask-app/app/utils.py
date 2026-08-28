@@ -554,6 +554,28 @@ def handle_contact_submission(data):
     return send_email_via_ses(sender_email, recipient_email, subject, html_body, text_body, reply_to=email)
 
 
+def _resolve_testimonial_spam_status(data, *, source, quote, author_name, organization=None):
+    """
+    Returns (save_to_db: bool, status: str|None, send_admin_email: bool).
+    status is pending or rejected when save_to_db is True.
+    """
+    from app.testimonial_spam import (
+        SpamAction,
+        evaluate_testimonial_spam,
+        log_spam_decision,
+    )
+
+    action, score, reasons = evaluate_testimonial_spam(data, source=source)
+
+    if action == SpamAction.DROP_SILENT:
+        log_spam_decision(action, source=source, score=score, reasons=reasons)
+        return False, None, False
+    if action == SpamAction.REJECT_SILENT:
+        log_spam_decision(action, source=source, score=score, reasons=reasons)
+        return True, "rejected", False
+    return True, "pending", True
+
+
 def handle_testimonial_submission(data):
     """
     处理首页 Testimonials 反馈表单
@@ -576,21 +598,37 @@ def handle_testimonial_submission(data):
     if organization and len(organization) > 200:
         return False, "School or organization name is too long."
 
+    save_db, status, send_email = _resolve_testimonial_spam_status(
+        data,
+        source="homepage",
+        quote=quote,
+        author_name=author_name,
+        organization=organization,
+    )
+    if not save_db:
+        return True, "Thank you! Your story will appear after review."
+
     try:
         testimonial = Testimonial(
             quote=quote,
             author_name=author_name,
             organization=organization,
-            status="pending",
+            status=status,
             source="homepage",
         )
         db.session.add(testimonial)
         db.session.commit()
-        current_app.logger.info(f"Testimonial submitted: {author_name}")
+        if status == "pending":
+            current_app.logger.info(f"Testimonial submitted: {author_name}")
+        else:
+            current_app.logger.info(f"Testimonial auto-rejected (spam): {author_name}")
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Failed to save testimonial: {str(e)}")
         return False, "Unable to save your feedback. Please try again."
+
+    if not send_email:
+        return True, "Thank you! Your story will appear after review."
 
     recipient_email = current_app.config.get("RECIPIENT_EMAIL", "info@nhtours.com")
     sender_email = current_app.config.get("SENDER_EMAIL", recipient_email)
@@ -673,6 +711,16 @@ def handle_feedback_submission(data):
     if rating not in FEEDBACK_RATINGS:
         return False, "Please select an overall rating."
 
+    save_db, status, send_email = _resolve_testimonial_spam_status(
+        data,
+        source="feedback",
+        quote=quote,
+        author_name=author_name,
+        organization=organization,
+    )
+    if not save_db:
+        return True, "Thank you for your feedback! We appreciate you taking the time to share your experience."
+
     try:
         testimonial = Testimonial(
             quote=quote,
@@ -681,16 +729,22 @@ def handle_feedback_submission(data):
             email=email,
             phone=phone,
             rating=rating,
-            status="pending",
+            status=status,
             source="feedback",
         )
         db.session.add(testimonial)
         db.session.commit()
-        current_app.logger.info(f"Post-trip feedback submitted: {author_name}")
+        if status == "pending":
+            current_app.logger.info(f"Post-trip feedback submitted: {author_name}")
+        else:
+            current_app.logger.info(f"Post-trip feedback auto-rejected (spam): {author_name}")
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Failed to save feedback: {str(e)}")
         return False, "Unable to save your feedback. Please try again."
+
+    if not send_email:
+        return True, "Thank you for your feedback! We appreciate you taking the time to share your experience."
 
     recipient_email = current_app.config.get("RECIPIENT_EMAIL", "info@nhtours.com")
     sender_email = current_app.config.get("SENDER_EMAIL", recipient_email)

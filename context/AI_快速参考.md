@@ -184,9 +184,11 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 
 | 项 | 值 |
 |----|-----|
-| 首页提交 | `POST /`，`form=testimonial` |
-| Feedback 页 | `/feedback`（不进主导航） |
+| 首页提交 | `POST /`，`form=testimonial`；隐藏 honeypot 字段 `website` |
+| Feedback 页 | `/feedback`（不进主导航）；同样 honeypot |
 | 数据表 | `testimonials`；`source=homepage\|feedback` |
+| **垃圾过滤** | 蜜罐 / IP 限流 / 规则评分 → 明显垃圾不入库；可疑 → `rejected` **不发邮件**；正常 → `pending` + 邮件。`TESTIMONIAL_SPAM_FILTER=0` 关闭 |
+| rejected 清理 | 每天美西 03:30 删超过 **90 天** 的 rejected（`TESTIMONIAL_REJECT_RETENTION_DAYS`） |
 | 后台 | `/admin/customers/testimonials`；勾选批量删除（含 approved 须确认） |
 
 ## Leads

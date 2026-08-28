@@ -103,6 +103,10 @@
 			{% endwith %}
 			<form id="testimonial-form" class="home-preview-testimonials__form" action="{{ url_for('main.index') }}" method="POST">
 				<input name="form" type="hidden" value="testimonial" />
+				<div aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;">
+					<label for="testimonial_website">Website</label>
+					<input type="text" name="website" id="testimonial_website" tabindex="-1" autocomplete="off" value="" />
+				</div>
 				<label class="home-preview-testimonials__field">
 					<span class="home-preview-testimonials__label">Your story</span>
 					<textarea name="quote" rows="4" required minlength="20" maxlength="500"
