@@ -141,25 +141,25 @@
                 </div>
                 {% endif %}
                 <div class="flex justify-between pt-2 border-t border-gray-300">
-                    <span class="font-semibold text-gray-900">Total Expected (base):</span>
-                    <span class="font-semibold text-gray-900">${{ expected_amount|format_price }}</span>
+                    <span class="text-gray-600">Total Expected (base):</span>
+                    <span class="text-gray-900">${{ expected_amount|format_price }}</span>
                 </div>
                 {% if show_history_page %}
                 <div class="flex justify-between">
-                    <span class="text-gray-600">Due this time (base):</span>
-                    <span class="text-gray-900">${{ (amount_due_this_time if amount_due_this_time is defined else 0)|format_price }}</span>
+                    <span class="font-semibold text-gray-900">Due this time (base):</span>
+                    <span class="font-semibold text-gray-900">${{ (amount_due_this_time if amount_due_this_time is defined else 0)|format_price }}</span>
                 </div>
                 {% if due_this_time_breakdown %}
                 <p class="text-xs text-gray-500 italic pl-0 -mt-1 mb-1">{{ due_this_time_breakdown }}</p>
                 {% endif %}
                 <div class="flex justify-between">
-                    <span class="text-gray-600">Amount Paid (net base):</span>
-                    <span class="text-gray-900">${{ (amount_paid_net if amount_paid_net is defined else (booking.amount_paid or 0))|format_price }}</span>
+                    <span class="font-semibold text-gray-900">Amount Paid (net base):</span>
+                    <span class="font-semibold text-gray-900">${{ (amount_paid_net if amount_paid_net is defined else (booking.amount_paid or 0))|format_price }}</span>
                 </div>
                 <div class="flex justify-between pt-2 border-t border-gray-300">
                     {% set pending_amt = amount_pending if amount_pending is defined else (expected_amount - (booking.amount_paid or 0)) %}
-                    <span class="font-semibold text-gray-900">Amount Remaining (net base):</span>
-                    <span class="font-semibold {% if pending_amt > 0 %}text-red-600{% else %}text-green-600{% endif %}">
+                    <span class="text-gray-600">Amount Remaining (net base):</span>
+                    <span class="{% if pending_amt > 0 %}text-red-600{% else %}text-green-600{% endif %}">
                         ${{ pending_amt|format_price }}
                     </span>
                 </div>
@@ -180,8 +180,8 @@
                 </div>
                 {% endif %}
                 <div class="flex justify-between">
-                    <span class="text-gray-600">Amount Paid (net base):</span>
-                    <span class="text-gray-900">${{ (amount_paid_net if amount_paid_net is defined else (booking.amount_paid or 0))|format_price }}</span>
+                    <span class="font-semibold text-gray-900">Amount Paid (net base):</span>
+                    <span class="font-semibold text-gray-900">${{ (amount_paid_net if amount_paid_net is defined else (booking.amount_paid or 0))|format_price }}</span>
                 </div>
                 {% endif %}
             </div>
@@ -195,7 +195,7 @@
                 {% for row in payment_history %}
                 <div class="bg-gray-50 p-4 rounded text-sm">
                     <div class="flex justify-between font-medium text-gray-900">
-                        <span>{% if row.date %}{{ row.date|format_pacific('%b %d, %Y') }}{% endif %} · {{ row.type_label }}</span>
+                        <span>{% if row.date %}{{ row.date|format_pacific('%b %d, %Y') }}{% endif %} · {{ row.type_label }}{% if row.via_auto_pay %} · Auto Pay{% endif %}</span>
                         <span>Net ${{ row.net|format_price }}</span>
                     </div>
                     <p class="text-gray-600 mt-1">

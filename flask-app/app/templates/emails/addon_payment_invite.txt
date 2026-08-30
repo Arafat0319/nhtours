@@ -1,0 +1,15 @@
+{{ subject_line }}
+
+Hi{% if customer_name and customer_name != 'Customer' %} {{ customer_name }}{% endif %},
+
+{{ intro_text }}
+
+Amount due: ${{ '%.2f'|format(amount) }}
+{{ addon_label }}
+Order: {{ order_number }}
+
+Pay now: {{ payment_link }}
+
+{{ footer_note }}
+
+Questions? info@nhtours.com

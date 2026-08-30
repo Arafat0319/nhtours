@@ -31,20 +31,22 @@ alwaysApply: true
 ### 定金 / 分期（有 History 页）
 
 1. Packages / Add-ons / Discount（有则显示）  
-2. **Total Expected (base)**  
-3. **Due this time (base)**  
+2. Total Expected (base)（常规字重）  
+3. **Due this time (base)**（**加粗** — 本次应收）  
 4. **说明行**（斜体灰字 8pt，可选）— `Includes: Deposit $… + …`  
-5. **Amount Paid (net base)**  
-6. **Amount Remaining (net base)**
+5. **Amount Paid (net base)**（**加粗** — 本次实付）  
+6. Amount Remaining (net base)（常规字重；可保留红/绿表示是否结清）
 
 ### 一次付全款（无 History 页）
 
 1. Packages / Add-ons / Discount（有则显示）  
-2. **Total Expected (base)**  
+2. Total Expected (base)（常规字重）  
 3. **实扣说明行**（斜体灰字 8pt，有付款记录时）— 与 History 同文案：  
    `Base $… + fee $… = charged $… | net $…`（样式同 Includes）  
-4. **Amount Paid (net base)**  
+4. **Amount Paid (net base)**（**加粗**）  
 - **不要**显示 Due this time / Amount Remaining  
+
+> **2026-08-29 视觉更新（用户确认）**：强调「本次」Due / Paid，不再加粗 Expected / Remaining。
 
 说明：
 

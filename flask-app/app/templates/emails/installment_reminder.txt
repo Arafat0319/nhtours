@@ -12,6 +12,9 @@ Payment details:
 - Order number: {{ order_number }}
 
 Pay here: {{ payment_link }}
+{% if auto_pay_url %}
+{{ auto_pay_cta_label }}: {{ auto_pay_url }}
+{% endif %}
 
 {{ footer_note }}
 

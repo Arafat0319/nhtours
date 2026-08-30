@@ -81,6 +81,15 @@
 | `/admin/trips/<trip_id>/bookings/<booking_id>/participants/<participant_id>/withdraw` | POST | 参与者 soft withdraw；JSON 可选 `{ restore: true }` 恢复；**不退款**、不改套餐数量 |
 | `/admin/trips/<trip_id>/bookings/<booking_id>/refund` | POST | 退款：JSON `{ amount, reason, payment_id?, full_refund?, cancel_booking?, manual_only? }`；`full_refund` 时退光各笔可退额（**按笔 commit**）；否则 `amount>0` 必传 `payment_id`；中途失败可返回 `partial_success`；成功发客户 refund notice |
 | `/admin/trips/<trip_id>/bookings/<booking_id>/reconcile-ledger` | GET | 账本核对；`?stripe=1` 对比 Stripe 退款；异常时邮件提醒管理员 |
+| `/admin/bookings/<booking_id>/addons/catalog` | GET | Manage 后加：行程附加项目录 + 在团旅客 |
+| `/admin/bookings/<booking_id>/addons` | POST | 后加一行 `admin_manual` unpaid，并尝试自动发付款邮件；JSON `{ trip_addon_id, quantity?, participant_id? }` |
+| `/admin/booking-addons/<id>/payment-link` | GET | 返回签名付款 URL |
+| `/admin/booking-addons/<id>/payment-link/send` | POST | 补发付款邀请邮件 |
+| `/admin/bookings/<booking_id>/auto-pay` | POST | 管理员开/关 Auto Pay；JSON `{ enabled, payment_method_id? }` |
+| `/admin/bookings/<booking_id>/auto-pay-link` | GET | Copy Auto Pay 管理链接 |
+| `/admin/bookings/<booking_id>/auto-pay-link/send` | POST | 发 Auto Pay 邀请邮件 |
+| `/admin/bookings/<booking_id>/auto-pay-methods` | GET | 列出 Customer 已保存支付方式 |
+| `/admin/payments/installments/<id>/payment-link` | GET | 管理员复制分期 / Payoff 付款链接 |
 
 ### 客户管理
 
@@ -339,7 +348,10 @@ stripe listen --forward-to localhost:8080/webhooks/stripe
 | `/payment/pending` | GET | 支付处理中页面 |
 | `/booking/success` | GET | 支付成功页面 |
 | `/pay-installment/<id>` | GET | 分期付款弹窗页（query: token=）；**强制补齐**该期+此前未付/逾期；模板 installment_modal_page.html |
-| `/pay-installment/<id>/payoff` | GET | 一次性付清整单剩余（query: token=） |
+| `/pay-installment/<id>/payoff` | GET | 一次性付清整单剩余（query: token=）；**不含**未付 Manage 后加附加项 |
+| `/pay-addon/<booking_addon_id>` | GET | Manage 后加附加项付款页；**须 `?token=`**；独立 PI（`payment_type=addon_purchase`） |
+| `/booking/<id>/auto-pay` | GET/POST | 客户 Auto Pay 管理（须 token）；选已有方式 / SetupIntent / 关闭 |
+| `/test/auto-pay-preview` | GET | Auto Pay 页预览；**仅 debug** |
 | `/test/installment-modal` | GET | 分期弹窗预览；**仅 debug**，生产 404 |
 | `/test/installment-payment-preview` | GET | 分期页预览；**仅 debug** |
 

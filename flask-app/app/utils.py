@@ -895,6 +895,54 @@ def verify_installment_token(token, installment_id, max_age_seconds=60 * 60 * 24
     return data.get('installment_id') == installment_id
 
 
+def _addon_payment_token_serializer():
+    secret_key = current_app.config.get('SECRET_KEY')
+    return URLSafeTimedSerializer(secret_key, salt='addon-payment-link')
+
+
+def generate_addon_payment_token(booking_addon_id):
+    serializer = _addon_payment_token_serializer()
+    return serializer.dumps({'booking_addon_id': int(booking_addon_id)})
+
+
+def verify_addon_payment_token(token, booking_addon_id, max_age_seconds=60 * 60 * 24 * 180):
+    if not token:
+        return False
+    serializer = _addon_payment_token_serializer()
+    try:
+        data = serializer.loads(token, max_age=max_age_seconds)
+    except (BadSignature, SignatureExpired):
+        return False
+    try:
+        return int(data.get('booking_addon_id')) == int(booking_addon_id)
+    except (TypeError, ValueError):
+        return False
+
+
+def _auto_pay_token_serializer():
+    secret_key = current_app.config.get('SECRET_KEY')
+    return URLSafeTimedSerializer(secret_key, salt='booking-auto-pay')
+
+
+def generate_auto_pay_token(booking_id):
+    serializer = _auto_pay_token_serializer()
+    return serializer.dumps({'booking_id': int(booking_id)})
+
+
+def verify_auto_pay_token(token, booking_id, max_age_seconds=60 * 60 * 24 * 365):
+    if not token:
+        return False
+    serializer = _auto_pay_token_serializer()
+    try:
+        data = serializer.loads(token, max_age=max_age_seconds)
+    except (BadSignature, SignatureExpired):
+        return False
+    try:
+        return int(data.get('booking_id')) == int(booking_id)
+    except (TypeError, ValueError):
+        return False
+
+
 def _receipt_token_serializer():
     secret_key = current_app.config.get('SECRET_KEY')
     return URLSafeTimedSerializer(secret_key, salt='booking-receipt-download')

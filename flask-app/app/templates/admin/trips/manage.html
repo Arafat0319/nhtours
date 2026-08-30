@@ -2193,6 +2193,484 @@
                 });
         };
 
+        async function manageFetchPaymentLinks(installmentId) {
+            const response = await fetch(`/admin/payments/installments/${installmentId}/payment-link`, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.error || 'Could not generate link');
+            }
+            return result;
+        }
+
+        async function manageCopyText(text) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(text);
+                return;
+            }
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            ta.remove();
+        }
+
+        async function manageCopyPaymentLink(installmentId) {
+            try {
+                const result = await manageFetchPaymentLinks(installmentId);
+                await manageCopyText(result.payment_url);
+                showToast('Payment link copied', 'success');
+            } catch (err) {
+                showToast(err.message || 'Failed to copy payment link', 'error');
+            }
+        }
+
+        function manageToggleAddonDropdown(baId) {
+            const ddId = 'manage-addon-dd-' + baId;
+            manageToggleDropdownById(ddId);
+        }
+
+        function manageToggleDropdownById(dropdownId) {
+            const dropdown = document.getElementById(dropdownId);
+            if (!dropdown) return;
+            document.querySelectorAll('[id^="manage-inst-dd-"], [id^="manage-addon-dd-"]').forEach(function (menu) {
+                if (menu.id !== dropdownId) menu.classList.add('hidden');
+            });
+            dropdown.classList.toggle('hidden');
+        }
+
+        async function manageCopyAddonPaymentLink(baId) {
+            try {
+                const response = await fetch(`/admin/booking-addons/${baId}/payment-link`, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                const result = await response.json();
+                if (!result.success) throw new Error(result.error || 'Could not generate link');
+                await manageCopyText(result.payment_url);
+                showToast('Add-on payment link copied', 'success');
+            } catch (err) {
+                showToast(err.message || 'Failed to copy link', 'error');
+            }
+        }
+
+        async function manageSendAddonPaymentEmail(baId) {
+            const ok = await showMessageConfirm(
+                'Send add-on payment email',
+                'Email the customer a payment link for this add-on?',
+                { confirmText: 'Send' }
+            );
+            if (!ok) return;
+            try {
+                const response = await fetch(`/admin/booking-addons/${baId}/payment-link/send`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                const result = await response.json();
+                if (result.success) {
+                    showToast(result.message || 'Payment email sent', 'success');
+                } else {
+                    showToast(result.error || 'Failed to send', 'error');
+                }
+            } catch (err) {
+                showToast(err.message || 'Failed to send', 'error');
+            }
+        }
+
+        async function openAddAddonModal(bookingId) {
+            const modal = document.getElementById('addAddonModal');
+            const select = document.getElementById('addAddonSelect');
+            const qty = document.getElementById('addAddonQty');
+            const partSel = document.getElementById('addAddonParticipant');
+            const errEl = document.getElementById('addAddonError');
+            if (!modal || !select) {
+                showToast('Add-on dialog not found. Refresh the page.', 'error');
+                return;
+            }
+            select.innerHTML = '<option value="">Loading…</option>';
+            if (partSel) partSel.innerHTML = '';
+            if (qty) qty.value = '1';
+            if (errEl) {
+                errEl.textContent = '';
+                errEl.classList.add('hidden');
+            }
+            modal.dataset.bookingId = String(bookingId);
+            modal.classList.remove('hidden');
+            try {
+                const response = await fetch(`/admin/bookings/${bookingId}/addons/catalog`, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                const data = await response.json();
+                if (!data.success) throw new Error(data.error || 'Failed to load add-ons');
+                if (data.cancelled) throw new Error('Order is cancelled');
+                select.innerHTML = '<option value="">Select an add-on…</option>';
+                (data.trip_addons || []).forEach(a => {
+                    const opt = document.createElement('option');
+                    opt.value = a.id;
+                    opt.textContent = `${a.name} — $${Number(a.price).toFixed(2)}`;
+                    select.appendChild(opt);
+                });
+                if (!(data.trip_addons || []).length) {
+                    select.innerHTML = '<option value="">No add-ons on this trip</option>';
+                }
+                if (partSel) {
+                    const parts = data.participants || [];
+                    if (!parts.length) {
+                        partSel.innerHTML = '<option value="">No passengers on this order</option>';
+                    } else {
+                        // Default = first participant (same as signup add-ons)
+                        parts.forEach((p, idx) => {
+                            const opt = document.createElement('option');
+                            opt.value = p.id;
+                            opt.textContent = idx === 0
+                                ? `${p.name} (default — first passenger)`
+                                : p.name;
+                            if (idx === 0) opt.selected = true;
+                            partSel.appendChild(opt);
+                        });
+                    }
+                }
+            } catch (err) {
+                if (errEl) {
+                    errEl.textContent = err.message || 'Failed to load';
+                    errEl.classList.remove('hidden');
+                }
+                select.innerHTML = '<option value="">—</option>';
+                showToast(err.message || 'Failed to load add-ons', 'error');
+            }
+        }
+
+        function closeAddAddonModal() {
+            const modal = document.getElementById('addAddonModal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        async function submitAddAddon() {
+            const modal = document.getElementById('addAddonModal');
+            const bookingId = modal && modal.dataset.bookingId;
+            const addonId = document.getElementById('addAddonSelect').value;
+            const qty = parseInt(document.getElementById('addAddonQty').value, 10) || 1;
+            const participantId = document.getElementById('addAddonParticipant').value || null;
+            const errEl = document.getElementById('addAddonError');
+            if (errEl) errEl.classList.add('hidden');
+            if (!bookingId || !addonId) {
+                if (errEl) {
+                    errEl.textContent = 'Please select an add-on.';
+                    errEl.classList.remove('hidden');
+                }
+                return;
+            }
+            try {
+                const response = await fetch(`/admin/bookings/${bookingId}/addons`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify({
+                        addon_id: parseInt(addonId, 10),
+                        quantity: qty,
+                        participant_id: participantId ? parseInt(participantId, 10) : null
+                    })
+                });
+                const result = await response.json();
+                if (!result.success) throw new Error(result.error || 'Failed to add');
+                closeAddAddonModal();
+                const toastType = result.email_sent === false ? 'error' : 'success';
+                showToast(result.message || 'Add-on added', toastType);
+                if (typeof openManageBookingModal === 'function') {
+                    openManageBookingModal(parseInt(bookingId, 10));
+                }
+            } catch (err) {
+                if (errEl) {
+                    errEl.textContent = err.message || 'Failed to add';
+                    errEl.classList.remove('hidden');
+                }
+                showToast(err.message || 'Failed to add', 'error');
+            }
+        }
+
+        // Expose immediately for inline onclick handlers inside Manage modal HTML
+        window.manageToggleAddonDropdown = manageToggleAddonDropdown;
+        window.manageCopyAddonPaymentLink = manageCopyAddonPaymentLink;
+        window.manageSendAddonPaymentEmail = manageSendAddonPaymentEmail;
+        window.openAddAddonModal = openAddAddonModal;
+        window.closeAddAddonModal = closeAddAddonModal;
+        window.submitAddAddon = submitAddAddon;
+
+        async function manageCopyPayoffLink(installmentId) {
+            try {
+                const result = await manageFetchPaymentLinks(installmentId);
+                await manageCopyText(result.payoff_url);
+                showToast('Payoff link copied', 'success');
+            } catch (err) {
+                showToast(err.message || 'Failed to copy payoff link', 'error');
+            }
+        }
+
+        async function manageSendPaymentEmail(installmentId) {
+            const ok = await showMessageConfirm(
+                'Send payment email',
+                'Send an email to the customer with a payment link for this installment?',
+                { confirmText: 'Send' }
+            );
+            if (!ok) return;
+            try {
+                const response = await fetch(`/admin/payments/installments/${installmentId}/send-reminder`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                const result = await response.json();
+                if (result.success) {
+                    showToast('Payment email sent', 'success');
+                    if (currentBookingId) {
+                        openManageBookingModal(currentBookingId);
+                    }
+                } else {
+                    showToast(result.error || 'Failed to send email', 'error');
+                }
+            } catch (err) {
+                showToast('Failed to send email', 'error');
+            }
+        }
+
+        window.manageCopyPaymentLink = manageCopyPaymentLink;
+        window.manageCopyPayoffLink = manageCopyPayoffLink;
+        window.manageSendPaymentEmail = manageSendPaymentEmail;
+
+        function manageToggleInstDropdown(dropdownId) {
+            manageToggleDropdownById(dropdownId);
+        }
+        window.manageToggleInstDropdown = manageToggleInstDropdown;
+        document.addEventListener('click', function (event) {
+            if (!event.target.closest('[id^="manage-inst-dd-"]')
+                && !event.target.closest('[id^="manage-addon-dd-"]')
+                && !event.target.closest('button[onclick*="manageToggleInstDropdown"]')
+                && !event.target.closest('button[onclick*="manageToggleAddonDropdown"]')) {
+                document.querySelectorAll('[id^="manage-inst-dd-"], [id^="manage-addon-dd-"]').forEach(function (menu) {
+                    menu.classList.add('hidden');
+                });
+            }
+        });
+
+        async function manageToggleAutoPay(bookingId, enabled) {
+            if (enabled) {
+                openAutoPayEnableModal(bookingId);
+                return;
+            }
+            const title = 'Disable Auto Pay';
+            const msg = 'Turn off Auto Pay? Remaining installments will use reminder emails.';
+            const okConfirm = (typeof showMessageConfirm === 'function')
+                ? await showMessageConfirm(title, msg, { confirmText: 'Turn off' })
+                : window.confirm(msg);
+            if (!okConfirm) return;
+            await manageSetAutoPay(bookingId, false, null);
+        }
+
+        async function manageSetAutoPay(bookingId, enabled, paymentMethodId) {
+            try {
+                const body = { enabled: !!enabled };
+                if (enabled && paymentMethodId) {
+                    body.payment_method_id = paymentMethodId;
+                }
+                const response = await fetch(`/admin/bookings/${bookingId}/auto-pay`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: JSON.stringify(body),
+                });
+                const result = await response.json();
+                if (result.success) {
+                    if (typeof showToast === 'function') showToast(result.message || 'Updated', 'success');
+                    closeAutoPayEnableModal();
+                    if (typeof openManageBookingModal === 'function') {
+                        openManageBookingModal(bookingId);
+                    }
+                    return true;
+                }
+                if (typeof showToast === 'function') {
+                    showToast(result.error || 'Failed', 'error');
+                }
+                return false;
+            } catch (e) {
+                if (typeof showToast === 'function') showToast('Failed to update Auto Pay', 'error');
+                return false;
+            }
+        }
+
+        let autoPayEnableBookingId = null;
+
+        function closeAutoPayEnableModal() {
+            const modal = document.getElementById('autoPayEnableModal');
+            if (modal) modal.classList.add('hidden');
+            autoPayEnableBookingId = null;
+            document.body.style.overflow = '';
+        }
+
+        async function openAutoPayEnableModal(bookingId) {
+            const modal = document.getElementById('autoPayEnableModal');
+            const listEl = document.getElementById('autoPayEnableMethodList');
+            const emptyEl = document.getElementById('autoPayEnableEmpty');
+            const emailHint = document.getElementById('autoPayEnableEmailHint');
+            const confirmBtn = document.getElementById('autoPayEnableConfirm');
+            const loadingEl = document.getElementById('autoPayEnableLoading');
+            if (!modal || !listEl || !emptyEl || !confirmBtn) return;
+
+            autoPayEnableBookingId = bookingId;
+            listEl.innerHTML = '';
+            emptyEl.classList.add('hidden');
+            listEl.classList.add('hidden');
+            if (loadingEl) loadingEl.classList.remove('hidden');
+            confirmBtn.disabled = true;
+            if (emailHint) emailHint.textContent = '';
+            modal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+
+            try {
+                const response = await fetch(`/admin/bookings/${bookingId}/auto-pay-methods`, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const result = await response.json();
+                if (loadingEl) loadingEl.classList.add('hidden');
+                if (!result.success) {
+                    if (typeof showToast === 'function') showToast(result.error || 'Could not load methods', 'error');
+                    closeAutoPayEnableModal();
+                    return;
+                }
+                if (emailHint) {
+                    emailHint.textContent = result.buyer_email
+                        ? `Email goes to ${result.buyer_email}.`
+                        : 'No buyer email on file — use Copy link instead.';
+                }
+                const methods = result.payment_methods || [];
+                const defaultId = result.default_payment_method_id || (methods[0] && methods[0].id);
+                if (!methods.length) {
+                    emptyEl.classList.remove('hidden');
+                    confirmBtn.disabled = true;
+                    return;
+                }
+                listEl.classList.remove('hidden');
+                listEl.innerHTML = methods.map((pm, idx) => {
+                    const checked = (defaultId ? pm.id === defaultId : idx === 0) ? 'checked' : '';
+                    const ach = pm.type === 'us_bank_account'
+                        ? ' <span class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 ml-2">ACH</span>'
+                        : '';
+                    const safeId = String(pm.id || '').replace(/"/g, '&quot;');
+                    const safeLabel = String(pm.label || pm.id || '')
+                        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+                    return `
+                        <label class="flex items-center gap-3 px-3 py-2.5 rounded border border-gray-200 hover:border-wetravel-cyan cursor-pointer bg-white">
+                            <input type="radio" name="auto_pay_enable_pm" value="${safeId}" class="accent-[#00D1C1]" ${checked}>
+                            <span class="text-sm text-gray-800">${safeLabel}${ach}</span>
+                        </label>`;
+                }).join('');
+                confirmBtn.disabled = false;
+                listEl.querySelectorAll('input[name="auto_pay_enable_pm"]').forEach((input) => {
+                    input.addEventListener('change', () => { confirmBtn.disabled = false; });
+                });
+            } catch (e) {
+                if (loadingEl) loadingEl.classList.add('hidden');
+                if (typeof showToast === 'function') showToast('Could not load payment methods', 'error');
+                closeAutoPayEnableModal();
+            }
+        }
+
+        async function manageCopyAutoPayLink(bookingId) {
+            try {
+                const response = await fetch(`/admin/bookings/${bookingId}/auto-pay-link`, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const result = await response.json();
+                if (result.success && result.auto_pay_url) {
+                    await manageCopyText(result.auto_pay_url);
+                    if (typeof showToast === 'function') showToast('Auto Pay link copied', 'success');
+                    return;
+                }
+                if (typeof showToast === 'function') showToast(result.error || 'Could not get link', 'error');
+            } catch (e) {
+                if (typeof showToast === 'function') showToast('Could not copy Auto Pay link', 'error');
+            }
+        }
+
+        async function manageSendAutoPayLink(bookingId) {
+            try {
+                const response = await fetch(`/admin/bookings/${bookingId}/auto-pay-link/send`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                });
+                const result = await response.json();
+                if (result.success) {
+                    if (typeof showToast === 'function') showToast(result.message || 'Email sent', 'success');
+                    return;
+                }
+                if (typeof showToast === 'function') showToast(result.error || 'Failed to send', 'error');
+            } catch (e) {
+                if (typeof showToast === 'function') showToast('Failed to send Auto Pay email', 'error');
+            }
+        }
+
+        window.manageToggleAutoPay = manageToggleAutoPay;
+        window.manageCopyAutoPayLink = manageCopyAutoPayLink;
+        window.manageSendAutoPayLink = manageSendAutoPayLink;
+        window.openAutoPayEnableModal = openAutoPayEnableModal;
+        window.closeAutoPayEnableModal = closeAutoPayEnableModal;
+
+        (function bindAutoPayEnableModal() {
+            const modal = document.getElementById('autoPayEnableModal');
+            const cancelBtn = document.getElementById('autoPayEnableCancelBtn');
+            const confirmBtn = document.getElementById('autoPayEnableConfirm');
+            const copyBtn = document.getElementById('autoPayEnableCopyBtn');
+            const sendBtn = document.getElementById('autoPayEnableSendBtn');
+            if (cancelBtn) cancelBtn.addEventListener('click', closeAutoPayEnableModal);
+            if (modal) {
+                modal.addEventListener('click', function (e) {
+                    if (e.target === modal) closeAutoPayEnableModal();
+                });
+            }
+            if (confirmBtn) {
+                confirmBtn.addEventListener('click', async function () {
+                    if (!autoPayEnableBookingId) return;
+                    const selected = document.querySelector('input[name="auto_pay_enable_pm"]:checked');
+                    if (!selected) {
+                        if (typeof showToast === 'function') showToast('Select a payment method', 'error');
+                        return;
+                    }
+                    confirmBtn.disabled = true;
+                    const ok = await manageSetAutoPay(autoPayEnableBookingId, true, selected.value);
+                    if (!ok) confirmBtn.disabled = false;
+                });
+            }
+            if (copyBtn) {
+                copyBtn.addEventListener('click', function () {
+                    if (autoPayEnableBookingId) manageCopyAutoPayLink(autoPayEnableBookingId);
+                });
+            }
+            if (sendBtn) {
+                sendBtn.addEventListener('click', function () {
+                    if (autoPayEnableBookingId) manageSendAutoPayLink(autoPayEnableBookingId);
+                });
+            }
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) {
+                    closeAutoPayEnableModal();
+                }
+            });
+        })();
+
         // Close Manage Booking Modal
         function closeManageBookingModal() {
             if (!manageBookingModal) return;
@@ -2297,9 +2775,61 @@
                     const quantity = addon.quantity || 1;
                     const price = parseFloat(addon.price) || 0;
                     const subtotal = addon.subtotal || (price * quantity);
-                    return `<div class="flex justify-between items-center py-1">
-                        <span class="text-sm text-gray-600">+ ${addon.name} x${quantity}</span>
-                        <span class="text-sm text-gray-600">$${subtotal.toFixed(2)}</span>
+                    const isManual = !!addon.is_manual || addon.source === 'admin_manual';
+                    const payStatus = (addon.payment_status || (isManual ? 'unpaid' : 'paid')).toLowerCase();
+                    const statusBadge = (() => {
+                        if (!isManual) return '';
+                        if (payStatus === 'paid') {
+                            return '<span class="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-800">Paid</span>';
+                        }
+                        if (payStatus === 'processing') {
+                            return '<span class="px-1.5 py-0.5 text-xs rounded bg-amber-100 text-amber-800">Processing</span>';
+                        }
+                        if (payStatus === 'failed') {
+                            return '<span class="px-1.5 py-0.5 text-xs rounded bg-red-100 text-red-800">Failed</span>';
+                        }
+                        return '<span class="px-1.5 py-0.5 text-xs rounded bg-yellow-100 text-yellow-800">Unpaid</span>';
+                    })();
+                    const manualBadge = isManual
+                        ? '<span class="ml-1 px-1.5 py-0.5 text-xs rounded bg-slate-100 text-slate-700">Manual</span>'
+                        : '';
+                    const who = addon.participant_name
+                        ? `<span class="text-xs text-gray-400"> · ${addon.participant_name}</span>`
+                        : '';
+                    const baId = addon.booking_addon_id;
+                    const canPayLink = isManual && payStatus !== 'paid' && baId && booking.status !== 'cancelled';
+                    const ddId = 'manage-addon-dd-' + baId;
+                    const actions = canPayLink ? `
+                        <div class="relative inline-block text-left flex-shrink-0" onclick="event.stopPropagation();">
+                            <button type="button"
+                                class="inline-flex items-center px-2.5 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                                onclick="event.stopPropagation(); manageToggleAddonDropdown(${baId})">
+                                Actions
+                                <svg class="-mr-0.5 ml-1.5 h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                            <div id="${ddId}"
+                                class="hidden origin-top-right absolute right-0 mt-1 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
+                                <div class="py-1" role="menu">
+                                    <button type="button" role="menuitem"
+                                        class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100"
+                                        onclick="event.stopPropagation(); manageToggleAddonDropdown(${baId}); manageCopyAddonPaymentLink(${baId})">Copy payment link</button>
+                                    <button type="button" role="menuitem"
+                                        class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100"
+                                        onclick="event.stopPropagation(); manageToggleAddonDropdown(${baId}); manageSendAddonPaymentEmail(${baId})">Send payment email</button>
+                                </div>
+                            </div>
+                        </div>` : '';
+                    return `<div class="flex justify-between items-start gap-2 py-1.5 border-b border-gray-100 last:border-0">
+                        <div class="min-w-0 text-sm text-gray-900">
+                            <span>+ ${addon.name} x${quantity}</span>${who}${manualBadge}
+                        </div>
+                        <div class="flex items-center space-x-2 flex-shrink-0">
+                            <span class="text-sm font-medium text-gray-900">$${Number(subtotal).toFixed(2)}</span>
+                            ${statusBadge}
+                            ${actions}
+                        </div>
                     </div>`;
                 }).join('');
             } else {
@@ -2363,32 +2893,44 @@
                 if (isNaN(d.getTime())) return s;
                 return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
             }
+            function manageDaysPastDue(dueIso) {
+                if (!dueIso) return 0;
+                const due = new Date(String(dueIso).substring(0, 10) + 'T12:00:00');
+                if (isNaN(due.getTime())) return 0;
+                const now = new Date();
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+                const diff = Math.floor((today.getTime() - due.getTime()) / 86400000);
+                return diff > 0 ? diff : 0;
+            }
+            function manageDaysUntilDue(dueIso) {
+                if (!dueIso) return null;
+                const due = new Date(String(dueIso).substring(0, 10) + 'T12:00:00');
+                if (isNaN(due.getTime())) return null;
+                const now = new Date();
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+                return Math.floor((due.getTime() - today.getTime()) / 86400000);
+            }
+            function manageDueHintHtml(dueIso, unpaid) {
+                if (!unpaid || !dueIso) return '';
+                const until = manageDaysUntilDue(dueIso);
+                if (until === null) return '';
+                if (until < 0) {
+                    const days = Math.abs(until);
+                    return `<div class="text-xs text-red-600 mt-0.5">Overdue ${days} day${days === 1 ? '' : 's'}</div>`;
+                }
+                if (until === 0) {
+                    return `<div class="text-xs text-amber-700 mt-0.5">Due today</div>`;
+                }
+                if (until === 1) {
+                    return `<div class="text-xs text-gray-500 mt-0.5">Due tomorrow</div>`;
+                }
+                return `<div class="text-xs text-gray-500 mt-0.5">Due in ${until} days</div>`;
+            }
             if (booking.installments && booking.installments.length > 0) {
-                const buckets = {};
-                booking.installments.forEach(function(inst) {
-                    const dueKey = inst.due_date ? String(inst.due_date).substring(0, 10) : ('n-' + inst.installment_number);
-                    const isDeposit = (inst.installment_number === 0) || ((inst.label || '').toLowerCase().indexOf('deposit') >= 0 && (inst.installment_number || 0) === 0);
-                    // 定金行单独成桶，勿与同日分期合并（否则会出现 $150+$666=$816 + status mixed）
-                    const bucketKey = isDeposit ? ('deposit-' + dueKey) : ('inst-' + dueKey);
-                    const label = isDeposit
-                        ? 'Deposit'
-                        : (inst.due_date ? formatManagePlanDate(inst.due_date) : (inst.label || ('Installment #' + inst.installment_number)));
-                    if (!buckets[bucketKey]) {
-                        buckets[bucketKey] = {
-                            label: label,
-                            amount: 0,
-                            sort: isDeposit ? ('0-' + (inst.due_date || '')) : (inst.due_date || '9999'),
-                            statuses: [],
-                            isDeposit: isDeposit
-                        };
-                    }
-                    buckets[bucketKey].amount += Number(inst.amount) || 0;
-                    buckets[bucketKey].statuses.push(inst.status || 'pending');
-                });
-                const rows = Object.keys(buckets).map(function(k) { return buckets[k]; });
-                rows.sort(function(a, b) {
-                    if (a.sort === b.sort) return 0;
-                    return a.sort < b.sort ? -1 : 1;
+                const sortedInst = booking.installments.slice().sort(function(a, b) {
+                    const an = a.installment_number != null ? a.installment_number : 999;
+                    const bn = b.installment_number != null ? b.installment_number : 999;
+                    return an - bn;
                 });
                 installmentsHtml = `
                     <div class="mb-4">
@@ -2397,25 +2939,56 @@
                         <p class="text-xs text-amber-800 mb-2">Schedule below is for <strong>installment products only</strong>. Full-pay products were due at booking and are listed under Packages.</p>
                         ` : ''}
                         <div class="bg-gray-50 rounded-lg p-3 space-y-2">
-                            ${rows.map(function(row) {
-                                const uniq = Array.from(new Set(row.statuses));
-                                let status = uniq.length === 1 ? uniq[0] : 'partially_paid';
+                            ${sortedInst.map(function(inst) {
+                                const isDeposit = (inst.installment_number === 0) || ((inst.label || '').toLowerCase().indexOf('deposit') >= 0 && (inst.installment_number || 0) === 0);
+                                let label = inst.label || (isDeposit ? 'Deposit' : ('Installment #' + inst.installment_number));
+                                if (!isDeposit && inst.due_date) {
+                                    label = formatManagePlanDate(inst.due_date);
+                                }
+                                let status = inst.status || 'pending';
                                 if (status === 'cancelled' && settledViaPayoff) status = 'cancelled (payoff)';
-                                const statusLabel = status === 'partially_paid' ? 'Partially paid'
-                                    : status === 'paid' ? 'Paid'
+                                const statusLabel = status === 'paid' ? 'Paid'
                                     : status === 'pending' ? 'Pending'
                                     : status === 'overdue' ? 'Overdue'
                                     : status;
                                 const statusClass = status === 'paid' ? 'bg-green-100 text-green-800' :
                                     status === 'overdue' ? 'bg-red-100 text-red-800' :
-                                    (status.indexOf('cancelled') === 0) ? 'bg-gray-100 text-gray-600' :
-                                    status === 'partially_paid' ? 'bg-orange-100 text-orange-800' :
+                                    (String(status).indexOf('cancelled') === 0) ? 'bg-gray-100 text-gray-600' :
                                     'bg-yellow-100 text-yellow-800';
-                                return `<div class="flex justify-between items-center py-1.5">
-                                    <span class="text-sm text-gray-900">${row.label}</span>
-                                    <div class="flex items-center space-x-2">
-                                        <span class="text-sm font-medium text-gray-900">$${row.amount.toFixed(2)}</span>
+                                const unpaid = status === 'pending' || status === 'overdue';
+                                const dueHint = manageDueHintHtml(inst.due_date, unpaid);
+                                const ddId = 'manage-inst-dd-' + inst.id;
+                                const actions = unpaid ? `
+                                    <div class="relative inline-block text-left flex-shrink-0" onclick="event.stopPropagation();">
+                                        <button type="button"
+                                            class="inline-flex items-center px-2.5 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                                            onclick="event.stopPropagation(); manageToggleInstDropdown('${ddId}')">
+                                            Actions
+                                            <svg class="-mr-0.5 ml-1.5 h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                                            </svg>
+                                        </button>
+                                        <div id="${ddId}"
+                                            class="hidden origin-top-right absolute right-0 mt-1 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-20">
+                                            <div class="py-1" role="menu">
+                                                <button type="button" role="menuitem"
+                                                    class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100"
+                                                    onclick="event.stopPropagation(); manageToggleInstDropdown('${ddId}'); manageCopyPaymentLink(${inst.id})">Copy payment link</button>
+                                                <button type="button" role="menuitem"
+                                                    class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100"
+                                                    onclick="event.stopPropagation(); manageToggleInstDropdown('${ddId}'); manageSendPaymentEmail(${inst.id})">Send payment email</button>
+                                            </div>
+                                        </div>
+                                    </div>` : '';
+                                return `<div class="flex justify-between items-start gap-2 py-1.5 border-b border-gray-100 last:border-0">
+                                    <div class="min-w-0">
+                                        <span class="text-sm text-gray-900">${label}</span>
+                                        ${dueHint}
+                                    </div>
+                                    <div class="flex items-center space-x-2 flex-shrink-0">
+                                        <span class="text-sm font-medium text-gray-900">$${(Number(inst.amount) || 0).toFixed(2)}</span>
                                         <span class="px-1.5 py-0.5 text-xs rounded ${statusClass}">${statusLabel}</span>
+                                        ${actions}
                                     </div>
                                 </div>`;
                             }).join('')}
@@ -2469,6 +3042,34 @@
                 }
             }
             
+            // Auto Pay controls (installment bookings)
+            let autoPayHtml = '';
+            if (hasInstallmentPkg || (booking.installments && booking.installments.length > 0)) {
+                const apOn = !!booking.auto_pay_enabled;
+                autoPayHtml = `
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Auto Pay</label>
+                        <div class="bg-gray-50 rounded-lg p-3 flex flex-wrap items-center justify-between gap-2">
+                            <span class="text-sm text-gray-800">
+                                Status:
+                                <span class="font-semibold ${apOn ? 'text-green-700' : 'text-gray-600'}">${apOn ? 'On' : 'Off'}</span>
+                            </span>
+                            <div class="flex flex-wrap gap-2 items-center">
+                                ${apOn ? `
+                                <button type="button" class="text-xs px-2 py-1 rounded border"
+                                    style="background:#fffbeb;border-color:#fde68a;color:#92400e;"
+                                    onclick="event.stopPropagation(); manageToggleAutoPay(${booking.id}, false)">Turn off</button>
+                                ` : `
+                                <button type="button" class="text-xs px-2 py-1 rounded border"
+                                    style="background:#ecfdf5;border-color:#a7f3d0;color:#065f46;"
+                                    onclick="event.stopPropagation(); manageToggleAutoPay(${booking.id}, true)">Turn on</button>
+                                `}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
             // Get buyer info
             const buyer = booking.buyer || booking.client || {};
             const buyerName = buyer.name || `${buyer.first_name || ''} ${buyer.last_name || ''}`.trim() || '-';
@@ -2524,17 +3125,26 @@
                         </div>
                     </div>
 
+                    ${autoPayHtml}
                     ${installmentsHtml}
                     
                     <!-- Add-ons -->
                     <div class="mb-4">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Add-ons</label>
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="block text-sm font-medium text-gray-700">Add-ons</label>
+                            ${booking.status !== 'cancelled' ? `
+                            <button type="button" onclick="openAddAddonModal(${booking.id})"
+                                class="text-xs px-2.5 py-1 rounded border border-cyan-600 text-cyan-700 hover:bg-cyan-50 font-medium">
+                                + Add add-on
+                            </button>` : ''}
+                        </div>
                         <div class="bg-gray-50 rounded-lg p-3">
                             ${addonsHtml}
                             ${booking.addons_total ? `<div class="flex justify-between items-center pt-2 mt-2 border-t border-gray-200">
                                 <span class="text-sm font-medium text-gray-700">Subtotal</span>
                                 <span class="text-sm font-medium text-gray-900">$${booking.addons_total.toFixed(2)}</span>
                             </div>` : ''}
+                            <p class="text-xs text-gray-400 mt-2">Manual add-ons email a payment link automatically; paid separately (not via installments or Auto Pay).</p>
                         </div>
                     </div>
                     
@@ -4276,6 +4886,101 @@
         <div class="px-6 py-4 border-t flex justify-end flex-shrink-0 bg-gray-50 rounded-b-lg">
             <button type="button" onclick="document.getElementById('viewMessageModal').classList.add('hidden')"
                 class="border border-wetravel-cyan text-wetravel-cyan px-4 py-2 rounded text-sm hover:bg-white">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Enable Auto Pay: pick saved PM or send customer link -->
+<div id="autoPayEnableModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden z-[80] flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-lg w-full max-w-md" role="dialog" aria-modal="true" aria-labelledby="autoPayEnableTitle">
+        <div class="p-6">
+            <h3 class="text-lg font-medium text-gray-900" id="autoPayEnableTitle">Turn on Auto Pay</h3>
+            <p class="mt-1 text-sm text-gray-500">Choose a saved payment method to charge on due dates.</p>
+
+            <div id="autoPayEnableLoading" class="mt-4 text-sm text-gray-500 py-4 text-center">Loading payment methods…</div>
+
+            <div id="autoPayEnableMethodList" class="mt-4 space-y-2 hidden"></div>
+
+            <div id="autoPayEnableEmpty" class="mt-4 hidden rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                No saved payment methods on this booking. Ask the customer to add a card or bank account using the Auto Pay link below.
+            </div>
+
+            <div class="mt-5 pt-4 border-t border-gray-200">
+                <p class="text-xs font-medium text-gray-700 mb-1">Customer needs to add a method first?</p>
+                <div class="text-xs text-gray-500 mb-3 space-y-1">
+                    <p>
+                        <strong class="font-medium text-gray-600">Copy Auto Pay link</strong> — paste into chat / SMS.
+                    </p>
+                    <p>
+                        <strong class="font-medium text-gray-600">Email link to customer</strong> — sends Enable Auto Pay to the buyer email.
+                    </p>
+                    <p id="autoPayEnableEmailHint" class="text-gray-400"></p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" id="autoPayEnableCopyBtn"
+                        class="text-xs px-3 py-2 rounded border border-wetravel-cyan text-wetravel-cyan hover:bg-cyan-50">
+                        Copy Auto Pay link
+                    </button>
+                    <button type="button" id="autoPayEnableSendBtn"
+                        class="text-xs px-3 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50">
+                        Email link to customer
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="px-6 py-4 border-t bg-gray-50 rounded-b-lg flex justify-end gap-3">
+            <button type="button" id="autoPayEnableCancelBtn"
+                class="border border-wetravel-cyan text-wetravel-cyan px-4 py-2 rounded text-sm hover:bg-white">
+                Cancel
+            </button>
+            <button type="button" id="autoPayEnableConfirm"
+                class="bg-wetravel-green text-white px-4 py-2 rounded text-sm hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled>
+                Turn on
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Add add-on (Manage post-purchase) -->
+<div id="addAddonModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden z-[80] flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-lg w-full max-w-md" role="dialog" aria-modal="true">
+        <div class="p-5 border-b flex justify-between items-center">
+            <h3 class="text-lg font-medium text-gray-900">Add add-on</h3>
+            <button type="button" onclick="closeAddAddonModal()" class="text-gray-400 hover:text-gray-500">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <div class="p-5 space-y-4">
+            <div class="rounded-md border border-cyan-200 bg-cyan-50 px-3 py-2.5 text-sm text-cyan-900">
+                <p class="font-medium">A payment email will be sent automatically</p>
+                <p class="mt-1 text-xs text-cyan-800 leading-relaxed">
+                    When you click Add, this add-on is added as <strong>Unpaid</strong> and the customer receives an email with a pay link.
+                    Payment is collected separately — not via installments or Auto Pay.
+                </p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1" for="addAddonSelect">Add-on</label>
+                <select id="addAddonSelect" class="w-full border border-gray-300 rounded px-3 py-2 text-sm"></select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1" for="addAddonQty">Quantity</label>
+                <input id="addAddonQty" type="number" min="1" value="1" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1" for="addAddonParticipant">Passenger</label>
+                <select id="addAddonParticipant" class="w-full border border-gray-300 rounded px-3 py-2 text-sm"></select>
+                <p class="mt-1 text-xs text-gray-500">Defaults to the first passenger (same as signup add-ons).</p>
+            </div>
+            <p id="addAddonError" class="hidden text-sm text-red-600"></p>
+        </div>
+        <div class="px-5 py-4 border-t bg-gray-50 rounded-b-lg flex justify-end gap-3">
+            <button type="button" onclick="closeAddAddonModal()"
+                class="border border-wetravel-cyan text-wetravel-cyan px-4 py-2 rounded text-sm hover:bg-white">Cancel</button>
+            <button type="button" onclick="submitAddAddon()"
+                class="bg-wetravel-green text-white px-4 py-2 rounded text-sm hover:bg-green-600">Add &amp; email</button>
         </div>
     </div>
 </div>

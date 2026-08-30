@@ -17,6 +17,8 @@ from app.utils import (
     send_email_via_ses,
     generate_installment_token,
     verify_installment_token,
+    generate_addon_payment_token,
+    verify_addon_payment_token,
     generate_receipt_token,
     verify_receipt_token,
     load_receipt_token,
@@ -957,6 +959,7 @@ def handle_booking_submission(request, trip):
             'overdue_installments_amount': initial_payment_info['overdue_installments'],
             'overdue_details': initial_payment_info.get('overdue_details', []),
             'parental_waiver': booking_data.get('parental_waiver'),
+            'auto_pay_opt_in': bool(booking_data.get('auto_pay_opt_in')),
         }
         
         # 创建 PendingBooking；应付 > 0 时再创建 Stripe PaymentIntent
@@ -1009,11 +1012,36 @@ def handle_booking_submission(request, trip):
                     'base_amount': str(base_amount_cents),
                     'trip_id': str(trip.id),
                     'trip_slug': trip.slug or '',
+                    'auto_pay_opt_in': '1' if full_booking_data.get('auto_pay_opt_in') else '0',
                 }
+                stripe_customer_id = None
+                setup_future = None
+                # 分期：创建 Customer + setup_future_usage，便于日后 Auto Pay 记住支付方式
+                if payment_method == 'deposit_installment':
+                    from app.auto_pay import ensure_stripe_customer_from_buyer
+                    buyer_name = (
+                        f"{(buyer_info.get('first_name') or '').strip()} "
+                        f"{(buyer_info.get('last_name') or '').strip()}"
+                    ).strip() or None
+                    stripe_customer_id = ensure_stripe_customer_from_buyer(
+                        email=buyer_info.get('email'),
+                        name=buyer_name,
+                        metadata={
+                            'trip_id': str(trip.id),
+                            'pending_booking_id': str(pending_booking.id),
+                        },
+                    )
+                    if stripe_customer_id:
+                        full_booking_data['stripe_customer_id'] = stripe_customer_id
+                        pending_booking.booking_data = full_booking_data
+                        setup_future = 'off_session'
+                        checkout_metadata['stripe_customer_id'] = stripe_customer_id
                 payment_intent = create_payment_intent(
                     amount=base_amount,
                     currency='usd',
+                    customer_id=stripe_customer_id,
                     metadata=checkout_metadata,
+                    setup_future_usage=setup_future,
                 )
                 if not payment_intent:
                     pending_booking.status = 'cancelled'
@@ -2039,21 +2067,24 @@ def _format_due_this_time_for_payment(booking, payment_row):
     base = round(float(payment_row.get('base') or 0), 2)
     label = (payment_row.get('type_label') or 'Payment').strip()
     label_l = label.lower()
+    auto_suffix = ' · Auto Pay' if payment_row.get('via_auto_pay') else ''
 
     if label_l in ('initial', 'deposit') or label_l.startswith('initial'):
         breakdown = _format_due_this_time_breakdown(_compute_due_at_booking_parts(booking))
+        if breakdown and auto_suffix:
+            breakdown = breakdown + auto_suffix
         return base, breakdown
 
     if label_l == 'payoff' or 'payoff' in label_l:
-        return base, f'Includes: Payoff ${base:,.2f} (remaining balance)'
+        return base, f'Includes: Payoff ${base:,.2f} (remaining balance){auto_suffix}'
 
     # 强制补齐：metadata 已拆各期
     catch_bd = (payment_row.get('catch_up_breakdown') or '').strip()
     if catch_bd:
-        return base, f'Includes: {catch_bd}'
+        return base, f'Includes: {catch_bd}{auto_suffix}'
 
     # Installment #n / Final payment 等
-    return base, f'Includes: {label} ${base:,.2f}'
+    return base, f'Includes: {label} ${base:,.2f}{auto_suffix}'
 
 
 def _compute_due_at_booking_gross(booking):
@@ -3185,10 +3216,27 @@ def pay_installment(installment_id):
                 installment.payment_link = None
 
     if not payment_intent:
+        # 复用订单 Stripe Customer，便于 Auto Pay 页列出后续付款方式
+        cust_id = getattr(booking, 'stripe_customer_id', None) or None
+        if not cust_id:
+            try:
+                from app.auto_pay import ensure_stripe_customer_for_booking
+                cust_id = ensure_stripe_customer_for_booking(booking)
+                if cust_id:
+                    db.session.flush()
+            except Exception as e:
+                current_app.logger.warning(
+                    'installment PI: ensure customer failed booking=%s: %s', booking.id, e
+                )
+                cust_id = None
+        if cust_id:
+            installment_metadata['stripe_customer_id'] = cust_id
         payment_intent = create_payment_intent(
             amount=base_amount_cents / 100.0,
             currency='usd',
-            metadata=installment_metadata
+            customer_id=cust_id,
+            metadata=installment_metadata,
+            setup_future_usage='off_session' if cust_id else None,
         )
 
         if payment_intent:
@@ -3579,6 +3627,396 @@ def test_installment_payment_preview():
         remaining_amount_cents=remaining_amount_cents if not is_payoff else 0,
         show_payoff=(not is_payoff),
         payoff_url=url_for('main.test_installment_payment_preview') + '?payoff=true' if not is_payoff else None,
+    )
+
+
+
+
+@bp.route('/test/auto-pay-preview')
+def test_auto_pay_preview():
+    """
+    本地预览 Auto Pay 管理页布局（DEBUG only）。
+    ?state=off|on|empty  关闭 / 已开启有方式 / 无已存方式
+    """
+    if not current_app.debug:
+        abort(404)
+    from types import SimpleNamespace
+
+    state = (request.args.get('state') or 'off').strip().lower()
+    enabled = state == 'on'
+    empty = state == 'empty'
+    mock_booking = SimpleNamespace(
+        id=9001,
+        order_number='2612MT-DEMO',
+        buyer_first_name='Alex',
+        buyer_last_name='Sample',
+        buyer_email='alex.sample@example.com',
+        auto_pay_enabled=enabled,
+        auto_pay_payment_method_id='pm_demo_visa' if enabled else None,
+        trip=SimpleNamespace(title='Sample Asia Family Trip'),
+    )
+    payment_methods = []
+    if not empty:
+        payment_methods = [
+            {
+                'id': 'pm_demo_visa',
+                'type': 'card',
+                'brand': 'visa',
+                'last4': '4242',
+                'label': 'Visa ···· 4242',
+            },
+            {
+                'id': 'pm_demo_ach',
+                'type': 'us_bank_account',
+                'brand': 'STRIPE TEST BANK',
+                'last4': '6789',
+                'label': 'STRIPE TEST BANK ···· 6789',
+            },
+        ]
+    flash_message = None
+    if request.args.get('flash') == '1':
+        flash_message = (
+            'Auto Pay is on. Your new payment method is the default.'
+            if enabled
+            else 'Auto Pay is off. You will receive reminder emails with payment links.'
+        )
+    # layout preview for "Add a new payment method" block (no live Stripe)
+    show_setup_placeholder = request.args.get('setup') != '0'
+    return render_template(
+        'booking/auto_pay.html',
+        booking=mock_booking,
+        token='preview',
+        payment_methods=payment_methods,
+        flash_message=flash_message,
+        flash_ok=True,
+        setup_client_secret=None,
+        publishable_key=None,
+        return_url=None,
+        setup_placeholder=show_setup_placeholder,
+    )
+
+
+@bp.route('/pay-addon/<int:booking_addon_id>')
+def pay_booking_addon(booking_addon_id):
+    """Customer payment page for a Manage post-add add-on (tokenized)."""
+    from app.addon_admin import booking_addon_line_total
+    from app.payments import (
+        build_booking_metadata,
+        booking_has_processing_ach_payment,
+        create_payment_intent,
+        retrieve_payment_intent,
+        safe_cancel_payment_intent,
+    )
+
+    token = request.args.get('token')
+    ba = BookingAddOn.query.options(
+        joinedload(BookingAddOn.booking).joinedload(Booking.trip),
+        joinedload(BookingAddOn.addon),
+    ).get_or_404(booking_addon_id)
+
+    if not verify_addon_payment_token(token, ba.id):
+        abort(403)
+
+    booking = ba.booking
+    if not booking or booking.status == 'cancelled':
+        abort(404)
+
+    status = (ba.payment_status or 'unpaid').lower()
+    if status == 'paid':
+        return redirect(url_for(
+            'main.booking_success',
+            booking_id=booking.id,
+            already_paid=1,
+            token=generate_receipt_token(booking.id, payment_id=ba.payment_id),
+        ))
+
+    if ba.stripe_payment_intent_id:
+        try:
+            _sync_ach_processing_from_pi(ba.stripe_payment_intent_id)
+        except Exception:
+            pass
+
+    if status == 'processing' or booking_has_processing_ach_payment(booking.id):
+        return render_template(
+            'booking/addon_payment.html',
+            booking=booking,
+            booking_addon=ba,
+            addon_name=(ba.addon.name if ba.addon else 'Add-on'),
+            base_amount_cents=int(round(booking_addon_line_total(ba) * 100)),
+            publishable_key=current_app.config.get('STRIPE_PUBLISHABLE_KEY'),
+            client_secret=None,
+            payment_intent_id=ba.stripe_payment_intent_id,
+            success_url=url_for(
+                'main.pay_booking_addon',
+                booking_addon_id=ba.id,
+                token=token,
+                _external=True,
+            ),
+            payment_mode='addon',
+            payment_step='addon',
+            ach_locked=True,
+            token=token,
+        )
+
+    amount = booking_addon_line_total(ba)
+    base_amount_cents = int(round(amount * 100))
+    if base_amount_cents <= 0:
+        ba.payment_status = 'paid'
+        db.session.commit()
+        return redirect(url_for(
+            'main.booking_success',
+            booking_id=booking.id,
+            already_paid=1,
+            token=generate_receipt_token(booking.id),
+        ))
+
+    addon_label = ba.addon.name if ba.addon else 'Add-on'
+    metadata = build_booking_metadata(booking, {
+        'payment_type': 'addon_purchase',
+        'payment_step': 'addon',
+        'payment_flow': 'addon',
+        'booking_addon_id': str(ba.id),
+        'addon_id': str(ba.addon_id),
+        'addon_name': addon_label[:120],
+        'source': 'addon_payment_link',
+        'base_amount': base_amount_cents,
+    })
+
+    payment_intent = None
+    if ba.stripe_payment_intent_id:
+        payment_intent = retrieve_payment_intent(ba.stripe_payment_intent_id)
+        if payment_intent is not None:
+            pi_status = getattr(payment_intent, 'status', None) or ''
+            if pi_status == 'processing':
+                ba.payment_status = 'processing'
+                db.session.commit()
+                return render_template(
+                    'booking/addon_payment.html',
+                    booking=booking,
+                    booking_addon=ba,
+                    addon_name=addon_label,
+                    base_amount_cents=base_amount_cents,
+                    publishable_key=current_app.config.get('STRIPE_PUBLISHABLE_KEY'),
+                    client_secret=None,
+                    payment_intent_id=getattr(payment_intent, 'id', None),
+                    success_url=url_for(
+                        'main.pay_booking_addon',
+                        booking_addon_id=ba.id,
+                        token=token,
+                        _external=True,
+                    ),
+                    payment_mode='addon',
+                    payment_step='addon',
+                    ach_locked=True,
+                    token=token,
+                )
+            need_rebuild = pi_status in ('succeeded', 'canceled')
+            if not need_rebuild:
+                pi_meta = dict(getattr(payment_intent, 'metadata', None) or {})
+                try:
+                    if int(pi_meta.get('base_amount') or -1) != base_amount_cents:
+                        need_rebuild = True
+                except (TypeError, ValueError):
+                    need_rebuild = True
+            if need_rebuild:
+                safe_cancel_payment_intent(
+                    getattr(payment_intent, 'id', None),
+                    reason=f'addon amount mismatch ba={ba.id}',
+                )
+                payment_intent = None
+                ba.stripe_payment_intent_id = None
+
+    if not payment_intent:
+        cust_id = getattr(booking, 'stripe_customer_id', None) or None
+        if not cust_id:
+            try:
+                from app.auto_pay import ensure_stripe_customer_for_booking
+                cust_id = ensure_stripe_customer_for_booking(booking)
+                if cust_id:
+                    db.session.flush()
+            except Exception as e:
+                current_app.logger.warning(
+                    'addon PI: ensure customer failed booking=%s: %s', booking.id, e
+                )
+                cust_id = None
+        if cust_id:
+            metadata['stripe_customer_id'] = cust_id
+        payment_intent = create_payment_intent(
+            amount=amount,
+            currency='usd',
+            customer_id=cust_id,
+            metadata=metadata,
+            setup_future_usage='off_session' if cust_id else None,
+        )
+        if payment_intent:
+            ba.stripe_payment_intent_id = getattr(payment_intent, 'id', None)
+            db.session.commit()
+
+    if not payment_intent:
+        abort(500)
+
+    pi_id = getattr(payment_intent, 'id', None)
+    payment = Payment.query.filter_by(stripe_payment_intent_id=pi_id).first()
+    if not payment:
+        payment = Payment(
+            booking_id=booking.id,
+            client_id=booking.client_id,
+            trip_id=booking.trip_id,
+            amount=amount,
+            stripe_payment_intent_id=pi_id,
+            status='pending',
+            currency='usd',
+            payment_metadata=metadata,
+            base_amount_cents=base_amount_cents,
+            final_amount_cents=base_amount_cents,
+        )
+        db.session.add(payment)
+        db.session.commit()
+    else:
+        payment.amount = amount
+        payment.base_amount_cents = base_amount_cents
+        payment.final_amount_cents = base_amount_cents
+        payment.payment_metadata = metadata
+        db.session.commit()
+
+    success_url = (
+        url_for('main.pay_booking_addon', booking_addon_id=ba.id, _external=True)
+        + '?token=' + (token or '')
+        + ('&payment_intent_id=' + pi_id if pi_id else '')
+    )
+    return render_template(
+        'booking/addon_payment.html',
+        booking=booking,
+        booking_addon=ba,
+        addon_name=addon_label,
+        base_amount_cents=base_amount_cents,
+        publishable_key=current_app.config.get('STRIPE_PUBLISHABLE_KEY'),
+        client_secret=getattr(payment_intent, 'client_secret', None),
+        payment_intent_id=pi_id,
+        success_url=success_url,
+        payment_mode='addon',
+        payment_step='addon',
+        ach_locked=False,
+        token=token,
+    )
+
+
+@bp.route('/booking/<int:booking_id>/auto-pay', methods=['GET', 'POST'])
+def manage_auto_pay(booking_id):
+    """Customer Auto Pay manage page (tokenized). Style aligned with installment payment."""
+    from app.utils import verify_auto_pay_token, generate_auto_pay_token
+    from app.auto_pay import (
+        booking_has_installment_plan,
+        disable_auto_pay,
+        enable_auto_pay,
+        ensure_stripe_customer_for_booking,
+        list_customer_payment_methods,
+    )
+    import stripe
+
+    booking = Booking.query.get_or_404(booking_id)
+    token = request.values.get('token') or request.args.get('token')
+    if not verify_auto_pay_token(token, booking_id):
+        abort(403)
+
+    if booking.status == 'cancelled':
+        abort(404)
+    if not booking_has_installment_plan(booking):
+        return render_template(
+            'booking/auto_pay.html',
+            booking=booking,
+            token=token,
+            payment_methods=[],
+            flash_message='This order has no installment plan.',
+            flash_ok=False,
+            setup_client_secret=None,
+            publishable_key=None,
+            return_url=None,
+        )
+
+    flash_message = None
+    flash_ok = False
+
+    setup_intent_id = request.args.get('setup_intent')
+    redirect_status = request.args.get('redirect_status')
+    if setup_intent_id and redirect_status == 'succeeded':
+        stripe.api_key = current_app.config.get('STRIPE_SECRET_KEY')
+        try:
+            si = stripe.SetupIntent.retrieve(setup_intent_id)
+            pm_id = si.payment_method if isinstance(si.payment_method, str) else getattr(si.payment_method, 'id', None)
+            if pm_id:
+                ok, err = enable_auto_pay(booking, pm_id, source='setup_intent')
+                if ok:
+                    db.session.commit()
+                    flash_message = 'Auto Pay is on. Your new payment method is the default.'
+                    flash_ok = True
+                else:
+                    db.session.rollback()
+                    flash_message = err or 'Could not enable Auto Pay.'
+            else:
+                flash_message = 'Setup completed but no payment method was returned.'
+        except Exception as e:
+            current_app.logger.error('Auto Pay SetupIntent return failed: %s', e)
+            flash_message = 'Could not finish saving your payment method.'
+
+    if request.method == 'POST':
+        action = (request.form.get('action') or '').strip()
+        if action == 'disable':
+            ok, err = disable_auto_pay(booking, source='customer')
+            if ok:
+                db.session.commit()
+                flash_message = 'Auto Pay is off. You will receive reminder emails with payment links.'
+                flash_ok = True
+            else:
+                db.session.rollback()
+                flash_message = err or 'Could not turn off Auto Pay.'
+        elif action == 'enable':
+            pm_id = (request.form.get('payment_method_id') or '').strip()
+            ok, err = enable_auto_pay(booking, pm_id, source='customer')
+            if ok:
+                db.session.commit()
+                flash_message = 'Auto Pay saved.'
+                flash_ok = True
+            else:
+                db.session.rollback()
+                flash_message = err or 'Could not enable Auto Pay.'
+
+    customer_id = ensure_stripe_customer_for_booking(booking)
+    if customer_id:
+        db.session.commit()
+    payment_methods = list_customer_payment_methods(customer_id) if customer_id else []
+
+    setup_client_secret = None
+    publishable_key = current_app.config.get('STRIPE_PUBLISHABLE_KEY')
+    return_url = url_for(
+        'main.manage_auto_pay',
+        booking_id=booking.id,
+        token=token or generate_auto_pay_token(booking.id),
+        _external=True,
+    )
+    if customer_id and publishable_key:
+        stripe.api_key = current_app.config.get('STRIPE_SECRET_KEY')
+        try:
+            setup = stripe.SetupIntent.create(
+                customer=customer_id,
+                payment_method_types=['card', 'us_bank_account'],
+                usage='off_session',
+                metadata={'booking_id': str(booking.id), 'purpose': 'auto_pay'},
+            )
+            setup_client_secret = setup.client_secret
+        except Exception as e:
+            current_app.logger.warning('Auto Pay SetupIntent create failed: %s', e)
+
+    return render_template(
+        'booking/auto_pay.html',
+        booking=booking,
+        token=token,
+        payment_methods=payment_methods,
+        flash_message=flash_message,
+        flash_ok=flash_ok,
+        setup_client_secret=setup_client_secret,
+        publishable_key=publishable_key,
+        return_url=return_url,
     )
 
 
@@ -4061,6 +4499,10 @@ def _create_booking_from_metadata(payment_intent_id):
             except ValueError:
                 parsed_at = None
         booking.parental_waiver_accepted_at = parsed_at or datetime.utcnow()
+    if booking_data.get('auto_pay_opt_in'):
+        booking.auto_pay_opt_in = True
+    if booking_data.get('stripe_customer_id'):
+        booking.stripe_customer_id = str(booking_data.get('stripe_customer_id'))[:128]
     db.session.add(booking)
     db.session.flush()
 
@@ -4226,6 +4668,11 @@ def handle_payment_intent_processing(payment_intent):
     payment_intent_id = payment_intent['id']
     metadata = payment_intent.get('metadata', {}) or {}
     pm_type = _payment_method_type_from_intent(payment_intent, metadata)
+
+    from app.addon_payment import handle_addon_payment_processing, is_addon_purchase_intent
+    if is_addon_purchase_intent(metadata):
+        handle_addon_payment_processing(payment_intent)
+        return
 
     existing = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
     if existing and existing.status == 'succeeded':
@@ -4402,6 +4849,12 @@ def handle_booking_payment_intent_succeeded(payment_intent):
 
     payment_intent_id = payment_intent['id']
     metadata = payment_intent.get('metadata', {}) or {}
+
+    # Manage 后加附加项：独立入账，不走报名/分期逻辑
+    from app.addon_payment import handle_addon_payment_succeeded, is_addon_purchase_intent
+    if is_addon_purchase_intent(metadata):
+        handle_addon_payment_succeeded(payment_intent)
+        return
     
     # 行锁：防 webhook 与 status 轮询并发双加 amount_paid / 双建单
     existing_payment = (
@@ -4593,6 +5046,23 @@ def handle_booking_payment_intent_succeeded(payment_intent):
                 n_pay,
             )
 
+    try:
+        from app.auto_pay import sync_auto_pay_after_successful_payment
+        # Prefer PI payment_method if metadata missing
+        if not payment.payment_method_id:
+            pm = payment_intent.get('payment_method')
+            if isinstance(pm, str):
+                payment.payment_method_id = pm
+        if payment_intent.get('customer') and not booking.stripe_customer_id:
+            booking.stripe_customer_id = str(payment_intent.get('customer'))[:128]
+        sync_auto_pay_after_successful_payment(booking, payment, payment_intent)
+    except Exception as e:
+        current_app.logger.warning(
+            'Auto Pay sync after booking payment failed booking=%s: %s',
+            booking.id,
+            e,
+        )
+
     db.session.commit()
 
     # 发送确认邮件（receipt_email_sent_at 认领防双发）
@@ -4749,6 +5219,14 @@ def handle_payment_intent_succeeded(payment_intent):
 
     # 清理本单其他 pending Payment（被覆盖期打开过付款页）
     void_stale_pending_payments(booking, except_payment_intent_id=payment_intent_id)
+
+    try:
+        from app.auto_pay import sync_auto_pay_after_successful_payment
+        sync_auto_pay_after_successful_payment(booking, payment, payment_intent)
+    except Exception as e:
+        current_app.logger.warning(
+            'Auto Pay sync after installment failed booking=%s: %s', booking.id, e
+        )
     
     db.session.commit()
     
@@ -4777,6 +5255,16 @@ def handle_payment_intent_failed(payment_intent):
         payment_intent_id,
         f": {err_msg}" if err_msg else "",
     )
+
+    metadata = payment_intent.get('metadata') or {}
+    from app.addon_payment import handle_addon_payment_failed, is_addon_purchase_intent
+    if is_addon_purchase_intent(metadata):
+        handle_addon_payment_failed(payment_intent)
+        payment = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
+        if payment and payment.status != 'succeeded':
+            payment.status = 'failed'
+            db.session.commit()
+        return
 
     payment = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
     if payment and payment.status != 'succeeded':

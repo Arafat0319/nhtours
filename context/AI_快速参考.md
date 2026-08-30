@@ -45,6 +45,8 @@
 | 模型 | `flask-app/app/models.py` |
 | 业务单号 | `flask-app/app/order_numbers.py` |
 | 支付逻辑 | `flask-app/app/payments.py` |
+| Auto Pay | `flask-app/app/auto_pay.py` |
+| Manage 后加 Add-on | `flask-app/app/addon_admin.py`、`addon_payment.py` |
 | Trip 状态机 | `flask-app/app/trip_status.py` |
 | App 工厂 | `flask-app/app/__init__.py` |
 | 生产 WSGI | `flask-app/wsgi.py` |
@@ -81,6 +83,9 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 - `_create_booking_from_metadata`：**勿**在函数内再 `from datetime import datetime`（会 UnboundLocalError）
 - 入账：仅 Payment **非 succeeded → succeeded** 时累加 `amount_paid`（防 webhook+status 双加）；已扣款勿因售罄 abort 建单
 - 报名库存口径：`app/package_capacity.py` — **已确认订单**（含 `processing`）+ **有效 PendingBooking 占位**；提交时 **行锁** 先占位再调 Stripe；24h 过期释放
+- **Auto Pay**：`app/auto_pay.py`；报名勾选 → 首笔成功 attach PM；到期日 Card 扣 catch-up；ACH processing 跳过；Manage 开/关 + 链接
+- **Manage 后加 Add-on**：`addon_admin.py` / `addon_payment.py`；`/pay-addon/<id>?token=`；`source=admin_manual`；不进 Payoff；全额退回 unpaid
+- 收据 Trip Total：加粗 **Due this time** + **Amount Paid**（Expected/Remaining 常规）
 
 ## 业务单号 Order number
 
@@ -197,7 +202,8 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 |----|-----|
 | 后台 | `/admin/customers/leads`；折叠 Show more；**批量删除** `POST .../bulk-delete`（admin） |
 | 新线索邮件 | `emails/contact_lead_notify.html` → `RECIPIENT_EMAIL`；主题 `New contact lead — …`；Reply-To=提交者 |
-| 管理员通知邮件 | 统一 `emails/admin_notify_base.html`：Contact / Newsletter / Testimonial pending / Feedback pending / Security alert / **Ledger alert** |
+| 管理员通知邮件 | 统一 `emails/admin_notify_base.html`：Contact / Newsletter / Testimonial pending / Feedback pending / Security alert / **Ledger alert** / Auto Pay 失败等 |
+| 客户系统/事务邮件 | **必须**品牌 HTML（页眉深蓝 + 白卡片 + CTA + 页脚 logo）；准则 `.cursor/rules/customer-email-brand-template.mdc`；范例：收据 / 催款 / 退款 / `payment_failed` / Auto Pay invite / `order_processing` |
 | 客户人工邮件 | `emails/branded_customer_message.html`：Booking 单发 + Messages 群发外壳 |
 
 ## 协作规则
@@ -214,4 +220,4 @@ push 前更新 context（至少 `07`）→ 用户确认 → 同一 commit push�
 | UI | `05` |
 | 部署 | `06` |
 
-**最后更新**: 2026-08-10（participant withdrawn + 退款按笔/Full refund + 账本告警）
+**最后更新**: 2026-08-29（Auto Pay + Manage 后加 Add-on 上线）

@@ -466,6 +466,16 @@ class Booking(db.Model):
     # Parental waiver gate（客户报名勾选同意；无电子签名）
     parental_waiver_accepted_at = db.Column(db.DateTime, nullable=True)
     parental_waiver_version = db.Column(db.String(64), nullable=True)
+
+    # Auto Pay（分期自动扣款）
+    stripe_customer_id = db.Column(db.String(128))  # Stripe Customer（记住支付方式）
+    auto_pay_opt_in = db.Column(db.Boolean, default=False)  # 报名时勾选（首笔成功后真正启用）
+    auto_pay_enabled = db.Column(db.Boolean, default=False)
+    auto_pay_payment_method_id = db.Column(db.String(128))  # 默认 PaymentMethod
+    auto_pay_enabled_at = db.Column(db.DateTime)
+    auto_pay_disabled_at = db.Column(db.DateTime)
+    auto_pay_last_charge_at = db.Column(db.DateTime)
+    auto_pay_last_error = db.Column(db.String(500))
     
     # 关联
     trip = db.relationship('Trip', backref=db.backref('bookings', lazy='dynamic'))
@@ -568,11 +578,18 @@ class BookingAddOn(db.Model):
     
     quantity = db.Column(db.Integer, default=1)
     price_at_booking = db.Column(db.Float) # Price snapshot
+    # booking = 报名时选；admin_manual = Manage 后加
+    source = db.Column(db.String(32), default='booking')
+    # unpaid / processing / paid / failed（报名时附加项默认 paid）
+    payment_status = db.Column(db.String(20), default='paid')
+    payment_id = db.Column(db.Integer, db.ForeignKey('payments.id'), nullable=True)
+    stripe_payment_intent_id = db.Column(db.String(128), nullable=True)
     
     addon = db.relationship('TripAddOn')
     # booking relationship is already defined implicitly via booking.addons if we added it, 
     # but let's just use query or backref from here if needed.
     booking = db.relationship('Booking', backref=db.backref('addons', lazy='dynamic'))
+    payment = db.relationship('Payment', foreign_keys=[payment_id])
 
 
 class PendingBooking(db.Model):
@@ -625,7 +642,9 @@ class InstallmentPayment(db.Model):
     reminder_sent = db.Column(db.Boolean, default=False)  # 是否已发送提醒
     reminder_sent_at = db.Column(db.DateTime)  # 提醒发送时间
     reminder_count = db.Column(db.Integer, default=0)  # 提醒次数
-    
+    # 逾期 ≥3 天管理员通知（每期最多记一次，避免每日刷信）
+    admin_overdue_notified_at = db.Column(db.DateTime)
+
     # 支付完成时间
     paid_at = db.Column(db.DateTime)
     

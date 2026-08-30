@@ -265,11 +265,11 @@
         });
     }
 
-    // 发送提醒邮件
+    // 发送付款提醒邮件（含签名付款链接）
     async function sendReminder(installmentId) {
         const confirmed = await showConfirm(
-            'Send Reminder',
-            'Send reminder email to customer?'
+            'Send payment email',
+            'Send an email to the customer with a payment link for this installment?'
         );
         if (!confirmed) return;
         
@@ -286,18 +286,72 @@
             
             if (result.success) {
                 if (typeof showToast === 'function') {
-                    showToast('Reminder email sent successfully!', 'success');
+                    showToast('Payment email sent successfully!', 'success');
                 }
                 setTimeout(() => location.reload(), 1000);
             } else {
                 if (typeof showToast === 'function') {
-                    showToast('Failed to send reminder: ' + (result.error || 'Unknown error'), 'error');
+                    showToast('Failed to send email: ' + (result.error || 'Unknown error'), 'error');
                 }
             }
         } catch (error) {
             console.error('Error sending reminder:', error);
             if (typeof showToast === 'function') {
-                showToast('An error occurred while sending the reminder.', 'error');
+                showToast('An error occurred while sending the email.', 'error');
+            }
+        }
+    }
+
+    async function fetchPaymentLinks(installmentId) {
+        const response = await fetch(`/admin/payments/installments/${installmentId}/payment-link`, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.error || 'Could not generate link');
+        }
+        return result;
+    }
+
+    async function copyTextToClipboard(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+            return;
+        }
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+    }
+
+    async function copyPaymentLink(installmentId) {
+        try {
+            const result = await fetchPaymentLinks(installmentId);
+            await copyTextToClipboard(result.payment_url);
+            if (typeof showToast === 'function') {
+                showToast('Payment link copied', 'success');
+            }
+        } catch (error) {
+            if (typeof showToast === 'function') {
+                showToast(error.message || 'Failed to copy payment link', 'error');
+            }
+        }
+    }
+
+    async function copyPayoffLink(installmentId) {
+        try {
+            const result = await fetchPaymentLinks(installmentId);
+            await copyTextToClipboard(result.payoff_url);
+            if (typeof showToast === 'function') {
+                showToast('Payoff link copied', 'success');
+            }
+        } catch (error) {
+            if (typeof showToast === 'function') {
+                showToast(error.message || 'Failed to copy payoff link', 'error');
             }
         }
     }

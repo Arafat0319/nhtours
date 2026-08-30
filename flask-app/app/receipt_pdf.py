@@ -230,7 +230,8 @@ def _section_title(pdf, title):
 
 
 def _kv_row(pdf, label, value, bold_value=False):
-    pdf.set_font("Helvetica", size=10)
+    # bold_value：标签与金额一并加粗（与 HTML Trip Total 强调行一致）
+    pdf.set_font("Helvetica", "B" if bold_value else "", 10)
     pdf.set_text_color(55, 65, 81)
     pdf.cell(130, 6, _safe(label))
     pdf.set_font("Helvetica", "B" if bold_value else "", 10)
@@ -442,10 +443,10 @@ def build_booking_receipt_pdf(ctx_or_booking=None, trip=None, expected_amount=No
     pdf.set_draw_color(209, 213, 219)
     pdf.line(pdf.l_margin, pdf.get_y() + 1, pdf.w - pdf.r_margin, pdf.get_y() + 1)
     pdf.ln(3)
-    _kv_row(pdf, "Total Expected (base):", _money(expected_amount), bold_value=True)
+    _kv_row(pdf, "Total Expected (base):", _money(expected_amount), bold_value=False)
     if show_history_page:
-        # 定金/分期：Due + Includes 说明 + Paid + Remaining
-        _kv_row(pdf, "Due this time (base):", _money(amount_due_this_time))
+        # 定金/分期：强调本次 Due + Paid；Expected / Remaining 为整单背景
+        _kv_row(pdf, "Due this time (base):", _money(amount_due_this_time), bold_value=True)
         if due_this_time_breakdown:
             pdf.set_font("Helvetica", "I", 8)
             pdf.set_text_color(107, 114, 128)
@@ -453,8 +454,8 @@ def build_booking_receipt_pdf(ctx_or_booking=None, trip=None, expected_amount=No
             pdf.set_x(pdf.l_margin)
             pdf.set_text_color(55, 65, 81)
             pdf.ln(1)
-        _kv_row(pdf, "Amount Paid (net base):", _money(amount_paid_net))
-        _kv_row(pdf, "Amount Remaining (net base):", _money(amount_pending), bold_value=True)
+        _kv_row(pdf, "Amount Paid (net base):", _money(amount_paid_net), bold_value=True)
+        _kv_row(pdf, "Amount Remaining (net base):", _money(amount_pending), bold_value=False)
     else:
         # 一次付全款：Expected → 实扣说明（同 Includes 斜体灰字）→ Paid；无 Due / Remaining
         if payment_history:
@@ -465,7 +466,7 @@ def build_booking_receipt_pdf(ctx_or_booking=None, trip=None, expected_amount=No
                 pdf.set_x(pdf.l_margin)
             pdf.set_text_color(55, 65, 81)
             pdf.ln(1)
-        _kv_row(pdf, "Amount Paid (net base):", _money(amount_paid_net))
+        _kv_row(pdf, "Amount Paid (net base):", _money(amount_paid_net), bold_value=True)
     # Paid/Remaining notes → page 1 footer (above the rule)
 
     def _draw_installment_schedule():
@@ -524,6 +525,8 @@ def build_booking_receipt_pdf(ctx_or_booking=None, trip=None, expected_amount=No
             for row in payment_history:
                 date_s = _fmt_ts(row.get("date"))
                 label = row.get("type_label") or "Payment"
+                if row.get("via_auto_pay"):
+                    label = f"{label} · Auto Pay"
                 pdf.set_font("Helvetica", "B", 10)
                 pdf.set_text_color(17, 24, 39)
                 pdf.cell(0, 6, _safe(f"{date_s}  -  {label}"), new_x="LMARGIN", new_y="NEXT")

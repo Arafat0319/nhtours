@@ -1,0 +1,11 @@
+Hi{% if customer_name and customer_name != 'Customer' %} {{ customer_name }}{% endif %},
+
+You can save a payment method and turn on Auto Pay for {{ trip_title }} (order {{ order_number }}).
+We will charge your default method on each due date.
+
+Enable Auto Pay:
+{{ auto_pay_url }}
+
+If you did not request this, you can ignore this email or contact info@nhtours.com.
+
+— Nexus Horizons Tours

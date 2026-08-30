@@ -42,6 +42,7 @@
         discount_code_id: null,
         discount_amount: 0,
         payment_method: 'full',
+        auto_pay_opt_in: false,
         parental_waiver: null
     };
 
@@ -306,6 +307,10 @@
                 var step1Pay = document.querySelector('.booking-step[data-step="1"]');
                 if (step1Pay) savePackagesData(step1Pay);
                 if (typeof updateOrderSummary === 'function') updateOrderSummary();
+            }
+            if (e.target.matches('input.auto-pay-checkbox')) {
+                var step1Ap = document.querySelector('.booking-step[data-step="1"]');
+                if (step1Ap) savePackagesData(step1Ap);
             }
             // Uiverse 数量单选：同步到 hidden、更新显示、移除错误态、触发订单逻辑
             if (e.target.matches('input.quantity-radio')) {
@@ -1337,6 +1342,17 @@
                 });
             }
         });
+
+        // Auto Pay: any selected deposit_installment package with checkbox checked
+        let autoPay = false;
+        bookingData.packages.forEach(function (pkg) {
+            if (pkg.payment_plan_type !== 'deposit_installment') return;
+            const cb = container.querySelector(
+                'input.auto-pay-checkbox[data-package-id="' + pkg.package_id + '"]'
+            );
+            if (cb && cb.checked) autoPay = true;
+        });
+        bookingData.auto_pay_opt_in = autoPay;
         
         console.log('savePackagesData: saved packages', bookingData.packages);
         
@@ -2668,6 +2684,7 @@
             addons: bookingData.addons,
             participants: bookingData.participants,
             payment_method: bookingData.payment_method,
+            auto_pay_opt_in: !!bookingData.auto_pay_opt_in,
             discount_code: bookingData.discount_code || null,
             discount_amount: bookingData.discount_amount || 0,
         });

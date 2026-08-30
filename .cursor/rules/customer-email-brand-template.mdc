@@ -1,0 +1,42 @@
+---
+description: 发给客户的邮件必须使用项目品牌 HTML 模板风格，禁止裸 HTML/纯文本凑合
+alwaysApply: true
+---
+
+# 客户邮件须遵循品牌模板
+
+**凡发给客户（buyer / 旅客）的邮件**，必须使用项目统一的品牌 HTML 模板视觉，**禁止**临时拼一段裸 `<p>`、无页眉页脚的简陋 HTML，或只发无样式纯文本当正式通知。
+
+## 标准外观（须对齐）
+
+参考已定稿客户信（同族即可，勿另起炉灶）：
+
+| 要素 | 要求 |
+|------|------|
+| 外层 | 灰底居中、白卡片、约 600px、圆角细边框 |
+| 页眉 | 深蓝条 `#0f172a`：Nexus Horizons Tours + 英文副标题 |
+| 正文 | Hi {name}、说明文案、可选高亮金额块、主 CTA 按钮 |
+| 明细 | 可选 Payment details 等键值表 |
+| 页脚 | 联系 `info@nhtours.com` 说明 + 品牌 logo（`email_logo_url` / CID） |
+
+模板目录：`flask-app/app/templates/emails/`  
+范例：`installment_reminder.html`、`receipt.html`、`refund_notice.html`、`payment_failed.html`、`auto_pay_invite.html`、`branded_customer_message.html`、`order_processing.html`
+
+## 新建 / 改客户邮件时
+
+1. **优先**复用或 `extends` 现有客户模板；不要从零写无品牌的 HTML
+2. 同步提供 `.txt` 纯文本备援（SES 多部分），但 **HTML 部分必须品牌化**
+3. 经 `send_email_via_ses` 发出；样例/预览脚本也要用同一模板渲染
+4. 改文案或结构时，对照上述范例保持页眉/页脚/按钮层级一致
+
+## 不算「客户邮件」的例外
+
+- **管理员 / 团队收件箱**通知：用 `emails/admin_notify_base.html`（Contact / Ledger / 逾期 / Auto Pay 失败通知等）
+- 内部日志、安全告警纯文本：可不套客户壳，但仍优先用 admin 品牌底
+
+## 反例
+
+```text
+❌ send_email_via_ses(..., "<p>Your payment failed</p>", "Your payment failed")
+✅ render_template('emails/payment_failed.html', ...) + 对应 .txt
+```

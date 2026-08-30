@@ -78,6 +78,13 @@
                         </div>
                         <p class="installment-reminder mt-3 text-xs text-slate-500">We will automatically collect any overdue payments in this charge.</p>
                         <p class="installment-reminder mt-1 text-xs text-slate-500">Automatic reminders will be sent before each due date.</p>
+                        <label class="auto-pay-opt-in mt-4 flex items-start gap-2 text-sm text-slate-700 cursor-pointer" data-package-id="{{ package.id }}">
+                            <input type="checkbox" class="auto-pay-checkbox mt-0.5 accent-[#0066ff]" name="auto_pay_opt_in_{{ package.id }}" value="1" data-package-id="{{ package.id }}">
+                            <span>
+                                <span class="font-semibold text-slate-900">Enable Auto Pay</span>
+                                <span class="block text-xs text-slate-500 mt-0.5">Automatically charge your payment method on each due date (you can change or turn this off later).</span>
+                            </span>
+                        </label>
                     </div>
                     {% endif %}
                 </div>

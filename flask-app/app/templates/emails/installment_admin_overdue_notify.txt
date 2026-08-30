@@ -1,0 +1,13 @@
+Installment overdue {{ days_overdue }}+ days
+
+Order: {{ order_number }}
+Customer: {{ customer_name }} <{{ customer_email }}>
+Trip: {{ trip_title }}
+Installment: {{ installment_label }}
+Due: {{ due_date_label }}
+Amount: ${{ '%.2f'|format(amount) }}
+Days overdue: {{ days_overdue }}
+
+{% if manage_url %}Manage: {{ manage_url }}
+{% endif %}
+Use Payments → Installments to copy or email a payment link.

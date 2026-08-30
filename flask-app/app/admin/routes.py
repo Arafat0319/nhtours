@@ -2379,48 +2379,272 @@ def installment_payments_api():
     })
 
 
+@bp.route('/payments/installments/<int:installment_id>/payment-link', methods=['GET'])
+@admin_required
+def installment_payment_link(installment_id):
+    """Generate signed customer payment + payoff URLs for an unpaid installment."""
+    installment = InstallmentPayment.query.get_or_404(installment_id)
+    from app.installment_admin_links import (
+        build_installment_payment_urls,
+        installment_unpaid_action_error,
+    )
+
+    err = installment_unpaid_action_error(installment)
+    if err:
+        return jsonify({'success': False, 'error': err}), 400
+
+    payment_url, payoff_url = build_installment_payment_urls(installment)
+    return jsonify({
+        'success': True,
+        'payment_url': payment_url,
+        'payoff_url': payoff_url,
+        'installment_id': installment.id,
+        'order_number': getattr(installment.booking, 'order_number', None),
+    })
+
+
+@bp.route('/bookings/<int:booking_id>/addons/catalog', methods=['GET'])
+@admin_required
+def booking_addons_catalog(booking_id):
+    """Trip add-ons + participants for the Add add-on modal."""
+    booking = Booking.query.get_or_404(booking_id)
+    trip_addons = []
+    if booking.trip_id:
+        for ta in TripAddOn.query.filter_by(trip_id=booking.trip_id).order_by(TripAddOn.name).all():
+            trip_addons.append({
+                'id': ta.id,
+                'name': ta.name,
+                'price': float(ta.price or 0),
+            })
+    participants = []
+    for p in booking.participants:
+        if (getattr(p, 'status', None) or 'active') == 'withdrawn':
+            continue
+        participants.append({'id': p.id, 'name': p.name or f'Participant #{p.id}'})
+    return jsonify({
+        'success': True,
+        'trip_addons': trip_addons,
+        'participants': participants,
+        'order_number': booking.order_number or f'#{booking.id}',
+        'cancelled': booking.status == 'cancelled',
+    })
+
+
+@bp.route('/bookings/<int:booking_id>/addons', methods=['POST'])
+@admin_required
+def admin_add_booking_addon(booking_id):
+    """Admin post-add an add-on (starts unpaid) and email the customer a pay link."""
+    booking = Booking.query.get_or_404(booking_id)
+    data = request.get_json(silent=True) or {}
+    from app.addon_admin import (
+        create_manual_booking_addon,
+        send_addon_payment_email,
+        serialize_booking_addon,
+    )
+
+    ba, err = create_manual_booking_addon(
+        booking,
+        trip_addon_id=data.get('addon_id'),
+        quantity=data.get('quantity', 1),
+        participant_id=data.get('participant_id'),
+    )
+    if err:
+        return jsonify({'success': False, 'error': err}), 400
+    db.session.commit()
+
+    email_ok, email_msg = send_addon_payment_email(ba)
+    if email_ok:
+        message = f'Add-on added. Payment email sent ({email_msg}).'
+    else:
+        message = (
+            f'Add-on added, but payment email failed: {email_msg or "unknown error"}. '
+            'Use Actions → Send payment email to retry.'
+        )
+    return jsonify({
+        'success': True,
+        'addon': serialize_booking_addon(ba),
+        'email_sent': bool(email_ok),
+        'message': message,
+    })
+
+
+@bp.route('/booking-addons/<int:booking_addon_id>/payment-link', methods=['GET'])
+@admin_required
+def booking_addon_payment_link(booking_addon_id):
+    """Signed customer pay URL for a manual unpaid add-on."""
+    ba = BookingAddOn.query.get_or_404(booking_addon_id)
+    from app.addon_admin import addon_payment_url
+    from app.payments import booking_has_processing_ach_payment
+
+    source = (getattr(ba, 'source', None) or 'booking')
+    status = (getattr(ba, 'payment_status', None) or 'paid')
+    if source != 'admin_manual':
+        return jsonify({'success': False, 'error': 'Only manually added add-ons use this link'}), 400
+    if status == 'paid':
+        return jsonify({'success': False, 'error': 'This add-on is already paid'}), 400
+    if booking_has_processing_ach_payment(ba.booking_id):
+        return jsonify({
+            'success': False,
+            'error': 'A bank transfer for this order is still processing',
+        }), 400
+    return jsonify({
+        'success': True,
+        'payment_url': addon_payment_url(ba),
+        'booking_addon_id': ba.id,
+        'order_number': getattr(ba.booking, 'order_number', None),
+    })
+
+
+@bp.route('/booking-addons/<int:booking_addon_id>/payment-link/send', methods=['POST'])
+@admin_required
+def booking_addon_payment_link_send(booking_addon_id):
+    """Email customer the add-on payment link."""
+    ba = BookingAddOn.query.get_or_404(booking_addon_id)
+    from app.addon_admin import send_addon_payment_email
+    from app.payments import booking_has_processing_ach_payment
+
+    source = (getattr(ba, 'source', None) or 'booking')
+    status = (getattr(ba, 'payment_status', None) or 'paid')
+    if source != 'admin_manual':
+        return jsonify({'success': False, 'error': 'Only manually added add-ons can be emailed'}), 400
+    if status == 'paid':
+        return jsonify({'success': False, 'error': 'This add-on is already paid'}), 400
+    if booking_has_processing_ach_payment(ba.booking_id):
+        return jsonify({
+            'success': False,
+            'error': 'A bank transfer for this order is still processing',
+        }), 400
+    ok, msg = send_addon_payment_email(ba)
+    if not ok:
+        return jsonify({'success': False, 'error': msg or 'Failed to send'}), 400
+    return jsonify({'success': True, 'message': msg})
+
+
+@bp.route('/bookings/<int:booking_id>/auto-pay-link', methods=['GET'])
+@admin_required
+def admin_auto_pay_link(booking_id):
+    """Return tokenized customer Auto Pay manage URL."""
+    booking = Booking.query.get_or_404(booking_id)
+    from app.auto_pay import auto_pay_manage_url, booking_has_installment_plan
+
+    if not booking_has_installment_plan(booking):
+        return jsonify({'success': False, 'error': 'No installment plan on this booking'}), 400
+    return jsonify({
+        'success': True,
+        'auto_pay_url': auto_pay_manage_url(booking),
+        'auto_pay_enabled': bool(booking.auto_pay_enabled),
+    })
+
+
+@bp.route('/bookings/<int:booking_id>/auto-pay-methods', methods=['GET'])
+@admin_required
+def admin_auto_pay_methods(booking_id):
+    """List saved payment methods for Turn on picker + Auto Pay URL / buyer email."""
+    booking = Booking.query.get_or_404(booking_id)
+    from app.auto_pay import (
+        auto_pay_manage_url,
+        booking_has_installment_plan,
+        payment_methods_for_booking,
+    )
+
+    if not booking_has_installment_plan(booking):
+        return jsonify({'success': False, 'error': 'No installment plan on this booking'}), 400
+
+    buyer_email = (booking.buyer_email or '').strip()
+    if not buyer_email and booking.client:
+        buyer_email = (booking.client.email or '').strip()
+
+    return jsonify({
+        'success': True,
+        'payment_methods': payment_methods_for_booking(booking),
+        'default_payment_method_id': getattr(booking, 'auto_pay_payment_method_id', None),
+        'auto_pay_url': auto_pay_manage_url(booking),
+        'auto_pay_enabled': bool(booking.auto_pay_enabled),
+        'buyer_email': buyer_email or None,
+        'order_number': booking.order_number or f'#{booking.id}',
+    })
+
+
+@bp.route('/bookings/<int:booking_id>/auto-pay-link/send', methods=['POST'])
+@admin_required
+def admin_send_auto_pay_link(booking_id):
+    """Email the customer their Auto Pay enable/manage link."""
+    booking = Booking.query.get_or_404(booking_id)
+    from app.auto_pay import booking_has_installment_plan, send_auto_pay_invite_email
+
+    if not booking_has_installment_plan(booking):
+        return jsonify({'success': False, 'error': 'No installment plan on this booking'}), 400
+
+    ok, msg = send_auto_pay_invite_email(booking)
+    if not ok:
+        return jsonify({'success': False, 'error': msg or 'Failed to send'}), 400
+    return jsonify({'success': True, 'message': msg})
+
+
+@bp.route('/bookings/<int:booking_id>/auto-pay', methods=['POST'])
+@admin_required
+def admin_toggle_auto_pay(booking_id):
+    """Admin enable/disable Auto Pay. Enable requires a default PM (or sends Enable link)."""
+    booking = Booking.query.get_or_404(booking_id)
+    data = request.get_json(silent=True) or {}
+    enable = data.get('enabled')
+    if enable is None:
+        return jsonify({'success': False, 'error': 'enabled true/false required'}), 400
+
+    from app.auto_pay import (
+        auto_pay_manage_url,
+        booking_has_installment_plan,
+        disable_auto_pay,
+        enable_auto_pay,
+    )
+
+    if not booking_has_installment_plan(booking):
+        return jsonify({'success': False, 'error': 'No installment plan on this booking'}), 400
+
+    if enable:
+        pm_id = (data.get('payment_method_id') or booking.auto_pay_payment_method_id or '').strip()
+        if not pm_id:
+            link = auto_pay_manage_url(booking)
+            return jsonify({
+                'success': False,
+                'error': 'Select a saved payment method, or send the customer an Auto Pay link.',
+                'auto_pay_url': link,
+                'needs_customer_setup': True,
+            }), 400
+        ok, err = enable_auto_pay(booking, pm_id, source='admin')
+        if not ok:
+            return jsonify({'success': False, 'error': err or 'Could not enable'}), 400
+        db.session.commit()
+        return jsonify({
+            'success': True,
+            'auto_pay_enabled': True,
+            'message': 'Auto Pay enabled',
+            'auto_pay_url': auto_pay_manage_url(booking),
+        })
+
+    ok, err = disable_auto_pay(booking, source='admin')
+    if not ok:
+        return jsonify({'success': False, 'error': err or 'Could not disable'}), 400
+    db.session.commit()
+    return jsonify({
+        'success': True,
+        'auto_pay_enabled': False,
+        'message': 'Auto Pay disabled',
+        'auto_pay_url': auto_pay_manage_url(booking),
+    })
+
+
 @bp.route('/payments/installments/<int:installment_id>/send-reminder', methods=['POST'])
 @admin_required
 def send_installment_reminder(installment_id):
     """发送分期付款提醒邮件（已付清的期数不可催缴）"""
     installment = InstallmentPayment.query.get_or_404(installment_id)
-    
-    if not installment.booking:
-        return jsonify({'success': False, 'error': 'Booking not found'}), 404
+    from app.installment_admin_links import installment_unpaid_action_error
 
-    # 已付 / 已有成功收款：禁止 Send Reminder
-    if (installment.status or '') == 'paid':
-        return jsonify({
-            'success': False,
-            'error': 'This installment is already paid; cannot send reminder',
-        }), 400
-    succeeded_pay = Payment.query.filter_by(
-        installment_payment_id=installment.id,
-        status='succeeded',
-    ).first()
-    if succeeded_pay:
-        return jsonify({
-            'success': False,
-            'error': 'This installment already has a successful payment; cannot send reminder',
-        }), 400
-    if (installment.status or '') == 'cancelled':
-        return jsonify({
-            'success': False,
-            'error': 'This installment is cancelled; cannot send reminder',
-        }), 400
+    err = installment_unpaid_action_error(installment)
+    if err:
+        return jsonify({'success': False, 'error': err}), 400
 
-    from app.payments import booking_has_processing_ach_payment, installment_has_processing_ach
-    if installment_has_processing_ach(installment) or booking_has_processing_ach_payment(
-        installment.booking_id
-    ):
-        return jsonify({
-            'success': False,
-            'error': (
-                'A bank transfer for this order is still processing; '
-                'cannot send reminder until it clears'
-            ),
-        }), 400
-    
     try:
         from app.tasks import send_installment_reminder_email, send_overdue_reminder_email
         from app.utils import pacific_today
@@ -3632,6 +3856,7 @@ def manage_booking(trip_id, booking_id):
                 })
             
             # 获取所有附加项（包括直接关联到 booking 的，不通过 participant）
+            from app.addon_admin import serialize_booking_addon
             all_addons = []
             addons_total = 0.0
             seen_addon_ids = set()
@@ -3640,34 +3865,17 @@ def manage_booking(trip_id, booking_id):
             for p in booking.participants:
                 for ba in p.addons:
                     if ba.addon and ba.id not in seen_addon_ids:
-                        addon_price = booking_addon_unit_price(ba)
-                        quantity = int(ba.quantity) if ba.quantity else 1
-                        addons_total += addon_price * quantity
-                        all_addons.append({
-                            'id': ba.addon.id,
-                            'name': ba.addon.name,
-                            'price': addon_price,
-                            'quantity': quantity,
-                            'subtotal': addon_price * quantity,
-                            'participant_name': p.name if p else None
-                        })
+                        row = serialize_booking_addon(ba)
+                        addons_total += float(row['subtotal'])
+                        all_addons.append(row)
                         seen_addon_ids.add(ba.id)
             
             # 方法2：通过 booking.addons 获取（直接关联的）
             for ba in booking.addons:
                 if ba.addon and ba.id not in seen_addon_ids:
-                    addon_price = booking_addon_unit_price(ba)
-                    quantity = int(ba.quantity) if ba.quantity else 1
-                    addons_total += addon_price * quantity
-                    participant = ba.participant
-                    all_addons.append({
-                        'id': ba.addon.id,
-                        'name': ba.addon.name,
-                        'price': addon_price,
-                        'quantity': quantity,
-                        'subtotal': addon_price * quantity,
-                        'participant_name': participant.name if participant else None
-                    })
+                    row = serialize_booking_addon(ba)
+                    addons_total += float(row['subtotal'])
+                    all_addons.append(row)
                     seen_addon_ids.add(ba.id)
             
             # 计算套餐金额
@@ -3911,6 +4119,10 @@ def manage_booking(trip_id, booking_id):
                     # 分期付款记录
                     'installments': installments,
                     'settled_via_payoff': settled_via_payoff or booking_has_payoff(booking),
+                    'auto_pay_enabled': bool(getattr(booking, 'auto_pay_enabled', False)),
+                    'auto_pay_opt_in': bool(getattr(booking, 'auto_pay_opt_in', False)),
+                    'auto_pay_payment_method_id': getattr(booking, 'auto_pay_payment_method_id', None),
+                    'auto_pay_has_method': bool(getattr(booking, 'auto_pay_payment_method_id', None)),
                 }
             })
     
@@ -4091,6 +4303,11 @@ def cancel_booking_order(trip_id, booking_id):
     try:
         booking.status = 'cancelled'
         cancel_unpaid_installments(booking)
+        try:
+            from app.auto_pay import disable_auto_pay
+            disable_auto_pay(booking, source='admin_cancel')
+        except Exception:
+            pass
         db.session.commit()
     except Exception as e:
         db.session.rollback()
@@ -4227,6 +4444,11 @@ def refund_booking(trip_id, booking_id):
                 booking.amount_paid = 0.0
             from app.payments import cancel_unpaid_installments
             cancel_unpaid_installments(booking)
+            try:
+                from app.auto_pay import disable_auto_pay
+                disable_auto_pay(booking, source='admin_cancel')
+            except Exception:
+                pass
             db.session.commit()
             return jsonify({
                 'success': True,

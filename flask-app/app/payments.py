@@ -96,7 +96,18 @@ def create_checkout_session(booking, line_items, success_url, cancel_url, mode='
         return None
 
 
-def create_payment_intent(amount, currency='usd', customer_id=None, metadata=None):
+def create_payment_intent(
+    amount,
+    currency='usd',
+    customer_id=None,
+    metadata=None,
+    *,
+    setup_future_usage=None,
+    payment_method=None,
+    confirm=False,
+    off_session=False,
+    payment_method_types=None,
+):
     """
     创建 Stripe Payment Intent（用于分期付款）
     
@@ -105,6 +116,7 @@ def create_payment_intent(amount, currency='usd', customer_id=None, metadata=Non
         currency: 货币类型，默认 'usd'
         customer_id: Stripe Customer ID（可选）
         metadata: 元数据字典（可选）
+        setup_future_usage: 'off_session' | 'on_session' | None（记住支付方式）
         
     Returns:
         payment_intent: Stripe Payment Intent 对象
@@ -117,15 +129,27 @@ def create_payment_intent(amount, currency='usd', customer_id=None, metadata=Non
     
     try:
         payment_intent_params = {
-            'amount': int(amount * 100),  # Stripe 使用最小货币单位
+            'amount': int(round(float(amount) * 100)),  # Stripe 使用最小货币单位
             'currency': currency,
             # Explicit types only (card + ACH). Avoid automatic_payment_methods
             # so Link / wallets do not appear unexpectedly.
-            'payment_method_types': ['card', 'us_bank_account'],
+            'payment_method_types': payment_method_types or ['card', 'us_bank_account'],
         }
         
         if customer_id:
             payment_intent_params['customer'] = customer_id
+
+        if setup_future_usage:
+            payment_intent_params['setup_future_usage'] = setup_future_usage
+
+        if payment_method:
+            payment_intent_params['payment_method'] = payment_method
+
+        if confirm:
+            payment_intent_params['confirm'] = True
+
+        if off_session:
+            payment_intent_params['off_session'] = True
         
         if metadata:
             normalized_metadata = _normalize_metadata(metadata)
@@ -611,6 +635,10 @@ def payment_step_label(payment):
             )
         return 'Installment'
 
+    if step in ('addon', 'addon_purchase') or (meta.get('payment_type') or '') == 'addon_purchase':
+        label = (meta.get('addon_name') or '').strip()
+        return f'Add-on: {label}' if label else 'Add-on'
+
     if step in ('initial', '', 'booking'):
         return 'Initial'
     return step.replace('_', ' ').title() or 'Payment'
@@ -689,6 +717,27 @@ def booking_refund_display_kind(booking):
     return 'partially_refunded'
 
 
+def unpaid_manual_addons_total(booking):
+    """
+    Manage 后加、尚未入账成功的附加项金额合计。
+    不并入分期 / Payoff / Auto Pay；须走独立付款链接。
+    """
+    total = 0.0
+    try:
+        rows = booking.addons.all()
+    except Exception:
+        rows = list(getattr(booking, 'addons', []) or [])
+    for ba in rows:
+        if (getattr(ba, 'source', None) or 'booking') != 'admin_manual':
+            continue
+        status = (getattr(ba, 'payment_status', None) or 'paid').strip().lower()
+        if status == 'paid':
+            continue
+        qty = int(ba.quantity or 1)
+        total += booking_addon_unit_price(ba) * qty
+    return round(total, 2)
+
+
 def booking_balance_due(booking, expected=None):
     """
     客户仍应付金额（Balance due）。
@@ -708,13 +757,15 @@ def booking_balance_due(booking, expected=None):
 def booking_payoff_due(booking):
     """
     Payoff / 结清应付（基础美元）。
-    与 Manage Balance due / calculate_booking_total.amount_due 一致：不追回已退金额。
+    与 Manage Balance due 一致，但排除未付的 Manage 后加附加项
+    （那些须走独立 Add-on 付款链接，不并入分期 Payoff）。
     切勿用 total − amount_paid（退款后 amount_paid 已扣减，会把退款额再收一遍）。
     """
     due = booking_balance_due(booking)
     if due is None:
         return 0.0
-    return round(float(due), 2)
+    excl = unpaid_manual_addons_total(booking)
+    return round(max(0.0, float(due) - excl), 2)
 
 
 def booking_has_overdue_amount(booking, today=None):
@@ -991,6 +1042,7 @@ def build_receipt_ledger_sections(booking):
             'status': payment.status,
             'catch_up_breakdown': (meta.get('catch_up_breakdown') or '').strip() or None,
             'catch_up_ids': (meta.get('catch_up_ids') or '').strip() or None,
+            'via_auto_pay': str(meta.get('auto_pay') or '').strip() in ('1', 'true', 'True'),
         })
         history = list(meta.get('refund_history') or [])
         if history:
@@ -1424,8 +1476,17 @@ def apply_refund_to_ledger(payment, booking, refund_amount, reason=None, stripe_
     if cancel_booking:
         booking.status = 'cancelled'
         cancel_unpaid_installments(booking)
+        try:
+            from app.auto_pay import disable_auto_pay
+            disable_auto_pay(booking, source='admin_refund_cancel')
+        except Exception:
+            pass
     elif booking.status == 'fully_paid':
         booking.status = 'deposit_paid' if booking.amount_paid > 0.001 else 'pending'
+
+    # 全额退回后付加购行：恢复 unpaid，可再发收款链接（部分退仍保持 paid）
+    if payment.status == 'refunded':
+        _reopen_manual_addons_for_refunded_payment(payment)
 
     return {
         'refund_amount': refund_amount,
@@ -1434,6 +1495,32 @@ def apply_refund_to_ledger(payment, booking, refund_amount, reason=None, stripe_
         'booking_amount_paid': booking.amount_paid,
         'booking_status': booking.status,
     }
+
+
+def _reopen_manual_addons_for_refunded_payment(payment):
+    """Payment 全额退款后，把关联的 manual BookingAddOn 从 paid 打回 unpaid。"""
+    from app.models import BookingAddOn
+
+    if not payment or not payment.id:
+        return
+    linked = BookingAddOn.query.filter_by(payment_id=payment.id).all()
+    meta = payment.payment_metadata if isinstance(payment.payment_metadata, dict) else {}
+    ba_id = meta.get('booking_addon_id')
+    if ba_id is not None:
+        try:
+            ba_id = int(ba_id)
+        except (TypeError, ValueError):
+            ba_id = None
+        if ba_id:
+            extra = BookingAddOn.query.get(ba_id)
+            if extra is not None and extra not in linked:
+                linked.append(extra)
+    for ba in linked:
+        if (getattr(ba, 'source', None) or 'booking') != 'admin_manual':
+            continue
+        ba.payment_status = 'unpaid'
+        ba.payment_id = None
+        ba.stripe_payment_intent_id = None
 
 
 def booking_package_unit_price(bp):

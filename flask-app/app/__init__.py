@@ -172,6 +172,7 @@ def create_app(config_name=None):
                     cleanup_old_rejected_testimonials,
                     send_scheduled_messages,
                     scan_ledger_anomalies,
+                    process_auto_pay_charges,
                 )
 
                 scheduler = BackgroundScheduler()
@@ -179,6 +180,10 @@ def create_app(config_name=None):
                 def _run_installment_reminders():
                     with app.app_context():
                         send_installment_reminders()
+
+                def _run_auto_pay_charges():
+                    with app.app_context():
+                        process_auto_pay_charges()
 
                 def _run_pending_booking_cleanup():
                     with app.app_context():
@@ -204,6 +209,16 @@ def create_app(config_name=None):
                     minute=0,
                     timezone='America/Los_Angeles',
                     id='send_installment_reminders',
+                    replace_existing=True,
+                )
+                # 每天美西上午 9:15：Auto Pay Card 扣款（到期日 + catch-up）
+                scheduler.add_job(
+                    _run_auto_pay_charges,
+                    'cron',
+                    hour=9,
+                    minute=15,
+                    timezone='America/Los_Angeles',
+                    id='process_auto_pay_charges',
                     replace_existing=True,
                 )
                 # 每天美西凌晨 3 点：过期 PendingBooking → expired + 取消 Stripe PI

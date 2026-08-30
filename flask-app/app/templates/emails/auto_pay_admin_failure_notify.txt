@@ -1,0 +1,13 @@
+Auto Pay charge failed
+
+Order: {{ order_number }}
+Customer: {{ customer_name }} <{{ customer_email }}>
+Trip: {{ trip_title }}
+Installment: {{ installment_label }}
+Due: {{ due_date_label }}
+Amount: ${{ '%.2f'|format(amount) }}
+Error: {{ error_detail }}
+
+{% if manage_url %}Manage: {{ manage_url }}
+{% endif %}
+Check Auto Pay under Manage, or copy / email a payment link from Payments.

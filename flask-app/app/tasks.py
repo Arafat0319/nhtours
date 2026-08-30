@@ -102,6 +102,24 @@ def _send_installment_notice_email(installment, *, subject, urgency_text, footer
         installment.due_date.strftime('%B %d, %Y') if installment.due_date else 'N/A'
     )
     style = _reminder_style(days_until_due=days_until_due, days_overdue=days_overdue)
+    auto_pay_enabled = bool(getattr(booking, 'auto_pay_enabled', False))
+    auto_pay_url = None
+    try:
+        from app.auto_pay import auto_pay_manage_url, booking_has_installment_plan
+        if booking_has_installment_plan(booking):
+            auto_pay_url = auto_pay_manage_url(booking)
+    except Exception:
+        auto_pay_url = None
+    # Auto Pay 已开启：主按钮仍可提前付；副文案改为管理方式
+    if auto_pay_enabled and days_overdue is None:
+        style = dict(style)
+        style['brand_subtitle'] = 'Auto Pay reminder'
+        style['cta_label'] = 'Pay now'
+        style['highlight_title'] = (
+            'Amount due today' if days_until_due == 0
+            else 'Amount due tomorrow' if days_until_due == 1
+            else 'Upcoming Auto Pay charge'
+        )
     context = {
         'subject_line': subject,
         'customer_name': booking.buyer_first_name or 'Customer',
@@ -115,6 +133,16 @@ def _send_installment_notice_email(installment, *, subject, urgency_text, footer
         'email_logo_url': _email_brand_logo_url(),
         'footer_note': footer_note,
         'days_overdue': days_overdue,
+        'auto_pay_enabled': auto_pay_enabled,
+        'auto_pay_url': auto_pay_url,
+        'auto_pay_cta_label': (
+            'Manage Auto Pay' if auto_pay_enabled else 'Enable Auto Pay'
+        ),
+        'auto_pay_blurb': (
+            'Need to change or turn off Auto Pay?'
+            if auto_pay_enabled
+            else 'Want us to charge your card automatically on due dates?'
+        ),
         **style,
     }
 
@@ -135,6 +163,102 @@ def _send_installment_notice_email(installment, *, subject, urgency_text, footer
     if not success:
         current_app.logger.error(
             f'Installment notice email failed for installment {installment.id}: {detail}'
+        )
+    return success
+
+
+def send_payment_failed_email(installment, *, failure_reason=None, days_overdue=None):
+    """
+    Customer email when a payment attempt / Auto Pay charge fails.
+    Branded template (emails/payment_failed.*) — not the generic reminder.
+    """
+    booking = installment.booking
+    if not booking or not booking.buyer_email:
+        current_app.logger.warning(
+            'Payment failed email skipped: missing booking/email for installment %s',
+            getattr(installment, 'id', '?'),
+        )
+        return False
+
+    trip_title = booking.trip.title if booking.trip else 'Trip Booking'
+    due_date_label = (
+        installment.due_date.strftime('%B %d, %Y') if installment.due_date else 'N/A'
+    )
+    auto_pay_enabled = bool(getattr(booking, 'auto_pay_enabled', False))
+    auto_pay_url = None
+    try:
+        from app.auto_pay import auto_pay_manage_url, booking_has_installment_plan
+        if booking_has_installment_plan(booking):
+            auto_pay_url = auto_pay_manage_url(booking)
+    except Exception:
+        auto_pay_url = None
+
+    reason = (failure_reason or '').strip() or None
+    if auto_pay_enabled:
+        subject = f'Auto Pay failed — action needed · {trip_title}'
+        intro = (
+            'We could not complete your automatic payment. '
+            'Please pay using the link below or update your payment method.'
+        )
+        brand_subtitle = 'Auto Pay failed'
+        highlight_title = 'Auto Pay charge failed'
+    else:
+        subject = f'Payment failed — action needed · {trip_title}'
+        intro = (
+            'Your payment could not be completed. '
+            'No charge was made. Please try again using the link below.'
+        )
+        brand_subtitle = 'Payment failed'
+        highlight_title = 'Payment not completed'
+
+    context = {
+        'subject_line': subject,
+        'brand_subtitle': brand_subtitle,
+        'customer_name': booking.buyer_first_name or 'Customer',
+        'intro_text': intro,
+        'highlight_title': highlight_title,
+        'trip_title': trip_title,
+        'installment_label': _installment_label(installment),
+        'amount': float(installment.amount or 0),
+        'due_date_label': due_date_label,
+        'order_number': booking.order_number or booking.id,
+        'payment_link': _installment_payment_link(installment),
+        'email_logo_url': _email_brand_logo_url(),
+        'footer_note': (
+            'If you already paid this installment, please ignore this email. '
+            'Thank you.'
+        ),
+        'days_overdue': days_overdue,
+        'failure_reason': reason,
+        'cta_label': 'Pay now',
+        'auto_pay_enabled': auto_pay_enabled,
+        'auto_pay_url': auto_pay_url,
+        'auto_pay_cta_label': 'Manage Auto Pay' if auto_pay_enabled else 'Enable Auto Pay',
+        'auto_pay_blurb': (
+            'Need to change or turn off Auto Pay?'
+            if auto_pay_enabled
+            else 'Want us to charge your card automatically on due dates?'
+        ),
+    }
+    html_body = render_template('emails/payment_failed.html', **context)
+    text_body = render_template('emails/payment_failed.txt', **context)
+    sender = (
+        current_app.config.get('SENDER_EMAIL')
+        or current_app.config.get('RECIPIENT_EMAIL')
+        or 'nhtours-noreply@nhtours.com'
+    )
+    success, detail = send_email_via_ses(
+        sender,
+        booking.buyer_email,
+        subject,
+        html_body,
+        text_body,
+    )
+    if not success:
+        current_app.logger.error(
+            'Payment failed email failed for installment %s: %s',
+            installment.id,
+            detail,
         )
     return success
 
@@ -249,9 +373,9 @@ def send_installment_reminders():
     每天运行，检查即将到期的分期付款
     日历日按美西（America/Los_Angeles），与客户 due_date 口径一致。
     提醒时机：
-    - 3 天前：首次提醒
-    - 1 天前：二次提醒
-    - 到期当天：最后提醒
+    - 3 天前：首次提醒（含 Auto Pay：到期前仅此一次）
+    - 1 天前：二次提醒（未开 Auto Pay）
+    - 到期当天：最后提醒（未开 Auto Pay；Auto Pay 当天由扣款任务处理）
     - 逾期后：催款邮件（每 3 天一次；总提醒次数 reminder_count < 6）
     若订单经济上已结清（amount_due <= 0），跳过催款并取消未付分期。
     """
@@ -301,7 +425,10 @@ def send_installment_reminders():
                 return True
             return False
 
-        # 1. 3 天前提醒
+        def _auto_pay_on(booking):
+            return bool(booking and getattr(booking, 'auto_pay_enabled', False))
+
+        # 1. 3 天前提醒（Auto Pay 与手动付款均发；Auto Pay 到期前仅此一封）
         three_days_later = today + timedelta(days=3)
         installments_3days = (
             _active_unpaid_installments_query()
@@ -323,7 +450,7 @@ def send_installment_reminders():
                 installment.reminder_count = (installment.reminder_count or 0) + 1
                 sent_pre += 1
 
-        # 2. 1 天前提醒（不要求必有 D-3，避免漏发后断档）
+        # 2. 1 天前提醒（未开 Auto Pay；不要求必有 D-3，避免漏发后断档）
         one_day_later = today + timedelta(days=1)
         installments_1day = (
             _active_unpaid_installments_query()
@@ -336,6 +463,8 @@ def send_installment_reminders():
                 continue
             if _skip_ach_in_flight(installment):
                 continue
+            if _auto_pay_on(installment.booking):
+                continue
             if _already_reminded_pacific_today(installment):
                 continue
             if send_installment_reminder_email(installment, days_until_due=1):
@@ -344,7 +473,7 @@ def send_installment_reminders():
                 installment.reminder_count = (installment.reminder_count or 0) + 1
                 sent_pre += 1
 
-        # 3. 到期当天提醒
+        # 3. 到期当天提醒（未开 Auto Pay；已开则由 9:15 扣款任务处理）
         installments_today = (
             _active_unpaid_installments_query()
             .filter(InstallmentPayment.due_date == today)
@@ -355,6 +484,8 @@ def send_installment_reminders():
             if _booking_is_settled(installment.booking):
                 continue
             if _skip_ach_in_flight(installment):
+                continue
+            if _auto_pay_on(installment.booking):
                 continue
             if _already_reminded_pacific_today(installment):
                 continue
@@ -397,10 +528,18 @@ def send_installment_reminders():
                     installment.status = 'overdue'
                 sent_overdue += 1
 
+        # 5. 逾期 ≥3 天 → 通知管理员（所有分期单，含未开 Auto Pay；每期最多一次）
+        admin_overdue_notified = notify_admins_of_overdue_installments(
+            today=today,
+            booking_is_settled=_booking_is_settled,
+            skip_ach_in_flight=_skip_ach_in_flight,
+        )
+
         db.session.commit()
         current_app.logger.info(
             f"Installment reminders processed: pacific_today={today} "
-            f"pre_due={sent_pre} overdue={sent_overdue}"
+            f"pre_due={sent_pre} overdue={sent_overdue} "
+            f"admin_overdue={admin_overdue_notified}"
         )
 
     except Exception as e:
@@ -408,6 +547,105 @@ def send_installment_reminders():
         current_app.logger.error(f"Error sending installment reminders: {str(e)}")
         import traceback
         traceback.print_exc()
+
+
+def notify_admins_of_overdue_installments(
+    *,
+    today=None,
+    booking_is_settled=None,
+    skip_ach_in_flight=None,
+    min_days=3,
+):
+    """
+    未付分期逾期 ≥ min_days 天时邮件通知管理员。
+    每期仅通知一次（写 admin_overdue_notified_at）；不 commit（由调用方 commit）。
+    """
+    today = today or pacific_today()
+    cutoff = today - timedelta(days=int(min_days))
+    notified = 0
+
+    candidates = (
+        _active_unpaid_installments_query()
+        .filter(
+            InstallmentPayment.due_date <= cutoff,
+            InstallmentPayment.admin_overdue_notified_at.is_(None),
+        )
+        .all()
+    )
+
+    for installment in candidates:
+        booking = installment.booking
+        if booking_is_settled and booking_is_settled(booking):
+            continue
+        if skip_ach_in_flight and skip_ach_in_flight(installment):
+            continue
+        days_overdue = (today - installment.due_date).days if installment.due_date else 0
+        if days_overdue < min_days:
+            continue
+        if installment.status == 'pending':
+            installment.status = 'overdue'
+        if send_admin_overdue_installment_email(installment, days_overdue):
+            installment.admin_overdue_notified_at = datetime.utcnow()
+            notified += 1
+
+    return notified
+
+
+def send_admin_overdue_installment_email(installment, days_overdue):
+    """Send ≥3-day overdue alert to RECIPIENT_EMAIL (admin inbox)."""
+    booking = installment.booking
+    if not booking:
+        return False
+
+    trip_title = booking.trip.title if booking.trip else 'Trip Booking'
+    order_number = booking.order_number or booking.id
+    customer_name = (
+        f"{(booking.buyer_first_name or '').strip()} {(booking.buyer_last_name or '').strip()}".strip()
+        or booking.buyer_name
+        or 'Customer'
+    )
+    due_date_label = (
+        installment.due_date.strftime('%B %d, %Y') if installment.due_date else 'N/A'
+    )
+    manage_url = None
+    if booking.trip_id:
+        try:
+            manage_url = url_for('admin.manage_trip', id=booking.trip_id, _external=True)
+        except Exception:
+            base = (current_app.config.get('BASE_URL') or 'https://nhtours.com').rstrip('/')
+            manage_url = f'{base}/admin/trips/{booking.trip_id}/manage'
+
+    subject = f"[NH Tours] Installment overdue {days_overdue}+ days — {order_number}"
+    context = {
+        'subject_line': subject,
+        'brand_subtitle': 'Installment overdue',
+        'order_number': order_number,
+        'customer_name': customer_name,
+        'customer_email': booking.buyer_email or '',
+        'trip_title': trip_title,
+        'installment_label': _installment_label(installment),
+        'due_date_label': due_date_label,
+        'amount': float(installment.amount or 0),
+        'days_overdue': days_overdue,
+        'manage_url': manage_url,
+        'email_logo_url': _email_brand_logo_url(),
+    }
+    html_body = render_template('emails/installment_admin_overdue_notify.html', **context)
+    text_body = render_template('emails/installment_admin_overdue_notify.txt', **context)
+    recipient = current_app.config.get('RECIPIENT_EMAIL') or 'info@nhtours.com'
+    sender = (
+        current_app.config.get('SENDER_EMAIL')
+        or current_app.config.get('RECIPIENT_EMAIL')
+        or 'nhtours-noreply@nhtours.com'
+    )
+    ok, detail = send_email_via_ses(sender, recipient, subject, html_body, text_body)
+    if not ok:
+        current_app.logger.error(
+            'Admin overdue notify failed installment_id=%s: %s',
+            installment.id,
+            detail,
+        )
+    return ok
 
 
 def send_installment_reminder_email(installment, days_until_due=3):
@@ -429,25 +667,51 @@ def send_installment_reminder_email(installment, days_until_due=3):
     due_label = (
         installment.due_date.strftime('%B %d, %Y') if installment.due_date else 'N/A'
     )
+    auto_on = bool(getattr(booking, 'auto_pay_enabled', False))
 
-    if days_until_due == 0:
-        subject = f"URGENT: Payment Due Today - {trip_title}"
-        urgency_text = "Your payment is due TODAY. Please complete it as soon as possible."
-    elif days_until_due == 1:
-        subject = f"Payment Reminder: Due Tomorrow - {trip_title}"
-        urgency_text = f"Your payment is due TOMORROW ({due_label})."
+    if auto_on:
+        if days_until_due == 0:
+            subject = f"Auto Pay: Charging today - {trip_title}"
+            urgency_text = (
+                f"Your next payment will be automatically charged today ({due_label}). "
+                "No action is needed unless you want to pay early or change your payment method."
+            )
+        elif days_until_due == 1:
+            subject = f"Auto Pay reminder: Charge tomorrow - {trip_title}"
+            urgency_text = (
+                f"Your next payment will be automatically charged tomorrow ({due_label}). "
+                "No action is needed unless you want to pay early or change your payment method."
+            )
+        else:
+            subject = f"Auto Pay reminder: Charge in {days_until_due} days - {trip_title}"
+            urgency_text = (
+                f"Your next payment will be automatically charged on {due_label}. "
+                "No action is needed unless you want to pay early or change your payment method."
+            )
+        footer_note = (
+            "If this payment has already been charged or you have already paid, "
+            "please ignore this email. Thank you."
+        )
     else:
-        subject = f"Payment Reminder: Due in {days_until_due} Days - {trip_title}"
-        urgency_text = f"Your payment is due in {days_until_due} days ({due_label})."
+        if days_until_due == 0:
+            subject = f"URGENT: Payment Due Today - {trip_title}"
+            urgency_text = "Your payment is due TODAY. Please complete it as soon as possible."
+        elif days_until_due == 1:
+            subject = f"Payment Reminder: Due Tomorrow - {trip_title}"
+            urgency_text = f"Your payment is due TOMORROW ({due_label})."
+        else:
+            subject = f"Payment Reminder: Due in {days_until_due} Days - {trip_title}"
+            urgency_text = f"Your payment is due in {days_until_due} days ({due_label})."
+        footer_note = (
+            "If you have already made this payment, please ignore this email. "
+            "Thank you for your prompt attention."
+        )
 
     ok = _send_installment_notice_email(
         installment,
         subject=subject,
         urgency_text=urgency_text,
-        footer_note=(
-            "If you have already made this payment, please ignore this email. "
-            "Thank you for your prompt attention."
-        ),
+        footer_note=footer_note,
         days_until_due=days_until_due,
     )
     if ok:
@@ -471,20 +735,33 @@ def send_overdue_reminder_email(installment, days_overdue):
 
     booking = installment.booking
     trip_title = booking.trip.title if booking.trip else 'Trip Booking'
+    auto_on = bool(getattr(booking, 'auto_pay_enabled', False))
 
     subject = f"OVERDUE Payment Notice - {trip_title}"
-    urgency_text = (
-        f"This is an overdue payment notice. Your payment is now "
-        f"{days_overdue} day(s) overdue."
-    )
+    if auto_on:
+        urgency_text = (
+            f"We could not complete your Auto Pay charge. Your payment is now "
+            f"{days_overdue} day(s) overdue. Please pay using the link below or "
+            f"update your payment method under Manage Auto Pay."
+        )
+        footer_note = (
+            "If you have already made this payment, please contact us so we can update "
+            "your record. Failure to pay may result in cancellation of your booking."
+        )
+    else:
+        urgency_text = (
+            f"This is an overdue payment notice. Your payment is now "
+            f"{days_overdue} day(s) overdue."
+        )
+        footer_note = (
+            "If you have already made this payment, please contact us so we can update "
+            "your record. Failure to pay may result in cancellation of your booking."
+        )
     ok = _send_installment_notice_email(
         installment,
         subject=subject,
         urgency_text=urgency_text,
-        footer_note=(
-            "If you have already made this payment, please contact us so we can update "
-            "your record. Failure to pay may result in cancellation of your booking."
-        ),
+        footer_note=footer_note,
         days_overdue=days_overdue,
     )
     if ok:
@@ -493,6 +770,84 @@ def send_overdue_reminder_email(installment, days_overdue):
             f"({days_overdue} days overdue)"
         )
     return ok
+
+
+def process_auto_pay_charges():
+    """
+    美西到期日：对已开启 Auto Pay 的订单尝试 Card 离线扣款（当期 + 以往未付）。
+    ACH 默认方式暂跳过（后续版本）。失败则催客户 + 通知管理员。
+    """
+    from app.auto_pay import (
+        charge_installment_via_auto_pay,
+        find_due_auto_pay_installments,
+        notify_admin_auto_pay_failure,
+    )
+    from app.payments import (
+        booking_has_processing_ach_payment,
+        installment_has_processing_ach,
+    )
+
+    today = pacific_today()
+    ok_n = 0
+    fail_n = 0
+    skip_n = 0
+    try:
+        for installment in find_due_auto_pay_installments(today=today):
+            booking = installment.booking
+            if not booking:
+                continue
+            if installment_has_processing_ach(installment) or booking_has_processing_ach_payment(
+                booking.id
+            ):
+                skip_n += 1
+                continue
+            # Avoid double-charge same pacific day
+            last = to_pacific_date(booking.auto_pay_last_charge_at)
+            if last and last >= today and not booking.auto_pay_last_error:
+                skip_n += 1
+                continue
+
+            success, detail = charge_installment_via_auto_pay(installment, card_only=True)
+            if success:
+                ok_n += 1
+                db.session.commit()
+                continue
+
+            if detail in ('ach_deferred', 'already_settled', 'zero_amount', 'ach_processing'):
+                skip_n += 1
+                db.session.commit()
+                continue
+
+            fail_n += 1
+            db.session.commit()
+            try:
+                notify_admin_auto_pay_failure(booking, installment, detail)
+            except Exception as e:
+                current_app.logger.warning('Auto Pay admin failure email: %s', e)
+            try:
+                days_overdue = 0
+                if installment.due_date and installment.due_date < today:
+                    days_overdue = (today - installment.due_date).days
+                send_payment_failed_email(
+                    installment,
+                    failure_reason=detail,
+                    days_overdue=days_overdue or None,
+                )
+            except Exception as e:
+                current_app.logger.warning('Auto Pay customer failure email: %s', e)
+
+        current_app.logger.info(
+            'Auto Pay charges: pacific_today=%s ok=%s fail=%s skip=%s',
+            today,
+            ok_n,
+            fail_n,
+            skip_n,
+        )
+        return ok_n
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error('process_auto_pay_charges failed: %s', e, exc_info=True)
+        return 0
 
 
 def send_scheduled_messages():

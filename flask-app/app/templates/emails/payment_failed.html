@@ -10,15 +10,13 @@
         <tr>
             <td align="center">
                 <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;border:1px solid #e5e7eb;">
-                    <!-- Brand bar -->
                     <tr>
                         <td style="background:#0f172a;padding:20px 28px;">
                             <p style="margin:0;font-size:18px;font-weight:700;color:#ffffff;letter-spacing:0.02em;">Nexus Horizons Tours</p>
-                            <p style="margin:6px 0 0;font-size:13px;color:#94a3b8;">{{ brand_subtitle }}</p>
+                            <p style="margin:6px 0 0;font-size:13px;color:#94a3b8;">{{ brand_subtitle or 'Payment failed' }}</p>
                         </td>
                     </tr>
 
-                    <!-- Greeting -->
                     <tr>
                         <td style="padding:28px 28px 8px;">
                             <p style="margin:0 0 8px;font-size:20px;font-weight:700;color:#111827;line-height:1.3;">
@@ -28,44 +26,50 @@
                                 Hi,
                                 {% endif %}
                             </p>
-                            <p style="margin:0;font-size:14px;color:#6b7280;line-height:1.5;">{{ urgency_text }}</p>
+                            <p style="margin:0;font-size:14px;color:#6b7280;line-height:1.5;">{{ intro_text }}</p>
                         </td>
                     </tr>
 
-                    <!-- Amount / urgency highlight -->
                     <tr>
                         <td style="padding:16px 28px 8px;">
-                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:{{ highlight_bg }};border:1px solid {{ highlight_border }};border-radius:8px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;">
                                 <tr>
                                     <td style="padding:16px 18px;">
-                                        <p style="margin:0 0 4px;font-size:12px;color:{{ highlight_label }};text-transform:uppercase;letter-spacing:0.04em;font-weight:600;">
-                                            {{ highlight_title }}
+                                        <p style="margin:0 0 4px;font-size:12px;color:#b91c1c;text-transform:uppercase;letter-spacing:0.04em;font-weight:600;">
+                                            {{ highlight_title or 'Payment not completed' }}
                                         </p>
-                                        <p style="margin:0;font-size:28px;font-weight:700;color:{{ highlight_amount }};line-height:1.2;">
+                                        <p style="margin:0;font-size:28px;font-weight:700;color:#7f1d1d;line-height:1.2;">
                                             ${{ '%.2f'|format(amount) }}
                                         </p>
-                                        <p style="margin:8px 0 0;font-size:13px;color:{{ highlight_label }};">
-                                            Due {{ due_date_label }}{% if days_overdue is defined and days_overdue %} · {{ days_overdue }} day(s) overdue{% endif %}
+                                        <p style="margin:8px 0 0;font-size:13px;color:#b91c1c;">
+                                            Due {{ due_date_label }}{% if days_overdue %} · {{ days_overdue }} day(s) overdue{% endif %}
                                         </p>
+                                        {% if failure_reason %}
+                                        <p style="margin:10px 0 0;font-size:13px;color:#991b1b;line-height:1.4;">
+                                            Reason: {{ failure_reason }}
+                                        </p>
+                                        {% endif %}
                                     </td>
                                 </tr>
                             </table>
                         </td>
                     </tr>
 
-                    <!-- Pay CTA -->
                     <tr>
                         <td style="padding:16px 28px 8px;" align="center">
                             <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                                 <tr>
-                                    <td align="center" bgcolor="{{ cta_bg }}" style="border-radius:6px;">
+                                    <td align="center" bgcolor="#dc2626" style="border-radius:6px;">
                                         <a href="{{ payment_link }}"
-                                           style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:6px;background:{{ cta_bg }};">
-                                            {{ cta_label }}
+                                           style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:6px;background:#dc2626;">
+                                            {{ cta_label or 'Pay now' }}
                                         </a>
                                     </td>
                                 </tr>
                             </table>
+                            <p style="margin:12px 0 0;font-size:13px;color:#6b7280;line-height:1.5;">
+                                No charge went through for this attempt. You can pay with the button above{% if auto_pay_url %} or update your saved method{% endif %}.
+                            </p>
                         </td>
                     </tr>
 
@@ -73,17 +77,16 @@
                     <tr>
                         <td style="padding:8px 28px 8px;" align="center">
                             <p style="margin:0 0 8px;font-size:13px;color:#6b7280;">
-                                {{ auto_pay_blurb or ('Need to change or turn off Auto Pay?' if auto_pay_enabled else 'Want us to charge your card automatically on due dates?') }}
+                                {{ auto_pay_blurb or 'Need to update or turn off Auto Pay?' }}
                             </p>
                             <a href="{{ auto_pay_url }}"
                                style="display:inline-block;padding:10px 22px;font-size:13px;font-weight:700;color:#0066ff;text-decoration:none;border-radius:6px;border:2px solid #0066ff;background:#ffffff;">
-                                {{ auto_pay_cta_label }}
+                                {{ auto_pay_cta_label or 'Manage Auto Pay' }}
                             </a>
                         </td>
                     </tr>
                     {% endif %}
 
-                    <!-- Payment details -->
                     <tr>
                         <td style="padding:20px 28px 8px;">
                             <p style="margin:0 0 10px;font-size:13px;font-weight:700;color:#111827;text-transform:uppercase;letter-spacing:0.04em;">Payment details</p>
@@ -108,14 +111,12 @@
                         </td>
                     </tr>
 
-                    <!-- Note -->
                     <tr>
                         <td style="padding:8px 28px 20px;">
                             <p style="margin:0;font-size:13px;color:#6b7280;line-height:1.5;">{{ footer_note }}</p>
                         </td>
                     </tr>
 
-                    <!-- Footer: contact + logo -->
                     <tr>
                         <td style="padding:24px 28px;border-top:1px solid #e5e7eb;background:#fafafa;">
                             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">

@@ -1,0 +1,233 @@
+{% extends "booking/base.html" %}
+
+{% block title %}Auto Pay | Nexus Horizons Tours{% endblock %}
+
+{% block content %}
+<div class="w-full h-[40vh] min-h-[220px]" style="background-image: url('{{ url_for('static', filename='images/backgrounds/tibet_background.jpg') }}'); background-position: center; background-size: cover; background-repeat: no-repeat;"></div>
+<div class="w-full h-[16px] bg-indigo-800"></div>
+
+<div class="max-w-xl mx-auto py-8 px-8 md:px-0 pb-16">
+    <nav class="mb-8">
+        <ol class="flex flex-wrap items-center space-x-2 text-lg font-medium text-amber-800">
+            <li><a class="hover:underline" href="{{ url_for('main.index') }}">Home</a></li>
+            <li class="flex items-center">
+                <span class="mx-2 text-gray-400">›</span>
+                <span class="text-indigo-800 font-medium">Auto Pay</span>
+            </li>
+        </ol>
+    </nav>
+
+    <h1 class="text-2xl font-medium text-zinc-800 mb-2 uppercase tracking-wide">Auto Pay</h1>
+    <p class="content mb-6 text-zinc-600">
+        Order {{ booking.order_number or ('#' ~ booking.id) }}
+        {% if booking.trip %} · {{ booking.trip.title }}{% endif %}
+    </p>
+
+    {% if flash_message %}
+    <div class="mb-4 rounded-xs border px-4 py-3 text-sm {% if flash_ok %}border-emerald-200 bg-emerald-50 text-emerald-900{% else %}border-red-200 bg-red-50 text-red-800{% endif %}">
+        {{ flash_message }}
+    </div>
+    {% endif %}
+
+    <div class="bg-white border border-zinc-300 rounded-xs p-6 space-y-5 mb-6">
+        <div class="flex items-center justify-between gap-4">
+            <div>
+                <h2 class="text-lg font-medium text-zinc-800">Status</h2>
+                <p class="text-sm text-zinc-500 mt-1">
+                    {% if booking.auto_pay_enabled %}
+                    Auto Pay is <strong class="text-emerald-700">on</strong>. We charge your default method on each due date.
+                    {% else %}
+                    Auto Pay is <strong class="text-zinc-700">off</strong>. Choose a payment method below to enable it.
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+
+        {% if payment_methods %}
+        <form method="post" id="auto-pay-methods-form" class="space-y-3">
+            <input type="hidden" name="token" value="{{ token }}">
+            <input type="hidden" name="action" value="enable">
+            <p class="text-sm font-medium text-zinc-800">Saved payment methods</p>
+            <div class="space-y-2">
+                {% for pm in payment_methods %}
+                <label class="flex items-center gap-3 px-0 py-2 cursor-pointer">
+                    <input type="radio" name="payment_method_id" value="{{ pm.id }}" class="accent-[#0066ff]"
+                           {% if booking.auto_pay_payment_method_id == pm.id or (not booking.auto_pay_payment_method_id and loop.first) %}checked{% endif %}
+                           {% if booking.auto_pay_enabled %}onchange="this.form.submit()"{% endif %}>
+                    <span class="text-sm text-zinc-800">{{ pm.label }}</span>
+                    {% if pm.type == 'us_bank_account' %}
+                    <span class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5" style="margin-left: 0.5rem;">ACH</span>
+                    {% endif %}
+                </label>
+                {% endfor %}
+            </div>
+            <div class="pt-4" style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;align-items:center;">
+                {% if booking.auto_pay_enabled %}
+                <button type="button" id="auto-pay-disable-btn"
+                        class="text-white text-sm font-semibold rounded-xs"
+                        style="background:#d97706;padding:12px 24px;border:none;cursor:pointer;line-height:1.25;">
+                    Turn off Auto Pay
+                </button>
+                {% else %}
+                <button type="submit"
+                        class="text-white text-sm font-semibold rounded-xs"
+                        style="background:#0066ff;padding:12px 24px;border:none;cursor:pointer;line-height:1.25;">
+                    Enable Auto Pay
+                </button>
+                {% endif %}
+            </div>
+        </form>
+        {% else %}
+        <p class="text-sm text-zinc-600">
+            No saved payment methods yet. Pay an installment once with a card or US bank account, then return here — or add a method below.
+        </p>
+        {% if booking.auto_pay_enabled %}
+        <div class="pt-4" style="display:flex;justify-content:center;">
+            <button type="button" id="auto-pay-disable-btn"
+                    class="text-white text-sm font-semibold rounded-xs"
+                    style="background:#d97706;padding:12px 24px;border:none;cursor:pointer;line-height:1.25;">
+                Turn off Auto Pay
+            </button>
+        </div>
+        {% endif %}
+        {% endif %}
+    </div>
+
+    {% if booking.auto_pay_enabled %}
+    {# Confirm dialog — aligned with admin Manage messageConfirmModal #}
+    <div id="auto-pay-disable-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="auto-pay-disable-title"
+         style="position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(75,85,99,0.5);">
+        <div style="background:#fff;border-radius:8px;box-shadow:0 10px 25px rgba(0,0,0,0.15);width:100%;max-width:28rem;overflow:hidden;">
+            <div style="padding:24px;">
+                <div style="display:flex;align-items:flex-start;gap:12px;">
+                    <div style="flex-shrink:0;height:40px;width:40px;border-radius:9999px;background:#fffbeb;display:flex;align-items:center;justify-content:center;">
+                        <svg style="height:20px;width:20px;color:#d97706;" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                    </div>
+                    <div style="min-width:0;flex:1;">
+                        <h3 id="auto-pay-disable-title" style="margin:0;font-size:1.125rem;font-weight:500;color:#111827;line-height:1.4;">
+                            Turn off Auto Pay?
+                        </h3>
+                        <p style="margin:8px 0 0;font-size:0.875rem;color:#4b5563;line-height:1.5;">
+                            Remaining installments will use email reminders and payment links.
+                        </p>
+                        <p style="margin:6px 0 0;font-size:0.875rem;color:#4b5563;line-height:1.5;">
+                            You can turn Auto Pay back on anytime from this page.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div style="padding:16px 24px;border-top:1px solid #e5e7eb;background:#f9fafb;display:flex;justify-content:flex-end;gap:12px;flex-wrap:wrap;">
+                <button type="button" id="auto-pay-disable-cancel" data-auto-pay-dismiss
+                        style="background:#fff;color:#00D1C1;padding:8px 16px;border:1px solid #00D1C1;border-radius:4px;font-size:0.875rem;font-weight:500;cursor:pointer;line-height:1.25;">
+                    Cancel
+                </button>
+                <button type="button" id="auto-pay-disable-confirm"
+                        style="background:#d97706;color:#fff;padding:8px 16px;border:none;border-radius:4px;font-size:0.875rem;font-weight:500;cursor:pointer;line-height:1.25;">
+                    Turn off
+                </button>
+            </div>
+        </div>
+    </div>
+    <form id="auto-pay-disable-form" method="post" class="hidden">
+        <input type="hidden" name="token" value="{{ token }}">
+        <input type="hidden" name="action" value="disable">
+    </form>
+    <script>
+    (function () {
+        const openBtn = document.getElementById('auto-pay-disable-btn');
+        const modal = document.getElementById('auto-pay-disable-modal');
+        const form = document.getElementById('auto-pay-disable-form');
+        const confirmBtn = document.getElementById('auto-pay-disable-confirm');
+        if (!openBtn || !modal || !form) return;
+
+        function openModal() {
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+        function closeModal() {
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+            document.body.style.overflow = '';
+        }
+
+        openBtn.addEventListener('click', openModal);
+        confirmBtn.addEventListener('click', function () {
+            closeModal();
+            form.submit();
+        });
+        modal.querySelectorAll('[data-auto-pay-dismiss]').forEach(function (el) {
+            el.addEventListener('click', closeModal);
+        });
+        modal.addEventListener('click', function (e) {
+            if (e.target === modal) closeModal();
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && modal.style.display === 'flex') closeModal();
+        });
+    })();
+    </script>
+    {% endif %}
+
+    {% if setup_client_secret and publishable_key %}
+    <div class="bg-white border border-zinc-300 rounded-xs p-6 space-y-4">
+        <h2 class="text-lg font-medium text-zinc-800">Add a new payment method</h2>
+        <p class="text-sm text-zinc-500">Card fees may apply when this method is charged. US bank account (ACH) has no card fee; ACH Auto Pay charges come in a later update.</p>
+        <div id="setup-element" class="rounded-xs p-3 border border-zinc-200"></div>
+        <div id="setup-message" class="hidden text-sm text-red-700" role="alert"></div>
+        <div style="display:flex;justify-content:center;padding-top:4px;">
+            <button type="button" id="setup-submit"
+                    class="text-white text-sm font-semibold rounded-xs"
+                    style="background:#00D1C1;padding:12px 24px;border:none;cursor:pointer;">
+                {% if booking.auto_pay_enabled %}Save method as default{% else %}Save method &amp; enable Auto Pay{% endif %}
+            </button>
+        </div>
+    </div>
+    <script src="https://js.stripe.com/v3/"></script>
+    <script>
+    (function () {
+        const publishableKey = {{ publishable_key | tojson }};
+        const clientSecret = {{ setup_client_secret | tojson }};
+        const returnUrl = {{ return_url | tojson }};
+        if (!publishableKey || !clientSecret) return;
+        const stripe = Stripe(publishableKey);
+        const elements = stripe.elements({ clientSecret: clientSecret });
+        const setupElement = elements.create('payment');
+        setupElement.mount('#setup-element');
+        const btn = document.getElementById('setup-submit');
+        const msg = document.getElementById('setup-message');
+        btn.addEventListener('click', async function () {
+            btn.disabled = true;
+            msg.classList.add('hidden');
+            const { error } = await stripe.confirmSetup({
+                elements: elements,
+                confirmParams: { return_url: returnUrl },
+            });
+            if (error) {
+                msg.textContent = error.message || 'Could not save payment method.';
+                msg.classList.remove('hidden');
+                btn.disabled = false;
+            }
+        });
+    })();
+    </script>
+    {% elif setup_placeholder %}
+    <div class="bg-white border border-zinc-300 rounded-xs p-6 space-y-4">
+        <h2 class="text-lg font-medium text-zinc-800">Add a new payment method</h2>
+        <p class="text-sm text-zinc-500">Card fees may apply when this method is charged. US bank account (ACH) has no card fee; ACH Auto Pay charges come in a later update.</p>
+        <div class="rounded-xs p-6 border border-dashed border-zinc-300 bg-zinc-50 text-sm text-zinc-500 text-center">
+            Stripe Payment Element mounts here (card / US bank account).
+        </div>
+        <div style="display:flex;justify-content:center;padding-top:4px;">
+            <button type="button" disabled
+                    class="text-white text-sm font-semibold rounded-xs"
+                    style="background:#00D1C1;padding:12px 24px;border:none;opacity:0.6;cursor:not-allowed;">
+                {% if booking.auto_pay_enabled %}Save method as default{% else %}Save method &amp; enable Auto Pay{% endif %}
+            </button>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -162,11 +162,15 @@
                             </svg>
                         </button>
                         <div id="dropdown-{{ deposit.id }}"
-                            class="hidden origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+                            class="hidden origin-top-right absolute right-0 mt-2 w-52 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
                             <div class="py-1" role="menu">
+                                <button onclick="copyPaymentLink({{ deposit.id }})"
+                                    class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100" role="menuitem">
+                                    Copy payment link
+                                </button>
                                 <button onclick="sendReminder({{ deposit.id }})"
                                     class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100" role="menuitem">
-                                    Send Reminder
+                                    Send payment email
                                 </button>
                                 <button onclick="markPaid({{ deposit.id }})"
                                     class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100" role="menuitem">
@@ -290,11 +294,13 @@
                             </svg>
                         </button>
                         <div id="dropdown-inst-{{ installment.id }}"
-                            class="hidden origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+                            class="hidden origin-top-right absolute right-0 mt-2 w-52 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
                             <div class="py-1" role="menu">
                                 {% if inst_status in ('pending', 'overdue') %}
+                                <button onclick="copyPaymentLink({{ installment.id }})"
+                                    class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100" role="menuitem">Copy payment link</button>
                                 <button onclick="sendReminder({{ installment.id }})"
-                                    class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100" role="menuitem">Send Reminder</button>
+                                    class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100" role="menuitem">Send payment email</button>
                                 <button onclick="markPaid({{ installment.id }})"
                                     class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100" role="menuitem">Mark Paid</button>
                                 {% else %}
