@@ -1,7 +1,9 @@
 {% extends "booking/base.html" %}
 
 {% block title %}
-    {% if payment_status == 'succeeded' %}Booking Confirmed | Nexus Horizons{% else %}Payment Status | Nexus Horizons{% endif %}
+    {% if payment_status == 'cancelled' %}Order Cancelled | Nexus Horizons
+    {% elif payment_status == 'succeeded' %}Booking Confirmed | Nexus Horizons
+    {% else %}Payment Status | Nexus Horizons{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -15,7 +17,21 @@
 </div>
 <div class="w-full h-[16px] bg-indigo-800"></div>
 <div id="payment-status-root" data-booking-id="{{ booking_id or '' }}" class="max-w-4xl mx-auto py-28 px-8 md:px-0 text-center">
-    {% if payment_status == 'succeeded' %}
+    {% if payment_status == 'cancelled' or order_cancelled %}
+        <h1 class="text-4xl font-bold text-gray-900" style="margin-top: calc(var(--spacing) * 38); margin-bottom: calc(var(--spacing) * 8);">Order Cancelled</h1>
+        <p class="text-xl text-gray-600" style="margin-bottom: calc(var(--spacing) * 8);">
+            This order is no longer active. No further payments can be made on this link.
+        </p>
+        {% if booking and booking.order_number %}
+        <p class="text-base text-gray-500" style="margin-bottom: calc(var(--spacing) * 8);">
+            Order number: <span class="font-medium text-gray-700">{{ booking.order_number }}</span>
+        </p>
+        {% endif %}
+        <p class="text-base text-gray-600" style="margin-bottom: calc(var(--spacing) * 38);">
+            If you have another active booking or need help, contact
+            <a href="mailto:info@nhtours.com" class="text-indigo-700 underline">info@nhtours.com</a>.
+        </p>
+    {% elif payment_status == 'succeeded' %}
         {% if already_paid %}
         <h1 class="text-4xl font-bold text-gray-900" style="margin-top: calc(var(--spacing) * 38); margin-bottom: calc(var(--spacing) * 8);">Already Paid</h1>
         <p class="text-xl text-gray-600" style="margin-bottom: {% if receipt_url %}calc(var(--spacing) * 12){% else %}calc(var(--spacing) * 38){% endif %};">

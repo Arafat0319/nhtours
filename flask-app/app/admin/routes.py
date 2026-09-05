@@ -4304,6 +4304,14 @@ def cancel_booking_order(trip_id, booking_id):
         booking.status = 'cancelled'
         cancel_unpaid_installments(booking)
         try:
+            from app.payments import void_stale_pending_payments
+            void_stale_pending_payments(booking)
+        except Exception:
+            pass
+        for bp in booking.booking_packages.all():
+            if (bp.status or '') not in ('cancelled',):
+                bp.status = 'cancelled'
+        try:
             from app.auto_pay import disable_auto_pay
             disable_auto_pay(booking, source='admin_cancel')
         except Exception:
@@ -4442,8 +4450,15 @@ def refund_booking(trip_id, booking_id):
             booking.status = 'cancelled'
             if float(booking.amount_paid or 0) <= 0.001:
                 booking.amount_paid = 0.0
-            from app.payments import cancel_unpaid_installments
+            from app.payments import cancel_unpaid_installments, void_stale_pending_payments
             cancel_unpaid_installments(booking)
+            try:
+                void_stale_pending_payments(booking)
+            except Exception:
+                pass
+            for bp in booking.booking_packages.all():
+                if (bp.status or '') not in ('cancelled',):
+                    bp.status = 'cancelled'
             try:
                 from app.auto_pay import disable_auto_pay
                 disable_auto_pay(booking, source='admin_cancel')

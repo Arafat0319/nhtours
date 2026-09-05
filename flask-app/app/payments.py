@@ -1477,6 +1477,16 @@ def apply_refund_to_ledger(payment, booking, refund_amount, reason=None, stripe_
         booking.status = 'cancelled'
         cancel_unpaid_installments(booking)
         try:
+            void_stale_pending_payments(booking)
+        except Exception:
+            pass
+        try:
+            for bp in booking.booking_packages.all():
+                if (bp.status or '') not in ('cancelled',):
+                    bp.status = 'cancelled'
+        except Exception:
+            pass
+        try:
             from app.auto_pay import disable_auto_pay
             disable_auto_pay(booking, source='admin_refund_cancel')
         except Exception:

@@ -109,6 +109,25 @@ def _sync_ach_processing_from_pi(payment_intent_id):
         )
 
 
+def _redirect_order_cancelled(booking):
+    """Cancelled order pay links: clear closed-order page (not Already Paid)."""
+    return redirect(url_for(
+        'main.booking_success',
+        booking_id=booking.id,
+        cancelled=1,
+        token=generate_receipt_token(booking.id),
+    ))
+
+
+def _redirect_already_paid(booking, *, payment_id=None):
+    kwargs = {
+        'booking_id': booking.id,
+        'already_paid': 1,
+        'token': generate_receipt_token(booking.id, payment_id=payment_id),
+    }
+    return redirect(url_for('main.booking_success', **kwargs))
+
+
 def _render_installment_ach_locked(
     *,
     booking,
@@ -1219,19 +1238,9 @@ def booking_payment(booking_id):
     if not verify_receipt_token(token, booking.id):
         abort(403)
     if booking.status == 'cancelled':
-        return redirect(url_for(
-            'main.booking_success',
-            booking_id=booking.id,
-            already_paid=1,
-            token=generate_receipt_token(booking.id),
-        ))
+        return _redirect_order_cancelled(booking)
     if booking.status == 'fully_paid':
-        return redirect(url_for(
-            'main.booking_success',
-            booking_id=booking.id,
-            already_paid=1,
-            token=generate_receipt_token(booking.id),
-        ))
+        return _redirect_already_paid(booking)
 
     payment_plan = request.args.get('payment_plan', 'full')
 
@@ -2409,6 +2418,8 @@ def booking_success():
     booking = Booking.query.get(booking_id) if booking_id else None
     payment = None
     payment_status = 'pending'
+    # 仅以库内状态为准；忽略伪造的 ?cancelled=1（防止有效单被冒充成已取消页）
+    order_cancelled = bool(booking and booking.status == 'cancelled')
     if booking_id:
         payments = (
             Payment.query.filter(
@@ -2423,14 +2434,22 @@ def booking_success():
         if not payment and payments:
             payment = payments[0]
 
-    if payment:
+    if order_cancelled:
+        payment_status = 'cancelled'
+    elif payment:
         payment_status = payment.status or 'pending'
-    elif booking and booking.status in ('deposit_paid', 'fully_paid', 'cancelled'):
-        # $0 订单：没有 Payment 记录，但 Booking 状态已确认；已付重入 / 取消也走成功态文案
+    elif booking and booking.status in ('deposit_paid', 'fully_paid'):
+        # $0 订单：没有 Payment 记录，但 Booking 状态已确认
         payment_status = 'succeeded'
 
     receipt_url = None
-    if booking_id and token and verify_receipt_token(token, booking_id):
+    # 取消单不展示收据下载，避免旧链接看起来像「订单仍有效」
+    if (
+        not order_cancelled
+        and booking_id
+        and token
+        and verify_receipt_token(token, booking_id)
+    ):
         receipt_url = url_for('main.booking_receipt', booking_id=booking_id, token=token)
 
     failure_message = None
@@ -2443,9 +2462,19 @@ def booking_success():
         booking_id=booking_id,
         booking=booking,
         payment_status=payment_status,
-        already_paid=already_paid,
+        already_paid=already_paid and not order_cancelled,
+        order_cancelled=order_cancelled,
         receipt_url=receipt_url,
-        receipt_token=token if (booking_id and token and verify_receipt_token(token, booking_id)) else None,
+        receipt_token=(
+            token
+            if (
+                not order_cancelled
+                and booking_id
+                and token
+                and verify_receipt_token(token, booking_id)
+            )
+            else None
+        ),
         failure_message=failure_message,
     )
 
@@ -3064,21 +3093,14 @@ def pay_installment(installment_id):
     if not booking:
         abort(404)
 
-    if booking.status == 'cancelled' or installment.status == 'cancelled':
-        return redirect(url_for(
-            'main.booking_success',
-            booking_id=booking.id,
-            already_paid=1,
-            token=generate_receipt_token(booking.id),
-        ))
+    if booking.status == 'cancelled':
+        return _redirect_order_cancelled(booking)
+    if installment.status == 'cancelled':
+        # Payoff / admin cancelled this row while order still active
+        return _redirect_already_paid(booking)
 
     if installment.status == 'paid':
-        return redirect(url_for(
-            'main.booking_success',
-            booking_id=installment.booking_id,
-            already_paid=1,
-            token=generate_receipt_token(installment.booking_id),
-        ))
+        return _redirect_already_paid(booking)
 
     # Webhook 滞后：同步 Stripe processing → 本地 Payment
     if installment.payment_intent_id:
@@ -3105,12 +3127,7 @@ def pay_installment(installment_id):
     )
     base_amount_cents = sum(int(i.get('amount_cents') or 0) for i in summary_items)
     if base_amount_cents <= 0 and not booking_has_processing_ach_payment(booking.id):
-        return redirect(url_for(
-            'main.booking_success',
-            booking_id=booking.id,
-            already_paid=1,
-            token=generate_receipt_token(booking.id),
-        ))
+        return _redirect_already_paid(booking)
 
     catch_meta = catch_up_metadata_fields(installment, summary_items=summary_items)
     payment_step = catch_meta.get('payment_step') or 'installment'
@@ -3719,16 +3736,13 @@ def pay_booking_addon(booking_addon_id):
 
     booking = ba.booking
     if not booking or booking.status == 'cancelled':
+        if booking and booking.status == 'cancelled':
+            return _redirect_order_cancelled(booking)
         abort(404)
 
     status = (ba.payment_status or 'unpaid').lower()
     if status == 'paid':
-        return redirect(url_for(
-            'main.booking_success',
-            booking_id=booking.id,
-            already_paid=1,
-            token=generate_receipt_token(booking.id, payment_id=ba.payment_id),
-        ))
+        return _redirect_already_paid(booking, payment_id=ba.payment_id)
 
     if ba.stripe_payment_intent_id:
         try:
@@ -3763,12 +3777,7 @@ def pay_booking_addon(booking_addon_id):
     if base_amount_cents <= 0:
         ba.payment_status = 'paid'
         db.session.commit()
-        return redirect(url_for(
-            'main.booking_success',
-            booking_id=booking.id,
-            already_paid=1,
-            token=generate_receipt_token(booking.id),
-        ))
+        return _redirect_already_paid(booking)
 
     addon_label = ba.addon.name if ba.addon else 'Add-on'
     metadata = build_booking_metadata(booking, {
@@ -3920,7 +3929,7 @@ def manage_auto_pay(booking_id):
         abort(403)
 
     if booking.status == 'cancelled':
-        abort(404)
+        return _redirect_order_cancelled(booking)
     if not booking_has_installment_plan(booking):
         return render_template(
             'booking/auto_pay.html',
@@ -4034,13 +4043,10 @@ def pay_installment_payoff(installment_id):
     if not booking:
         abort(404)
 
-    if booking.status == 'cancelled' or installment.status == 'cancelled':
-        return redirect(url_for(
-            'main.booking_success',
-            booking_id=booking.id,
-            already_paid=1,
-            token=generate_receipt_token(booking.id),
-        ))
+    if booking.status == 'cancelled':
+        return _redirect_order_cancelled(booking)
+    if installment.status == 'cancelled':
+        return _redirect_already_paid(booking)
 
     # ACH 清算中：禁止 payoff 新建扣款，回到分期页 Processing 态
     if installment.payment_intent_id:
@@ -4055,12 +4061,7 @@ def pay_installment_payoff(installment_id):
     from app.payments import booking_payoff_due
     remaining_amount = booking_payoff_due(booking)
     if remaining_amount <= 0:
-        return redirect(url_for(
-            'main.booking_success',
-            booking_id=booking.id,
-            already_paid=1,
-            token=generate_receipt_token(booking.id),
-        ))
+        return _redirect_already_paid(booking)
 
     remaining_amount_cents = int(round(remaining_amount * 100))
     summary_items = [
@@ -5130,6 +5131,24 @@ def handle_payment_intent_succeeded(payment_intent):
 
     paid_at = datetime.utcnow()
     booking = installment.booking
+    if booking and booking.status == 'cancelled':
+        # 取消单上若仍有迟到 webhook：不重开分期、不累加 amount_paid；记日志供人工退款核对
+        current_app.logger.error(
+            "PaymentIntent %s succeeded but booking %s (%s) is cancelled — "
+            "skipping installment settle; review Stripe for refund",
+            payment_intent_id,
+            booking.id,
+            getattr(booking, 'order_number', None),
+        )
+        if existing_payment and existing_payment.status in ('pending', 'processing', 'failed'):
+            existing_payment.status = 'succeeded'
+            existing_payment.paid_at = paid_at
+            existing_payment.payment_metadata = metadata or existing_payment.payment_metadata
+            db.session.commit()
+            return existing_payment
+        db.session.commit()
+        return existing_payment
+
     catch_ids = parse_catch_up_ids(metadata)
     if not catch_ids:
         catch_ids = [installment.id]
