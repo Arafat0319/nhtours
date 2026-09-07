@@ -2,13 +2,13 @@
 
 {% block content %}
 <div class="space-y-6">
-    <div class="flex justify-between items-center">
-        <h2 class="text-2xl font-normal text-gray-500">Customers</h2>
+    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+        <h2 class="text-xl sm:text-2xl font-normal text-gray-500">Customers</h2>
         <div class="flex space-x-2">
             <!-- Filter Dropdown -->
             <div class="relative inline-block text-left">
                 <button type="button"
-                    class="inline-flex justify-center w-full rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none">
+                    class="inline-flex justify-center w-full rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none min-h-[40px]">
                     Filters
                     <svg class="-mr-1 ml-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"
                         fill="currentColor" aria-hidden="true">
@@ -21,8 +21,37 @@
         </div>
     </div>
 
-    <!-- Customers Table -->
-    <div class="bg-white shadow overflow-hidden sm:rounded-lg">
+    <!-- Mobile cards -->
+    <div class="md:hidden space-y-3">
+        {% for client in clients %}
+        {% set stats = client_stats.get(client.id, {}) %}
+        {% set trips = stats.get('trips', []) %}
+        {% set collected = stats.get('collected_amount', 0.0) %}
+        <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+            <div class="flex justify-between gap-2 items-start">
+                <div class="min-w-0">
+                    <div class="text-sm font-medium text-gray-900 truncate">{{ client.name }}</div>
+                    <div class="text-xs text-gray-500 truncate">{{ client.email }}</div>
+                </div>
+                <button type="button"
+                    class="text-red-600 text-sm font-medium delete-customer-btn min-h-[40px] px-2 shrink-0"
+                    data-client-id="{{ client.id }}"
+                    data-client-name="{{ client.name }}">Delete</button>
+            </div>
+            <div class="mt-2 text-sm text-gray-700 line-clamp-2">{{ trips|join(', ') if trips else '-' }}</div>
+            <div class="mt-2 flex justify-between text-sm">
+                <span class="text-wetravel-cyan font-bold">${{ "%.2f"|format(collected) }}</span>
+                <span class="text-xs text-gray-500">{{ client.created_at.strftime('%Y/%m/%d') }}</span>
+            </div>
+        </div>
+        {% else %}
+        <p class="text-center text-sm text-gray-500 py-8">No results found</p>
+        {% endfor %}
+    </div>
+
+    <!-- Customers Table (desktop) -->
+    <div class="bg-white shadow overflow-hidden sm:rounded-lg hidden md:block">
+        <div class="overflow-x-auto">
         <table class="w-full table-fixed divide-y divide-gray-200">
             <thead class="bg-gray-50">
                 <tr>
@@ -97,6 +126,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
         {% include 'admin/includes/pagination.html' %}
     </div>
 </div>

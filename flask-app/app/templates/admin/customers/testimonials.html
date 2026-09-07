@@ -2,9 +2,9 @@
 
 {% block content %}
 <div class="space-y-6">
-	<div class="flex justify-between items-center">
+	<div class="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
 		<div>
-			<h2 class="text-2xl font-normal text-gray-500">Testimonials</h2>
+			<h2 class="text-xl sm:text-2xl font-normal text-gray-500">Testimonials</h2>
 			<p class="text-sm text-gray-400 mt-1">
 				{% if can_reorder %}
 				Drag approved rows to set homepage carousel order. Edit or review all entries below.
@@ -18,13 +18,13 @@
 			<span id="carouselOrderStatus" class="text-sm text-gray-400"></span>
 			{% endif %}
 			<button type="button" onclick="openTestimonialFormModal()"
-				class="bg-wetravel-green text-white px-4 py-2 rounded text-sm font-bold hover:bg-green-500 transition-colors">
+				class="bg-wetravel-green text-white px-4 py-2 rounded text-sm font-bold hover:bg-green-500 transition-colors min-h-[40px]">
 				Add New
 			</button>
 		</div>
 	</div>
 
-	<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+	<div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
 		<div class="bg-white rounded-lg shadow-sm p-4">
 			<p class="text-sm text-gray-500">Total</p>
 			<p class="text-2xl font-semibold text-gray-800">{{ stats.total }}</p>
@@ -79,8 +79,8 @@
 		</div>
 	</div>
 
-	<div class="bg-white rounded-lg shadow-sm overflow-hidden">
-		<table class="w-full table-fixed divide-y divide-gray-200">
+	<div class="bg-white rounded-lg shadow-sm overflow-x-auto">
+		<table class="w-full min-w-[720px] table-fixed divide-y divide-gray-200">
 			<thead class="bg-gray-50">
 				<tr>
 					<th class="w-10 px-2 py-3 text-center">

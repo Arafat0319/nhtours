@@ -3,9 +3,9 @@
 {% block content %}
 <div class="space-y-6">
     <!-- Header Area -->
-    <div class="flex justify-between items-center">
+    <div class="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
         <div>
-            <h2 class="text-2xl font-normal text-gray-500">
+            <h2 class="text-xl sm:text-2xl font-normal text-gray-500">
                 {% if filter_type == 'future' %}Future Trips
                 {% elif filter_type == 'in_progress' %}In Progress Trips
                 {% elif filter_type == 'past' %}Past Trips
@@ -16,18 +16,18 @@
             </h2>
         </div>
 
-        <div class="flex space-x-4">
+        <div class="flex flex-col sm:flex-row gap-3 sm:space-x-4 sm:gap-0 w-full sm:w-auto">
             <!-- Search & Sort Form -->
-            <form action="{{ url_for('admin.trips') }}" method="get" class="flex items-center space-x-4"
+            <form action="{{ url_for('admin.trips') }}" method="get" class="flex flex-col sm:flex-row sm:items-center gap-3 sm:space-x-4 sm:gap-0 flex-1"
                 id="searchForm">
                 <input type="hidden" name="view" value="{{ request.args.get('view', 'list') }}">
                 <input type="hidden" name="filter" value="{{ filter_type }}">
 
                 <!-- Search -->
-                <div class="relative">
+                <div class="relative w-full sm:w-auto">
                     <input type="text" name="q" id="searchInput" placeholder="Search trips..."
                         value="{{ request.args.get('q', '') }}"
-                        class="pl-8 pr-4 py-2 border border-gray-300 rounded text-sm w-64 focus:outline-none focus:border-wetravel-cyan"
+                        class="pl-8 pr-4 py-2 border border-gray-300 rounded text-sm w-full sm:w-64 focus:outline-none focus:border-wetravel-cyan min-h-[40px]"
                         {% if request.args.get('q') %}autofocus
                         onfocus="var val=this.value; this.value=''; this.value= val;" {% endif %}>
                     <svg class="w-4 h-4 text-wetravel-cyan absolute left-2.5 top-3" fill="none" stroke="currentColor"
@@ -40,7 +40,7 @@
                 <!-- Sort -->
                 <div class="flex items-center space-x-2 text-sm text-gray-500">
                     <select name="sort" onchange="this.form.submit()"
-                        class="admin-select border-none bg-transparent focus:ring-0 cursor-pointer text-gray-500 font-medium text-sm">
+                        class="admin-select border border-gray-300 sm:border-none rounded sm:bg-transparent focus:ring-0 cursor-pointer text-gray-500 font-medium text-sm w-full sm:w-auto min-h-[40px] px-2">
                         <option value="created_desc" {% if request.args.get('sort')=='created_desc' %}selected{% endif
                             %}>Date Created: Latest</option>
                         <option value="created_asc" {% if request.args.get('sort')=='created_asc' %}selected{% endif %}>
@@ -70,8 +70,8 @@
             </script>
 
             <!-- View Toggle -->
-            <div class="border border-wetravel-cyan rounded flex overflow-hidden">
-                <span class="bg-wetravel-cyan text-white px-3 py-1 flex items-center space-x-1 text-sm cursor-default">
+            <div class="border border-wetravel-cyan rounded flex overflow-hidden self-start">
+                <span class="bg-wetravel-cyan text-white px-3 py-2 flex items-center space-x-1 text-sm cursor-default min-h-[40px]">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                             d="M4 6h16M4 12h16M4 18h16"></path>
@@ -79,7 +79,7 @@
                     <span>List</span>
                 </span>
                 <a href="{{ url_for('admin.trips', view='calendar', filter=filter_type) }}"
-                    class="bg-white text-gray-400 hover:text-wetravel-cyan hover:bg-gray-50 px-3 py-1 flex items-center space-x-1 text-sm">
+                    class="bg-white text-gray-400 hover:text-wetravel-cyan hover:bg-gray-50 px-3 py-2 flex items-center space-x-1 text-sm min-h-[40px]">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                             d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z">
@@ -95,11 +95,11 @@
     <!-- Warning Message Removed -->
 
     <!-- Cards Grid -->
-    <div class="grid grid-cols-1 gap-4">
+    <div class="grid grid-cols-1 gap-4 overflow-visible">
         {% for trip in trips %}
-        <div class="bg-white p-4 rounded shadow-sm hover:shadow transition-shadow flex">
+        <div class="bg-white p-4 rounded shadow-sm hover:shadow transition-shadow flex flex-col sm:flex-row gap-4 overflow-visible relative">
             <!-- Image -->
-            <div class="w-48 h-32 flex-shrink-0 bg-gray-200 rounded overflow-hidden mr-6 relative">
+            <div class="w-full sm:w-48 h-40 sm:h-32 flex-shrink-0 bg-gray-200 rounded overflow-hidden sm:mr-2 relative">
                 {% if trip.highlight_image or trip.hero_image %}
                 <img src="{{ url_for('static', filename=trip.highlight_image or trip.hero_image) }}"
                     alt="{{ trip.title }}" class="w-full h-full object-cover">
@@ -146,7 +146,7 @@
                     </span>
                 </div>
 
-                <div class="flex items-center space-x-8 mt-2 text-sm text-gray-400">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:space-x-8 gap-1 mt-2 text-sm text-gray-400">
                     <div>
                         Amount expected: <span class="text-gray-600">${{ "%.2f"|format(trip_stats.get(trip.id, {}).get('amount_expected', 0.0)) if trip_stats else 0.00 }}</span>
                     </div>
@@ -161,7 +161,7 @@
             </div>
 
             <!-- Action Buttons -->
-            <div class="flex flex-col justify-between items-end ml-4">
+            <div class="flex flex-row sm:flex-col justify-between items-center sm:items-end sm:ml-4 gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100">
                 <div class="flex space-x-3 text-gray-400">
                     <a href="{{ url_for('admin.edit_trip', id=trip.id) }}" class="hover:text-wetravel-cyan"
                         title="Edit">
@@ -193,18 +193,19 @@
                         </svg>
                     </span>
                     {% endif %}
-                    <div class="relative">
-                        <button onclick="toggleDropdown(event, 'dropdown-{{ trip.id }}')"
-                            class="hover:text-wetravel-cyan focus:outline-none">
+                    <div class="relative z-20">
+                        <button type="button" onclick="toggleDropdown(event, 'dropdown-{{ trip.id }}')"
+                            class="hover:text-wetravel-cyan focus:outline-none min-h-[40px] min-w-[40px] inline-flex items-center justify-center"
+                            aria-haspopup="true" aria-expanded="false">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                     d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z">
                                 </path>
                             </svg>
                         </button>
-                        <!-- Dropdown Menu -->
+                        <!-- 小屏图标在左侧：菜单向右展开；桌面仍靠右对齐 -->
                         <div id="dropdown-{{ trip.id }}"
-                            class="hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-50 py-1 border border-gray-100">
+                            class="hidden absolute left-0 sm:left-auto sm:right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-[60] py-1 border border-gray-100">
                             <button onclick="submitPost('{{ url_for('admin.copy_trip', id=trip.id) }}')"
                                 class="w-full text-left block px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:border-wetravel-cyan">Copy</button>
 

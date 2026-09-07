@@ -229,8 +229,7 @@
 {% endblock %}
 
 {% block sidebar %}
-<div class="w-full md:w-64 flex-shrink-0">
-    <div class="space-y-1">
+<nav class="admin-sidebar-nav space-y-1" aria-label="Trip builder steps">
         <!-- Builder Navigation -->
         {% set steps = [
         ('basics', 'Trip Basics'),
@@ -247,7 +246,7 @@
         {% set step_url = url_for('admin.trip_builder', id=trip.id, step=step_id) %}
 
         <a href="{{ step_url }}"
-            class="builder-nav-link group flex items-center px-3 py-3 text-sm font-medium rounded-md {% if isActive %}bg-gray-100 text-wetravel-cyan font-bold{% else %}text-gray-600 hover:bg-gray-50 hover:text-gray-900{% endif %}">
+            class="builder-nav-link group flex items-center px-3 py-3 min-h-[44px] text-sm font-medium rounded-md {% if isActive %}bg-gray-100 text-wetravel-cyan font-bold{% else %}text-gray-600 hover:bg-gray-50 hover:text-gray-900{% endif %}">
             <span
                 class="mr-3 flex-shrink-0 h-6 w-6 border rounded-full flex items-center justify-center text-xs {% if isActive %}border-wetravel-cyan text-wetravel-cyan{% else %}border-gray-400 text-gray-400{% endif %}">
                 {{ loop.index }}
@@ -260,12 +259,12 @@
         <div class="mt-8 px-3 space-y-3">
             {% if trip.slug %}
             <a href="{{ url_for('main.trip_detail', slug=trip.slug) }}" target="_blank"
-                class="block w-full text-center px-4 py-2 border border-wetravel-cyan text-wetravel-cyan font-medium rounded-md shadow-sm hover:bg-cyan-50">
+                class="block w-full text-center px-4 py-2 min-h-[40px] border border-wetravel-cyan text-wetravel-cyan font-medium rounded-md shadow-sm hover:bg-cyan-50">
                 Preview page
             </a>
             {% else %}
             <button disabled
-                class="block w-full text-center px-4 py-2 border border-gray-300 text-gray-400 font-medium rounded-md shadow-sm cursor-not-allowed">
+                class="block w-full text-center px-4 py-2 min-h-[40px] border border-gray-300 text-gray-400 font-medium rounded-md shadow-sm cursor-not-allowed">
                 Preview page
             </button>
             {% endif %}
@@ -274,13 +273,13 @@
             <form method="post" action="{{ url_for('admin.publish_trip_route', id=trip.id) }}">
                 {% if form is defined and form.csrf_token %}{{ form.csrf_token }}{% endif %}
                 <button type="submit"
-                    class="block w-full text-center px-4 py-2 bg-wetravel-cyan text-white font-medium rounded-md shadow-sm hover:bg-cyan-600">
+                    class="block w-full text-center px-4 py-2 min-h-[40px] bg-wetravel-cyan text-white font-medium rounded-md shadow-sm hover:bg-cyan-600">
                     Publish
                 </button>
             </form>
             {% elif trip.status == 'published' %}
             <button type="button" id="builder-unpublish-btn"
-                class="block w-full text-center px-4 py-2 border border-amber-500 text-amber-700 font-medium rounded-md shadow-sm hover:bg-amber-50">
+                class="block w-full text-center px-4 py-2 min-h-[40px] border border-amber-500 text-amber-700 font-medium rounded-md shadow-sm hover:bg-amber-50">
                 Unpublish
             </button>
             <form method="post" action="{{ url_for('admin.unpublish_trip_route', id=trip.id) }}" id="builder-unpublish-form" class="hidden">
@@ -326,20 +325,57 @@
             </ul>
         </div>
         {% endif %}
-    </div>
-</div>
+</nav>
 {% endblock %}
 
 {% block secondary_nav %}{% endblock %}
 
 {% block content %}
-<div class="bg-white shadow rounded-lg p-6">
+{# Mobile: jump between builder steps without opening drawer #}
+{% set steps = [
+('basics', 'Trip Basics'),
+('description', 'Trip Description'),
+('packages', 'Packages'),
+('addons', 'Add-ons'),
+('buyer_info', 'Buyer Info'),
+('participants', 'Participant Info'),
+('coupons', 'Coupons')
+] %}
+<div class="md:hidden mb-4">
+    <label for="builderStepSelect" class="block text-xs font-medium text-gray-500 mb-1">Builder step</label>
+    <select id="builderStepSelect" class="admin-select w-full border border-gray-300 rounded-md h-10 px-3 text-sm"
+        onchange="if (this.value) window.location.href = this.value;">
+        {% for step_id, step_name in steps %}
+        <option value="{{ url_for('admin.trip_builder', id=trip.id, step=step_id) }}"
+            {% if current_step == step_id %}selected{% endif %}>{{ loop.index }}. {{ step_name }}</option>
+        {% endfor %}
+    </select>
+</div>
+
+<div class="bg-white shadow rounded-lg p-4 sm:p-6 mb-20 md:mb-0">
     <div class="border-b border-gray-200 pb-4 mb-6">
-        <h2 class="text-xl font-bold leading-6 text-gray-900">
+        <h2 class="text-lg sm:text-xl font-bold leading-6 text-gray-900">
             {% block step_title %}{{ title }}{% endblock %}
         </h2>
     </div>
     {% block builder_step_content %}{% endblock %}
+</div>
+
+{# Mobile sticky actions #}
+<div class="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-200 px-4 py-3 flex gap-2 shadow-lg">
+    {% if trip.slug %}
+    <a href="{{ url_for('main.trip_detail', slug=trip.slug) }}" target="_blank"
+        class="flex-1 text-center px-3 py-2 min-h-[44px] inline-flex items-center justify-center border border-wetravel-cyan text-wetravel-cyan text-sm font-medium rounded-md">Preview</a>
+    {% endif %}
+    {% if trip.status == 'unpublished' or trip.status == 'deactivated' %}
+    <form method="post" action="{{ url_for('admin.publish_trip_route', id=trip.id) }}" class="flex-1">
+        {% if form is defined and form.csrf_token %}{{ form.csrf_token }}{% endif %}
+        <button type="submit" class="w-full px-3 py-2 min-h-[44px] bg-wetravel-cyan text-white text-sm font-medium rounded-md">Publish</button>
+    </form>
+    {% elif trip.status == 'published' %}
+    <button type="button" onclick="document.getElementById('builder-unpublish-btn') && document.getElementById('builder-unpublish-btn').click()"
+        class="flex-1 px-3 py-2 min-h-[44px] border border-amber-500 text-amber-700 text-sm font-medium rounded-md">Unpublish</button>
+    {% endif %}
 </div>
 
 <!-- Custom Confirm Dialog -->

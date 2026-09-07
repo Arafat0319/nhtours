@@ -68,6 +68,25 @@
         select.admin-select.h-9:not([class*="px-"]):not([class*="pl-"]) {
             padding-left: 0.75rem;
         }
+        /* 小屏：大弹窗近全屏 sheet（桌面保持原 max-w / top） */
+        @media (max-width: 767px) {
+            .admin-modal-sheet > .admin-modal-panel {
+                top: 0 !important;
+                margin-left: 0 !important;
+                margin-right: 0 !important;
+                margin-bottom: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                max-height: 100dvh !important;
+                height: 100dvh;
+                border-radius: 0 !important;
+            }
+            #toastContainer {
+                left: 1rem;
+                right: 1rem;
+                max-width: none !important;
+            }
+        }
     </style>
     {% block head_extra %}{% endblock %}
 </head>
@@ -78,8 +97,15 @@
     <div class="bg-gray-900 border-b border-gray-800">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
-                <!-- Left: Logo -->
-                <div class="flex items-center">
+                <!-- Left: hamburger + Logo -->
+                <div class="flex items-center gap-2 min-w-0">
+                    <button type="button" id="adminSidebarToggle"
+                        class="hidden md:hidden items-center justify-center h-10 w-10 rounded text-gray-300 hover:text-white hover:bg-gray-800 focus:outline-none"
+                        aria-label="Open menu" aria-expanded="false" aria-controls="adminSidebarDrawer">
+                        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                        </svg>
+                    </button>
                     <a href="{{ url_for('admin.trips') }}" class="flex-shrink-0 flex items-center">
                         <img class="h-8 w-auto"
                             src="{{ url_for('static', filename='images/icons/logo-2-white.DyAUH4zT.svg') }}"
@@ -88,21 +114,25 @@
                 </div>
 
                 <!-- Right: Actions -->
-                <div class="flex items-center flex-shrink-0 space-x-4 sm:space-x-6">
+                <div class="flex items-center flex-shrink-0 space-x-3 sm:space-x-6">
                     <a href="{{ url_for('admin.logout') }}"
-                        class="text-sm font-medium text-gray-300 hover:text-white flex-shrink-0 whitespace-nowrap">Log Out</a>
+                        class="text-sm font-medium text-gray-300 hover:text-white flex-shrink-0 whitespace-nowrap min-h-[40px] inline-flex items-center">Log Out</a>
 
-                    <!-- CTA Button (隐藏于编辑行程时) -->
+                    <!-- CTA Button (隐藏于编辑行程时)；小屏缩短文案 -->
                     {% if request.endpoint not in ['admin.trip_builder', 'admin.manage_trip'] %}
                     <a href="{{ url_for('admin.new_trip') }}"
-                        class="bg-wetravel-yellow hover:bg-yellow-400 text-white font-bold py-2 px-4 rounded shadow-sm text-sm flex-shrink-0 whitespace-nowrap">
-                        CREATE YOUR TRIP
+                        class="bg-wetravel-yellow hover:bg-yellow-400 text-white font-bold py-2 px-3 sm:px-4 rounded shadow-sm text-sm flex-shrink-0 whitespace-nowrap min-h-[40px] inline-flex items-center">
+                        <span class="sm:hidden">CREATE</span>
+                        <span class="hidden sm:inline">CREATE YOUR TRIP</span>
                     </a>
                     {% endif %}
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- Mobile sidebar overlay -->
+    <div id="adminSidebarOverlay" class="fixed inset-0 bg-black/40 z-40 hidden md:hidden" aria-hidden="true"></div>
 
     <!-- L2: Main Nav -->
     {% block secondary_nav %}
@@ -132,46 +162,55 @@
     {% endblock %}
 
     <!-- Main Content Wrapper -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div class="flex flex-col md:flex-row gap-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">
+        <div class="flex flex-col md:flex-row gap-6 md:gap-8">
 
-            <!-- L3: Sidebar (Optional) -->
-            {% block sidebar %}
-            <!-- Default Sidebar for My Trips context -->
-            <div class="w-full md:w-64 flex-shrink-0 sidebar-container">
-                <div class="space-y-1">
-                    {% set navigation = [
-                    ('Future Trips', 'admin.trips', {'filter': 'future'}),
-                    ('In Progress', 'admin.trips', {'filter': 'in_progress'}),
-                    ('Past Trips', 'admin.trips', {'filter': 'past'}),
-                    ('Unpublished', 'admin.trips', {'filter': 'unpublished'}),
-                    ('Draft Trips', 'admin.trips', {'filter': 'draft'})
-                    ] %}
+            <!-- L3: Sidebar — 桌面常显；小屏抽屉（有 .admin-sidebar-nav 时才显示汉堡） -->
+            <div id="adminSidebarDrawer"
+                class="fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] bg-white shadow-xl transform -translate-x-full transition-transform duration-200 ease-out md:static md:z-auto md:w-64 md:max-w-none md:bg-transparent md:shadow-none md:translate-x-0 md:flex-shrink-0 sidebar-container">
+                <div class="flex items-center justify-between px-4 h-14 border-b border-gray-100 md:hidden">
+                    <span class="text-sm font-semibold text-gray-700">Menu</span>
+                    <button type="button" id="adminSidebarClose" class="h-10 w-10 inline-flex items-center justify-center text-gray-500 hover:text-gray-800" aria-label="Close menu">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                <div class="overflow-y-auto h-[calc(100dvh-3.5rem)] md:h-auto p-4 md:p-0">
+                    {% block sidebar %}
+                    <!-- Default Sidebar for My Trips context -->
+                    <nav class="admin-sidebar-nav space-y-1" aria-label="Trip filters">
+                        {% set navigation = [
+                        ('Future Trips', 'admin.trips', {'filter': 'future'}),
+                        ('In Progress', 'admin.trips', {'filter': 'in_progress'}),
+                        ('Past Trips', 'admin.trips', {'filter': 'past'}),
+                        ('Unpublished', 'admin.trips', {'filter': 'unpublished'}),
+                        ('Draft Trips', 'admin.trips', {'filter': 'draft'})
+                        ] %}
 
-                    {% set current_filter = request.args.get('filter', 'future') %}
-                    {% if current_filter in ['upcoming', ''] %}{% set current_filter = 'future' %}{% endif %}
-                    {% if current_filter in ['deactivated', 'offline'] %}{% set current_filter = 'unpublished' %}{% endif %}
-                    {% for name, endpoint, args in navigation %}
-                    {% set isActive = (current_filter == args['filter']) %}
-                    <a href="{{ url_for(endpoint, **args) }}"
-                        class="group flex justify-between items-center px-1 py-4 text-sm font-medium border-b border-dotted border-gray-200 hover:text-wetravel-cyan last:border-0 {% if isActive %}text-gray-900 font-bold{% else %}text-gray-500{% endif %}">
-                        <span>
-                            {{ name }}
-                            {% if trip_counts is defined and trip_counts.get(args['filter']) is not none %}
-                            ({{ trip_counts.get(args['filter']) }})
+                        {% set current_filter = request.args.get('filter', 'future') %}
+                        {% if current_filter in ['upcoming', ''] %}{% set current_filter = 'future' %}{% endif %}
+                        {% if current_filter in ['deactivated', 'offline'] %}{% set current_filter = 'unpublished' %}{% endif %}
+                        {% for name, endpoint, args in navigation %}
+                        {% set isActive = (current_filter == args['filter']) %}
+                        <a href="{{ url_for(endpoint, **args) }}"
+                            class="group flex justify-between items-center px-1 py-4 min-h-[44px] text-sm font-medium border-b border-dotted border-gray-200 hover:text-wetravel-cyan last:border-0 {% if isActive %}text-gray-900 font-bold{% else %}text-gray-500{% endif %}">
+                            <span>
+                                {{ name }}
+                                {% if trip_counts is defined and trip_counts.get(args['filter']) is not none %}
+                                ({{ trip_counts.get(args['filter']) }})
+                                {% endif %}
+                            </span>
+                            {% if isActive %}
+                            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7">
+                                </path>
+                            </svg>
                             {% endif %}
-                        </span>
-                        {% if isActive %}
-                        <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7">
-                            </path>
-                        </svg>
-                        {% endif %}
-                    </a>
-                    {% endfor %}
+                        </a>
+                        {% endfor %}
+                    </nav>
+                    {% endblock %}
                 </div>
             </div>
-            {% endblock %}
 
             <!-- L4: Content Area -->
             <div class="flex-1 min-w-0">
@@ -357,6 +396,48 @@
 
         // Make it globally accessible
         window.showToast = showToast;
+
+        // Mobile sidebar drawer (only when page has .admin-sidebar-nav)
+        (function initAdminSidebarDrawer() {
+            const toggle = document.getElementById('adminSidebarToggle');
+            const drawer = document.getElementById('adminSidebarDrawer');
+            const overlay = document.getElementById('adminSidebarOverlay');
+            const closeBtn = document.getElementById('adminSidebarClose');
+            if (!toggle || !drawer || !overlay) return;
+            const hasNav = !!drawer.querySelector('.admin-sidebar-nav');
+            if (!hasNav) {
+                toggle.classList.add('hidden');
+                toggle.classList.remove('inline-flex');
+                drawer.classList.add('hidden');
+                drawer.classList.remove('md:w-64');
+                return;
+            }
+            toggle.classList.remove('hidden');
+            toggle.classList.add('inline-flex');
+
+            function openDrawer() {
+                drawer.classList.remove('-translate-x-full');
+                overlay.classList.remove('hidden');
+                toggle.setAttribute('aria-expanded', 'true');
+                document.body.classList.add('overflow-hidden');
+            }
+            function closeDrawer() {
+                drawer.classList.add('-translate-x-full');
+                overlay.classList.add('hidden');
+                toggle.setAttribute('aria-expanded', 'false');
+                document.body.classList.remove('overflow-hidden');
+            }
+            toggle.addEventListener('click', openDrawer);
+            closeBtn && closeBtn.addEventListener('click', closeDrawer);
+            overlay.addEventListener('click', closeDrawer);
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') closeDrawer();
+            });
+            // Desktop resize: ensure drawer closed state classes don't fight md:static
+            window.addEventListener('resize', function () {
+                if (window.matchMedia('(min-width: 768px)').matches) closeDrawer();
+            });
+        })();
     </script>
 
 </body>

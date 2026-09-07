@@ -3,13 +3,13 @@
 {% block content %}
 <div class="space-y-6">
     <!-- Header Section -->
-    <div class="flex justify-between items-center">
+    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
         <div>
-            <h2 class="text-2xl font-normal text-gray-500">Leads</h2>
+            <h2 class="text-xl sm:text-2xl font-normal text-gray-500">Leads</h2>
             <p class="text-sm text-gray-400 mt-1">Manage potential customers from contact forms</p>
         </div>
         <div class="flex space-x-2">
-            <button class="bg-wetravel-green text-white px-4 py-2 rounded text-sm font-bold flex items-center hover:bg-green-500 transition-colors">
+            <button class="bg-wetravel-green text-white px-4 py-2 rounded text-sm font-bold flex items-center hover:bg-green-500 transition-colors min-h-[40px]">
                 <span>Export</span>
                 <svg class="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -122,8 +122,8 @@
     {% endif %}
 
     <!-- Leads Table（与 Testimonials 同套：table-fixed、data 属性菜单、截断） -->
-    <div class="bg-white rounded-lg shadow-sm overflow-hidden">
-        <table class="w-full table-fixed divide-y divide-gray-200">
+    <div class="bg-white rounded-lg shadow-sm overflow-x-auto">
+        <table class="w-full min-w-[800px] table-fixed divide-y divide-gray-200">
             <thead class="bg-gray-50">
                 <tr>
                     {% if current_user.is_admin %}

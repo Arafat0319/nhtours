@@ -1,6 +1,53 @@
 {# 以 order 为基本单位的可展开付款计划表（Full / Installment 共用） #}
 {% if orders_grouped %}
-<div class="overflow-x-auto">
+{# Mobile cards #}
+<div class="md:hidden space-y-3 mb-4">
+    {% for group in orders_grouped %}
+    {% set booking = group.booking %}
+    {% set payment = group.deposit_payment or group.primary_payment %}
+    {% set deposit = group.deposit %}
+    <div class="border border-gray-200 rounded-lg p-4 bg-white">
+        <div class="flex justify-between gap-2 items-start">
+            <div class="min-w-0">
+                {% if booking %}
+                <a href="{{ url_for('admin.manage_trip', id=booking.trip_id) if booking.trip_id else '#' }}"
+                    class="text-wetravel-cyan font-medium text-sm">{{ booking.order_number or ('#' ~ booking.id) }}</a>
+                <div class="text-sm text-gray-900 mt-0.5">{{ booking.buyer_name if booking else 'N/A' }}</div>
+                <div class="text-xs text-gray-500 truncate">{{ booking.trip.title if booking and booking.trip else '-' }}</div>
+                {% else %}
+                <span class="text-gray-400">-</span>
+                {% endif %}
+            </div>
+            {% if group.plan_kind == 'one_time' %}
+            {% set st = (payment.status if payment else 'pending') or 'pending' %}
+            <span class="shrink-0 px-2 py-1 text-xs font-medium rounded-full
+                {% if st == 'succeeded' %}bg-green-100 text-green-800
+                {% elif st == 'pending' %}bg-yellow-100 text-yellow-800
+                {% else %}bg-gray-100 text-gray-800{% endif %}">
+                {% if st == 'succeeded' %}paid{% else %}{{ st }}{% endif %}
+            </span>
+            {% else %}
+            {% set row_status = group.deposit_display_status or deposit.status or 'pending' %}
+            <span class="shrink-0 px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">{{ row_status }}</span>
+            {% endif %}
+        </div>
+        <div class="mt-2 text-sm font-semibold font-mono">
+            ${{ (group.display_amount if group.display_amount is defined and group.display_amount is not none else ((payment.amount if payment else (deposit.amount if deposit else 0)) or 0))|format_price }}
+        </div>
+        <div class="mt-2 flex flex-wrap gap-3 text-xs">
+            {% if payment %}
+            <a href="{{ url_for('admin.payment_detail', payment_id=payment.id) }}" class="text-wetravel-cyan min-h-[36px] inline-flex items-center">View payment</a>
+            {% elif booking and booking.trip_id %}
+            <a href="{{ url_for('admin.manage_trip', id=booking.trip_id) }}" class="text-wetravel-cyan min-h-[36px] inline-flex items-center">Open Manage</a>
+            {% endif %}
+            {% if group.plan_kind != 'one_time' and (group.others or group.payoff_payment) %}
+            <button type="button" class="text-wetravel-cyan min-h-[36px]" onclick="toggleInstallments({{ group.booking_id }})">Expand schedule</button>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+<div class="overflow-x-auto hidden md:block">
     <table class="min-w-full divide-y divide-gray-200">
         <thead class="bg-gray-50">
             <tr>

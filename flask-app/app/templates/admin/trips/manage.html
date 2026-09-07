@@ -94,11 +94,11 @@
 {% block content %}
 <div class="space-y-6">
     <!-- Header Section -->
-    <div class="bg-white rounded-lg shadow-sm p-6">
-        <div class="flex justify-between items-start">
-            <div class="flex space-x-6">
+    <div class="bg-white rounded-lg shadow-sm p-4 sm:p-6">
+        <div class="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-6">
+            <div class="flex flex-col sm:flex-row sm:space-x-6 gap-4 min-w-0">
                 <!-- Trip Image -->
-                <div class="w-48 h-32 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
+                <div class="w-full sm:w-48 h-40 sm:h-32 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
                     {% if trip.highlight_image or trip.hero_image %}
                     <img src="{{ url_for('static', filename=trip.highlight_image or trip.hero_image) }}"
                         alt="{{ trip.title }}" class="w-full h-full object-cover">
@@ -109,8 +109,8 @@
                 </div>
 
                 <!-- Trip Details -->
-                <div>
-                    <h1 class="text-2xl font-normal text-gray-700 mb-2">{{ trip.title }}</h1>
+                <div class="min-w-0">
+                    <h1 class="text-xl sm:text-2xl font-normal text-gray-700 mb-2 break-words">{{ trip.title }}</h1>
                     <div class="text-sm text-gray-500 mb-4">
                         {{ trip.start_date.strftime('%b %d') }} - {{ trip.end_date.strftime('%d, %Y') if trip.end_date
                         else 'TBD' }}
@@ -121,9 +121,9 @@
                     </div>
 
                     <!-- Actions -->
-                    <div class="mt-4 flex space-x-4 text-sm">
+                    <div class="mt-4 flex flex-wrap gap-4 text-sm">
                         <a href="{{ url_for('main.trip_detail', slug=trip.slug) }}" target="_blank"
-                            class="text-wetravel-cyan hover:underline flex items-center">
+                            class="text-wetravel-cyan hover:underline flex items-center min-h-[40px]">
                             <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                     d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
@@ -134,7 +134,7 @@
                             View
                         </a>
                         <a href="{{ url_for('admin.edit_trip', id=trip.id) }}"
-                            class="text-wetravel-cyan hover:underline flex items-center">
+                            class="text-wetravel-cyan hover:underline flex items-center min-h-[40px]">
                             <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                     d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z">
@@ -147,28 +147,28 @@
             </div>
 
             <!-- Financials -->
-            <div class="text-right text-sm space-y-1">
-                <div class="flex justify-between w-64">
+            <div class="text-sm space-y-1 w-full lg:w-auto lg:text-right">
+                <div class="flex justify-between w-full lg:w-64 gap-4">
                     <span class="text-gray-500">Gross amount</span>
                     <span id="financialGross" class="font-medium text-gray-700 font-mono">${{ (total_gross)|format_price }}</span>
                 </div>
-                <div id="discountRow" class="flex justify-between w-64 {% if total_discount <= 0 %}hidden{% endif %}">
+                <div id="discountRow" class="flex justify-between w-full lg:w-64 gap-4 {% if total_discount <= 0 %}hidden{% endif %}">
                     <span class="text-gray-500">Total discount</span>
                     <span id="financialDiscount" class="font-medium text-green-600 font-mono">-${{ (total_discount)|format_price }}</span>
                 </div>
-                <div class="flex justify-between w-64 pt-1 border-t border-gray-200">
+                <div class="flex justify-between w-full lg:w-64 gap-4 pt-1 border-t border-gray-200">
                     <span class="text-gray-500">Expected amount</span>
                     <span id="financialExpected" class="font-medium text-gray-700 font-mono">${{ (total_expected)|format_price }}</span>
                 </div>
-                <div class="flex justify-between w-64">
+                <div class="flex justify-between w-full lg:w-64 gap-4">
                     <span class="text-gray-500">Amount paid</span>
                     <span id="financialPaid" class="font-medium text-gray-700 font-mono">${{ (total_paid)|format_price }}</span>
                 </div>
-                <div id="refundedRow" class="flex justify-between w-64 {% if (total_refunded or 0) <= 0 %}hidden{% endif %}">
+                <div id="refundedRow" class="flex justify-between w-full lg:w-64 gap-4 {% if (total_refunded or 0) <= 0 %}hidden{% endif %}">
                     <span class="text-gray-500">Refunded</span>
                     <span id="financialRefunded" class="font-medium text-red-600 font-mono">-${{ (total_refunded or 0)|format_price }}</span>
                 </div>
-                <div class="flex justify-between w-64">
+                <div class="flex justify-between w-full lg:w-64 gap-4">
                     <span class="text-gray-500">Balance due</span>
                     <span id="financialPending" class="font-medium {% if total_pending > 0 %}text-amber-600{% else %}text-green-600{% endif %} font-mono">${{ (total_pending)|format_price }}</span>
                 </div>
@@ -176,34 +176,34 @@
         </div>
 
         <!-- Navigation Tabs -->
-        <div class="mt-8 border-b border-gray-200">
-            <div class="flex justify-between items-end">
-                <nav class="-mb-px flex space-x-8">
+        <div class="mt-6 sm:mt-8 border-b border-gray-200">
+            <div class="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-end">
+                <nav class="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto">
                     <a href="#" data-tab="bookings" onclick="switchTab('bookings'); return false;"
-                        class="tab-link border-wetravel-cyan text-wetravel-cyan whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                        class="tab-link border-wetravel-cyan text-wetravel-cyan whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm min-h-[44px] inline-flex items-center">
                         Bookings <span class="bg-wetravel-cyan text-white rounded-full px-2 py-0.5 text-xs ml-1">{{
                             trip.bookings.count() if trip.bookings else 0 }}</span>
                     </a>
                     <a href="#" data-tab="participants" onclick="switchTab('participants'); return false;"
-                        class="tab-link border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                        class="tab-link border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm min-h-[44px] inline-flex items-center">
                         Participants <span class="bg-gray-100 text-gray-600 rounded-full px-2 py-0.5 text-xs ml-1">{{
                             total_participants_count }}</span>
                     </a>
                     <a href="#" data-tab="messages" onclick="switchTab('messages'); return false;"
-                        class="tab-link border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Messages</a>
+                        class="tab-link border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm min-h-[44px] inline-flex items-center">Messages</a>
                 </nav>
-                <div class="flex items-center pb-4" id="messagesActions" style="display: none;">
+                <div class="flex items-center pb-2 sm:pb-4" id="messagesActions" style="display: none;">
                     <button onclick="openNewMessageModal()" 
-                        class="bg-wetravel-cyan text-white px-4 py-2 rounded text-sm hover:bg-cyan-600 flex items-center">
+                        class="bg-wetravel-cyan text-white px-4 py-2 rounded text-sm hover:bg-cyan-600 flex items-center min-h-[40px]">
                         New Message
                         <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                         </svg>
                     </button>
                 </div>
-                <div class="flex items-center gap-2 pb-4" id="bookingsActions">
+                <div class="flex items-center gap-2 pb-2 sm:pb-4" id="bookingsActions">
                     <a href="{{ url_for('admin.export_bookings', id=trip.id) }}"
-                        class="text-wetravel-cyan border border-wetravel-cyan px-4 py-2 rounded text-sm hover:bg-gray-50 flex items-center">
+                        class="text-wetravel-cyan border border-wetravel-cyan px-4 py-2 rounded text-sm hover:bg-gray-50 flex items-center min-h-[40px]">
                         Download Excel <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
@@ -223,11 +223,11 @@
             </div>
 
             <!-- Controls -->
-            <div class="flex justify-between items-center mb-6">
-                <div class="relative flex space-x-4">
-                    <div class="relative">
+            <div class="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-6">
+                <div class="relative flex flex-col sm:flex-row sm:space-x-4 gap-3 w-full sm:w-auto">
+                    <div class="relative w-full sm:w-auto">
                         <input type="text" id="searchInput" placeholder="Search by name, email, or order number"
-                            class="pl-8 pr-4 py-2 border border-gray-300 rounded text-sm w-64 focus:outline-none focus:border-wetravel-cyan text-gray-700 placeholder-gray-400">
+                            class="pl-8 pr-4 py-2 border border-gray-300 rounded text-sm w-full sm:w-64 focus:outline-none focus:border-wetravel-cyan text-gray-700 placeholder-gray-400 min-h-[40px]">
                         <svg class="w-4 h-4 text-gray-400 absolute left-2.5 top-3" fill="none" stroke="currentColor"
                             viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -236,7 +236,7 @@
                     </div>
 
                     <select id="statusFilter"
-                        class="admin-select border border-gray-300 rounded text-sm px-3 py-2 focus:outline-none focus:border-wetravel-cyan text-gray-600">
+                        class="admin-select border border-gray-300 rounded text-sm px-3 py-2 focus:outline-none focus:border-wetravel-cyan text-gray-600 w-full sm:w-auto min-h-[40px]">
                         <option value="all">All Statuses</option>
                         <option value="pending">Pending</option>
                         <option value="processing">Processing</option>
@@ -252,7 +252,7 @@
 
                 <div class="flex space-x-4">
                     <button type="button" onclick="openAddParticipantModal()"
-                        class="bg-wetravel-cyan text-white px-4 py-2 rounded text-sm hover:bg-cyan-400 flex items-center">
+                        class="bg-wetravel-cyan text-white px-4 py-2 rounded text-sm hover:bg-cyan-400 flex items-center min-h-[40px] w-full sm:w-auto justify-center">
                         Manual Booking <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                         </svg>
@@ -260,8 +260,82 @@
                 </div>
             </div>
 
-            <!-- Bookings Table -->
-            <div id="bookings-table-scroll" class="overflow-x-auto">
+            <!-- Mobile booking cards -->
+            <div id="bookings-cards" class="md:hidden space-y-3 mb-4">
+                {% if bookings %}
+                {% for booking in bookings %}
+                {% set pay_status = booking_payment_statuses.get(booking.id, booking.status) %}
+                {% set ptype = booking_payment_types.get(booking.id, {'key': 'full', 'label': 'Full'}) %}
+                {% set balance = booking_balances.get(booking.id) %}
+                <div class="booking-card booking-row border border-gray-200 rounded-lg p-4 bg-white"
+                    data-name="{{ booking.client.name|lower }}"
+                    data-email="{{ booking.client.email|lower }}"
+                    data-status="{{ pay_status }}"
+                    data-booking-id="{{ booking.id }}"
+                    data-order-number="{{ (booking.order_number or '')|lower }}">
+                    <div class="flex justify-between items-start gap-3">
+                        <div class="min-w-0">
+                            <div class="font-medium text-gray-900 truncate">{{ booking.order_number or ('#' ~ booking.id) }}</div>
+                            <div class="text-sm text-gray-900 mt-0.5">{{ booking.client.name }}</div>
+                            <div class="text-xs text-gray-500 truncate">{{ booking.client.email }}</div>
+                        </div>
+                        <button type="button" onclick="openManageBookingModal({{ booking.id }})"
+                            class="shrink-0 text-wetravel-cyan font-medium text-sm min-h-[40px] px-2">Manage</button>
+                    </div>
+                    <div class="mt-3 flex flex-wrap items-center gap-1.5">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                            {% if ptype.key == 'installment' %}bg-purple-100 text-purple-800
+                            {% elif ptype.key == 'deposit_final' %}bg-indigo-100 text-indigo-800
+                            {% elif ptype.key == 'mixed' %}bg-amber-100 text-amber-900
+                            {% else %}bg-gray-100 text-gray-800{% endif %}">{{ ptype.label }}</span>
+                        <span id="status-badge-m-{{ booking.id }}" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                            {% if pay_status == 'fully_paid' %}bg-green-100 text-green-800
+                            {% elif pay_status == 'deposit_paid' or pay_status == 'partially_paid' %}bg-blue-100 text-blue-800
+                            {% elif pay_status == 'processing' %}bg-amber-100 text-amber-800
+                            {% elif pay_status == 'overdue' %}bg-orange-100 text-orange-800
+                            {% elif pay_status == 'partially_refunded' %}bg-orange-100 text-orange-800
+                            {% elif pay_status == 'fully_refunded' or pay_status == 'refunded' %}bg-purple-100 text-purple-800
+                            {% elif pay_status == 'cancelled' %}bg-red-100 text-red-800
+                            {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                            {% if pay_status == 'partially_refunded' %}Partially Refunded
+                            {% elif pay_status == 'fully_refunded' or pay_status == 'refunded' %}Fully Refunded
+                            {% elif pay_status == 'processing' %}Processing
+                            {% elif pay_status == 'partially_paid' %}Partially Paid
+                            {% else %}{{ pay_status|replace('_', ' ')|title }}{% endif %}
+                        </span>
+                        {% if booking.id in booking_payoff_ids %}
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">Payoff</span>
+                        {% endif %}
+                        <span id="autopay-badge-m-{{ booking.id }}"
+                            class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-cyan-100 text-cyan-800{% if not booking.auto_pay_enabled %} hidden{% endif %}">Auto Pay</span>
+                    </div>
+                    <div class="mt-3 grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                            <div class="text-xs text-gray-500">Paid</div>
+                            <div id="paid-cell-m-{{ booking.id }}" class="font-mono">
+                                {% if booking.status == 'cancelled' %}<span class="text-gray-400">-</span>
+                                {% else %}<span class="text-gray-900">${{ (booking_paid_display.get(booking.id, booking.amount_paid) or 0)|format_price }}</span>{% endif %}
+                            </div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-gray-500">Balance</div>
+                            <div id="balance-cell-m-{{ booking.id }}" class="font-mono">
+                                {% if booking.status == 'cancelled' or balance is none %}<span class="text-gray-400">-</span>
+                                {% elif balance > 0 %}<span class="text-amber-600 font-medium">${{ balance|format_price }}</span>
+                                {% else %}<span class="text-green-600">$0</span>{% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-2 text-xs text-gray-500">{{ booking.passenger_count }} pax · {{ booking.created_at.strftime('%Y-%m-%d') }}</div>
+                </div>
+                {% endfor %}
+                {% else %}
+                <p class="text-center text-sm text-wetravel-cyan font-light py-8">No bookings yet</p>
+                {% endif %}
+            </div>
+
+            <!-- Bookings Table (desktop) -->
+            <div id="bookings-table-scroll" class="overflow-x-auto hidden md:block">
                 <table id="bookings-table" class="min-w-full">
                     <thead>
                         <tr
@@ -389,10 +463,10 @@
             </div>
 
             <!-- Controls: roster search (payment filters live on Bookings) -->
-            <div class="flex justify-between items-center mb-6">
-                <div class="relative">
+            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
+                <div class="relative w-full sm:w-auto">
                     <input type="text" id="participantSearchInput" placeholder="Search by buyer, name, email, or order number"
-                        class="pl-8 pr-4 py-2 border border-gray-300 rounded text-sm w-80 focus:outline-none focus:border-wetravel-cyan text-gray-700 placeholder-gray-400">
+                        class="pl-8 pr-4 py-2 border border-gray-300 rounded text-sm w-full sm:w-80 focus:outline-none focus:border-wetravel-cyan text-gray-700 placeholder-gray-400 min-h-[40px]">
                     <svg class="w-4 h-4 text-gray-400 absolute left-2.5 top-3" fill="none" stroke="currentColor"
                         viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -683,8 +757,8 @@
 </div>
 
 <!-- Manual Booking Modal (Advanced Stepper) -->
-<div id="addParticipantModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50" style="z-index: 50;">
-    <div class="relative top-10 mx-auto w-full max-w-4xl shadow-lg rounded-md bg-white flex flex-col"
+<div id="addParticipantModal" class="admin-modal-sheet fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50" style="z-index: 50;">
+    <div class="admin-modal-panel relative top-10 mx-auto w-full max-w-4xl shadow-lg rounded-md bg-white flex flex-col"
         style="height: 80vh;">
 
         <!-- Header -->
@@ -842,8 +916,8 @@
 </div>
 
 <!-- Manage Booking Modal -->
-<div id="manageBookingModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
-    <div class="relative top-10 mx-auto w-full max-w-4xl shadow-lg rounded-md bg-white flex flex-col"
+<div id="manageBookingModal" class="admin-modal-sheet fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+    <div class="admin-modal-panel relative top-10 mx-auto w-full max-w-4xl shadow-lg rounded-md bg-white flex flex-col"
         style="max-height: 90vh;">
         
         <!-- Header -->
@@ -909,32 +983,32 @@
         </div>
 
         <!-- Footer -->
-        <div class="p-5 border-t bg-gray-50 rounded-b-md flex justify-between items-center">
-            <div class="flex space-x-3">
-                <button type="button" id="cancelOrderBtn" class="px-4 py-2 border border-blue-300 rounded text-sm font-medium text-blue-700 hover:bg-blue-50 focus:outline-none">
+        <div class="p-4 sm:p-5 border-t bg-gray-50 rounded-b-md flex flex-col-reverse sm:flex-row sm:justify-between sm:items-center gap-3 sticky bottom-0">
+            <div class="flex flex-wrap gap-2 sm:space-x-3 sm:gap-0">
+                <button type="button" id="cancelOrderBtn" class="px-4 py-2 min-h-[40px] border border-blue-300 rounded text-sm font-medium text-blue-700 hover:bg-blue-50 focus:outline-none">
                     Cancel order
                 </button>
-                <button type="button" id="refundBookingBtn" class="px-4 py-2 border border-orange-300 rounded text-sm font-medium text-orange-700 hover:bg-orange-50 focus:outline-none flex items-center">
+                <button type="button" id="refundBookingBtn" class="px-4 py-2 min-h-[40px] border border-orange-300 rounded text-sm font-medium text-orange-700 hover:bg-orange-50 focus:outline-none flex items-center">
                     <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
                     </svg>
                     Refund
                 </button>
-                <button type="button" id="deleteBookingBtn" class="px-4 py-2 border border-red-300 rounded text-sm font-medium text-red-700 hover:bg-red-50 focus:outline-none flex items-center">
+                <button type="button" id="deleteBookingBtn" class="px-4 py-2 min-h-[40px] border border-red-300 rounded text-sm font-medium text-red-700 hover:bg-red-50 focus:outline-none flex items-center">
                     <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
                     </svg>
                     Delete
                 </button>
             </div>
-            <div class="flex space-x-3">
-                <button type="button" id="cancelManageBookingBtn" class="px-4 py-2 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none">
+            <div class="flex flex-wrap gap-2 sm:space-x-3 sm:gap-0 justify-end">
+                <button type="button" id="cancelManageBookingBtn" class="px-4 py-2 min-h-[40px] border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none">
                     Cancel
                 </button>
-                <button type="button" id="saveManageBookingBtn" class="px-4 py-2 bg-wetravel-cyan text-white rounded text-sm font-medium hover:bg-cyan-400 focus:outline-none">
+                <button type="button" id="saveManageBookingBtn" class="px-4 py-2 min-h-[40px] bg-wetravel-cyan text-white rounded text-sm font-medium hover:bg-cyan-400 focus:outline-none">
                     Save Changes
                 </button>
-                <button type="button" id="sendEmailBtn" class="hidden px-4 py-2 bg-wetravel-green text-white rounded text-sm font-medium hover:bg-green-600 focus:outline-none">
+                <button type="button" id="sendEmailBtn" class="hidden px-4 py-2 min-h-[40px] bg-wetravel-green text-white rounded text-sm font-medium hover:bg-green-600 focus:outline-none">
                     Send Email
                 </button>
             </div>
@@ -943,8 +1017,8 @@
 </div>
 
 <!-- Refund Modal (above Manage modal z-50) -->
-<div id="refundModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-[60]">
-    <div class="relative top-10 mx-auto w-full max-w-lg shadow-lg rounded-md bg-white mb-10">
+<div id="refundModal" class="admin-modal-sheet fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-[60]">
+    <div class="admin-modal-panel relative top-10 mx-auto w-full max-w-lg shadow-lg rounded-md bg-white mb-10">
         <div class="p-6">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-medium text-gray-900">Process Refund</h3>
@@ -1320,11 +1394,9 @@
         const bookingsTableBody = document.getElementById('bookingsTableBody');
         
         function filterBookings() {
-            if (!bookingsTableBody) return;
-            
             const searchTerm = (searchInput?.value || '').toLowerCase();
             const statusFilterValue = statusFilter?.value || 'all';
-            const rows = bookingsTableBody.querySelectorAll('.booking-row');
+            const rows = document.querySelectorAll('.booking-row');
             
             rows.forEach(row => {
                 const name = (row.getAttribute('data-name') || '').toLowerCase();
@@ -3779,11 +3851,14 @@
                 if (data.success && data.booking) {
                     const booking = data.booking;
                     const row = document.querySelector(`tr[data-booking-id="${bookingId}"]`);
-                    if (!row) return;
+                    const card = document.querySelector(`.booking-card[data-booking-id="${bookingId}"]`);
+                    if (!row && !card) return;
                     
                     // Update status badge (display status may be overdue/refunded)
                     const statusBadge = document.getElementById(`status-badge-${bookingId}`);
-                    if (statusBadge) {
+                    const statusBadgeM = document.getElementById(`status-badge-m-${bookingId}`);
+                    const applyStatusBadge = (el) => {
+                        if (!el) return;
                         const payStatus = booking.payment_status || booking.status || 'pending';
                         const statusText = payStatus.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
                         let statusClass = 'bg-yellow-100 text-yellow-800';
@@ -3794,32 +3869,38 @@
                         else if (payStatus === 'partially_refunded') statusClass = 'bg-orange-100 text-orange-800';
                         else if (payStatus === 'fully_refunded' || payStatus === 'refunded') statusClass = 'bg-purple-100 text-purple-800';
                         else if (payStatus === 'cancelled') statusClass = 'bg-red-100 text-red-800';
-                        statusBadge.className = `px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass}`;
-                        if (payStatus === 'partially_refunded') statusBadge.textContent = 'Partially Refunded';
-                        else if (payStatus === 'fully_refunded' || payStatus === 'refunded') statusBadge.textContent = 'Fully Refunded';
-                        else if (payStatus === 'processing') statusBadge.textContent = 'Processing';
-                        else if (payStatus === 'partially_paid') statusBadge.textContent = 'Partially Paid';
-                        else statusBadge.textContent = statusText;
-                    }
+                        el.className = `px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass}`;
+                        if (payStatus === 'partially_refunded') el.textContent = 'Partially Refunded';
+                        else if (payStatus === 'fully_refunded' || payStatus === 'refunded') el.textContent = 'Fully Refunded';
+                        else if (payStatus === 'processing') el.textContent = 'Processing';
+                        else if (payStatus === 'partially_paid') el.textContent = 'Partially Paid';
+                        else el.textContent = statusText;
+                    };
+                    applyStatusBadge(statusBadge);
+                    applyStatusBadge(statusBadgeM);
 
                     const autoPayBadge = document.getElementById(`autopay-badge-${bookingId}`);
-                    if (autoPayBadge) {
-                        if (booking.auto_pay_enabled) autoPayBadge.classList.remove('hidden');
-                        else autoPayBadge.classList.add('hidden');
-                    }
+                    const autoPayBadgeM = document.getElementById(`autopay-badge-m-${bookingId}`);
+                    [autoPayBadge, autoPayBadgeM].forEach((el) => {
+                        if (!el) return;
+                        if (booking.auto_pay_enabled) el.classList.remove('hidden');
+                        else el.classList.add('hidden');
+                    });
 
                     // Update amount paid + balance due cells
-                    const paidCell = document.getElementById(`paid-cell-${bookingId}`);
                     const paidVal = Number(booking.amount_paid_display != null ? booking.amount_paid_display : booking.amount_paid) || 0;
-                    if (paidCell) {
+                    const applyPaid = (paidCell) => {
+                        if (!paidCell) return;
                         if (booking.status === 'cancelled') {
                             paidCell.innerHTML = '<span class="text-gray-400">-</span>';
                         } else {
                             paidCell.innerHTML = `<span class="text-gray-900">$${paidVal.toFixed(2)}</span>`;
                         }
-                    }
-                    const balanceCell = document.getElementById(`balance-cell-${bookingId}`);
-                    if (balanceCell) {
+                    };
+                    applyPaid(document.getElementById(`paid-cell-${bookingId}`));
+                    applyPaid(document.getElementById(`paid-cell-m-${bookingId}`));
+                    const applyBalance = (balanceCell) => {
+                        if (!balanceCell) return;
                         if (booking.status === 'cancelled') {
                             balanceCell.innerHTML = '<span class="text-gray-400">-</span>';
                         } else {
@@ -3832,7 +3913,9 @@
                                 balanceCell.innerHTML = '<span class="text-green-600">$0</span>';
                             }
                         }
-                    }
+                    };
+                    applyBalance(document.getElementById(`balance-cell-${bookingId}`));
+                    applyBalance(document.getElementById(`balance-cell-m-${bookingId}`));
                     
                     // Update add-ons cell
                     const addonsCell = document.getElementById(`addons-cell-${bookingId}`);
@@ -3887,7 +3970,9 @@
                     }
                     
                     // Update data-status attribute for filtering (display status)
-                    row.setAttribute('data-status', booking.payment_status || booking.status);
+                    const nextStatus = booking.payment_status || booking.status;
+                    if (row) row.setAttribute('data-status', nextStatus);
+                    if (card) card.setAttribute('data-status', nextStatus);
                 }
             } catch (err) {
                 console.error('Error updating booking row:', err);
@@ -4789,8 +4874,8 @@
 </script>
 
 <!-- New Message Modal -->
-<div id="newMessageModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
-    <div class="relative top-6 mx-auto mb-10 w-full max-w-4xl shadow-lg rounded-lg bg-white flex flex-col" style="max-height: calc(100vh - 3rem);">
+<div id="newMessageModal" class="admin-modal-sheet fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+    <div class="admin-modal-panel relative top-6 mx-auto mb-10 w-full max-w-4xl shadow-lg rounded-lg bg-white flex flex-col" style="max-height: calc(100vh - 3rem);">
         <div class="p-6 border-b flex-shrink-0">
             <div class="flex justify-between items-start">
                 <div>
@@ -4935,8 +5020,8 @@
 </div>
 
 <!-- View Message Modal -->
-<div id="viewMessageModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
-    <div class="relative top-8 mx-auto mb-10 w-full max-w-3xl shadow-lg rounded-lg bg-white flex flex-col" style="max-height: calc(100vh - 4rem);">
+<div id="viewMessageModal" class="admin-modal-sheet fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+    <div class="admin-modal-panel relative top-8 mx-auto mb-10 w-full max-w-3xl shadow-lg rounded-lg bg-white flex flex-col" style="max-height: calc(100vh - 4rem);">
         <div class="p-6 border-b flex justify-between items-start flex-shrink-0">
             <div class="min-w-0 pr-4">
                 <p class="text-xs uppercase tracking-wide text-wetravel-cyan font-medium" id="viewMessageStatusBadge">Sent</p>
