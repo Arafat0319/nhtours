@@ -331,7 +331,7 @@
 {% block secondary_nav %}{% endblock %}
 
 {% block content %}
-{# Mobile: jump between builder steps without opening drawer #}
+{# Mobile/tablet: jump between builder steps without opening drawer #}
 {% set steps = [
 ('basics', 'Trip Basics'),
 ('description', 'Trip Description'),
@@ -341,7 +341,7 @@
 ('participants', 'Participant Info'),
 ('coupons', 'Coupons')
 ] %}
-<div class="md:hidden mb-4">
+<div class="lg:hidden mb-4">
     <label for="builderStepSelect" class="block text-xs font-medium text-gray-500 mb-1">Builder step</label>
     <select id="builderStepSelect" class="admin-select w-full border border-gray-300 rounded-md h-10 px-3 text-sm"
         onchange="if (this.value) window.location.href = this.value;">
@@ -352,7 +352,7 @@
     </select>
 </div>
 
-<div class="bg-white shadow rounded-lg p-4 sm:p-6 mb-20 md:mb-0">
+<div class="bg-white shadow rounded-lg p-4 sm:p-6 {% if trip.slug or trip.status in ('unpublished', 'deactivated', 'published') %}mb-24 lg:mb-0{% else %}mb-0{% endif %}">
     <div class="border-b border-gray-200 pb-4 mb-6">
         <h2 class="text-lg sm:text-xl font-bold leading-6 text-gray-900">
             {% block step_title %}{{ title }}{% endblock %}
@@ -361,8 +361,10 @@
     {% block builder_step_content %}{% endblock %}
 </div>
 
-{# Mobile sticky actions #}
-<div class="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-200 px-4 py-3 flex gap-2 shadow-lg">
+{# Mobile/tablet sticky actions — 无按钮时不渲染，避免空底栏挡住 Save #}
+{% if trip.slug or trip.status in ('unpublished', 'deactivated', 'published') %}
+<div class="admin-builder-sticky lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-200 px-4 pt-3 flex gap-2 shadow-lg"
+    style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));">
     {% if trip.slug %}
     <a href="{{ url_for('main.trip_detail', slug=trip.slug) }}" target="_blank"
         class="flex-1 text-center px-3 py-2 min-h-[44px] inline-flex items-center justify-center border border-wetravel-cyan text-wetravel-cyan text-sm font-medium rounded-md">Preview</a>
@@ -377,6 +379,7 @@
         class="flex-1 px-3 py-2 min-h-[44px] border border-amber-500 text-amber-700 text-sm font-medium rounded-md">Unpublish</button>
     {% endif %}
 </div>
+{% endif %}
 
 <!-- Custom Confirm Dialog -->
 <div id="customConfirmDialog" class="hidden">

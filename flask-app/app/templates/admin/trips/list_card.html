@@ -2,8 +2,8 @@
 
 {% block content %}
 <div class="space-y-6">
-    <!-- Header Area -->
-    <div class="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
+    <!-- Header Area：lg 以下标题与工具分行，避免横屏挤成一行 -->
+    <div class="admin-page-toolbar flex flex-col gap-3 lg:flex-row lg:justify-between lg:items-center">
         <div>
             <h2 class="text-xl sm:text-2xl font-normal text-gray-500">
                 {% if filter_type == 'future' %}Future Trips
@@ -16,18 +16,18 @@
             </h2>
         </div>
 
-        <div class="flex flex-col sm:flex-row gap-3 sm:space-x-4 sm:gap-0 w-full sm:w-auto">
+        <div class="admin-page-toolbar-tools flex flex-col sm:flex-row gap-3 sm:items-center sm:space-x-4 sm:gap-0 w-full lg:w-auto">
             <!-- Search & Sort Form -->
-            <form action="{{ url_for('admin.trips') }}" method="get" class="flex flex-col sm:flex-row sm:items-center gap-3 sm:space-x-4 sm:gap-0 flex-1"
+            <form action="{{ url_for('admin.trips') }}" method="get" class="flex flex-col sm:flex-row sm:items-center gap-3 sm:space-x-4 sm:gap-0 flex-1 min-w-0"
                 id="searchForm">
                 <input type="hidden" name="view" value="{{ request.args.get('view', 'list') }}">
                 <input type="hidden" name="filter" value="{{ filter_type }}">
 
                 <!-- Search -->
-                <div class="relative w-full sm:w-auto">
+                <div class="relative w-full sm:w-auto sm:min-w-[12rem] sm:max-w-xs flex-1">
                     <input type="text" name="q" id="searchInput" placeholder="Search trips..."
                         value="{{ request.args.get('q', '') }}"
-                        class="pl-8 pr-4 py-2 border border-gray-300 rounded text-sm w-full sm:w-64 focus:outline-none focus:border-wetravel-cyan min-h-[40px]"
+                        class="pl-8 pr-4 py-2 border border-gray-300 rounded text-sm w-full focus:outline-none focus:border-wetravel-cyan min-h-[40px]"
                         {% if request.args.get('q') %}autofocus
                         onfocus="var val=this.value; this.value=''; this.value= val;" {% endif %}>
                     <svg class="w-4 h-4 text-wetravel-cyan absolute left-2.5 top-3" fill="none" stroke="currentColor"
@@ -38,7 +38,7 @@
                 </div>
 
                 <!-- Sort -->
-                <div class="flex items-center space-x-2 text-sm text-gray-500">
+                <div class="flex items-center space-x-2 text-sm text-gray-500 shrink-0">
                     <select name="sort" onchange="this.form.submit()"
                         class="admin-select border border-gray-300 sm:border-none rounded sm:bg-transparent focus:ring-0 cursor-pointer text-gray-500 font-medium text-sm w-full sm:w-auto min-h-[40px] px-2">
                         <option value="created_desc" {% if request.args.get('sort')=='created_desc' %}selected{% endif
@@ -70,7 +70,7 @@
             </script>
 
             <!-- View Toggle -->
-            <div class="border border-wetravel-cyan rounded flex overflow-hidden self-start">
+            <div class="border border-wetravel-cyan rounded flex overflow-hidden self-start shrink-0">
                 <span class="bg-wetravel-cyan text-white px-3 py-2 flex items-center space-x-1 text-sm cursor-default min-h-[40px]">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -130,7 +130,6 @@
                     </div>
                     <div class="flex items-center text-gray-400 text-sm space-x-4 mb-2">
                         <span class="flex items-center">
-                            </svg>
                             {% if trip.start_date and trip.end_date %}
                             {{ trip.start_date.strftime('%b %d, %Y') }} - {{ trip.end_date.strftime('%b %d, %Y') }}
                             {% else %}
@@ -262,14 +261,13 @@
         {% endfor %}
     </div>
 </div>
-</div>
 
 <!-- Custom Delete Modal -->
 <div id="deleteModal"
-    class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 transform transition-all duration-300"
+    class="admin-modal-sheet hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 transform transition-all duration-300"
     role="dialog" aria-modal="true" aria-labelledby="modal-headline">
     <div
-        class="relative top-1/4 mx-auto p-0 border w-96 shadow-lg rounded-lg bg-white overflow-hidden animate-fade-in-down">
+        class="admin-modal-panel relative top-1/4 mx-auto p-0 border w-[calc(100%-2rem)] max-w-md shadow-lg rounded-lg bg-white overflow-hidden animate-fade-in-down">
 
         <div class="px-8 py-6">
             <button type="button" onclick="closeDeleteModal()"
@@ -310,10 +308,10 @@
 
 <!-- Unpublish Confirmation Modal (same WeTravel card pattern as Delete) -->
 <div id="unpublishModal"
-    class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 transform transition-all duration-300"
+    class="admin-modal-sheet hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 transform transition-all duration-300"
     role="dialog" aria-modal="true" aria-labelledby="unpublish-modal-headline">
     <div
-        class="relative top-1/4 mx-auto p-0 border w-96 shadow-lg rounded-lg bg-white overflow-hidden animate-fade-in-down">
+        class="admin-modal-panel relative top-1/4 mx-auto p-0 border w-[calc(100%-2rem)] max-w-md shadow-lg rounded-lg bg-white overflow-hidden animate-fade-in-down">
         <div class="px-8 py-6">
             <button type="button" onclick="closeUnpublishModal()"
                 class="absolute top-4 right-4 text-gray-400 hover:text-gray-500 focus:outline-none">
@@ -456,11 +454,29 @@
         // Close all other dropdowns
         document.querySelectorAll('[id^="dropdown-"]').forEach(el => {
             el.classList.add('hidden');
+            el.style.top = '';
+            el.style.bottom = '';
+            el.style.marginTop = '';
+            el.style.marginBottom = '';
         });
 
-        // Toggle current
+        // Toggle current；靠近视口底边上翻，避免溢出（内联样式，不依赖 CDN Tailwind JIT）
         if (isHidden) {
             dropdown.classList.remove('hidden');
+            const btn = event.currentTarget;
+            const r = btn.getBoundingClientRect();
+            const spaceBelow = window.innerHeight - r.bottom;
+            dropdown.style.marginTop = '';
+            dropdown.style.marginBottom = '';
+            dropdown.style.top = '';
+            dropdown.style.bottom = '';
+            if (spaceBelow < 180) {
+                dropdown.style.top = 'auto';
+                dropdown.style.bottom = '100%';
+                dropdown.style.marginBottom = '0.5rem';
+            } else {
+                dropdown.style.marginTop = '0.5rem';
+            }
         } else {
             dropdown.classList.add('hidden');
         }

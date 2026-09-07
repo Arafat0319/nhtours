@@ -33,8 +33,12 @@
     <!-- Add Font awesome or similar icons if needed, using simple SVGs for now -->
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        html {
+            overflow-x: clip;
+        }
         body {
             font-family: 'Montserrat', sans-serif;
+            overflow-x: clip;
         }
         /* 管理平台统一：下拉选择框箭头样式（箭头与右边距保持间距） */
         .required-asterisk { color: #ea580c; }
@@ -68,8 +72,13 @@
         select.admin-select.h-9:not([class*="px-"]):not([class*="pl-"]) {
             padding-left: 0.75rem;
         }
-        /* 小屏：大弹窗近全屏 sheet（桌面保持原 max-w / top） */
-        @media (max-width: 767px) {
+        /*
+         * 断点约定（后台）：
+         * - < lg(1024)：手机 + 平板竖屏 → L3 横条子导航、卡片列表、弹窗 sheet
+         * - ≥ lg：桌面 / 大平板横屏 → 常驻侧栏、宽表
+         * - 横屏且 <lg：压缩 L1/L2/L3，给内容让高
+         */
+        @media (max-width: 1023px) {
             .admin-modal-sheet > .admin-modal-panel {
                 top: 0 !important;
                 margin-left: 0 !important;
@@ -78,13 +87,81 @@
                 width: 100% !important;
                 max-width: 100% !important;
                 max-height: 100dvh !important;
-                height: 100dvh;
+                height: 100dvh !important;
                 border-radius: 0 !important;
             }
             #toastContainer {
                 left: 1rem;
                 right: 1rem;
                 max-width: none !important;
+            }
+            .admin-l2-row,
+            .admin-l3-row {
+                overscroll-behavior-x: contain;
+            }
+            /* <lg：侧栏改 L3 横条，桌面槽位隐藏 */
+            #adminSidebarDrawer.sidebar-container {
+                display: none !important;
+            }
+        }
+        @media (min-width: 1024px) {
+            #adminSidebarDrawer.sidebar-container:not(.hidden) {
+                display: block !important;
+                position: static;
+                width: 16rem;
+                flex-shrink: 0;
+            }
+            #adminL3Nav {
+                display: none !important;
+            }
+        }
+        /* 手机横屏、平板横屏（宽度仍 <lg）：压矮 L1/L2/L3，避免顶栏占掉半屏 */
+        @media (orientation: landscape) and (max-width: 1023px) {
+            .admin-topbar .admin-topbar-row {
+                height: 2.75rem;
+                min-height: 2.75rem;
+            }
+            .admin-topbar img {
+                height: 1.75rem;
+            }
+            .admin-topbar .admin-topbar-cta {
+                min-height: 0;
+                height: 2rem;
+                padding-top: 0.25rem;
+                padding-bottom: 0.25rem;
+                font-size: 0.75rem;
+            }
+            .admin-topbar .admin-topbar-logout {
+                min-height: 0;
+                font-size: 0.75rem;
+            }
+            .admin-l2-nav .admin-l2-row,
+            .admin-l3-nav .admin-l3-row {
+                height: 2.25rem;
+                min-height: 2.25rem;
+                font-size: 0.75rem;
+                column-gap: 1.25rem;
+            }
+            .admin-main-pad {
+                padding-top: 0.75rem;
+                padding-bottom: 0.75rem;
+            }
+            .admin-builder-sticky {
+                padding-top: 0.5rem !important;
+                padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px)) !important;
+            }
+            .admin-modal-sheet > .admin-modal-panel .admin-modal-compact-pad {
+                padding: 0.75rem !important;
+            }
+            /* 列表页工具条：横屏勿与标题挤同一行 */
+            .admin-page-toolbar {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 0.75rem !important;
+            }
+            .admin-page-toolbar-tools {
+                flex-wrap: wrap !important;
+                width: 100% !important;
             }
         }
     </style>
@@ -94,18 +171,11 @@
 <body class="bg-gray-50 text-gray-700">
 
     <!-- L1: Top Bar -->
-    <div class="bg-gray-900 border-b border-gray-800">
+    <div class="admin-topbar bg-gray-900 border-b border-gray-800">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16">
-                <!-- Left: hamburger + Logo -->
+            <div class="admin-topbar-row flex justify-between h-16 items-center">
+                <!-- Left: Logo -->
                 <div class="flex items-center gap-2 min-w-0">
-                    <button type="button" id="adminSidebarToggle"
-                        class="hidden md:hidden items-center justify-center h-10 w-10 rounded text-gray-300 hover:text-white hover:bg-gray-800 focus:outline-none"
-                        aria-label="Open menu" aria-expanded="false" aria-controls="adminSidebarDrawer">
-                        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
-                        </svg>
-                    </button>
                     <a href="{{ url_for('admin.trips') }}" class="flex-shrink-0 flex items-center">
                         <img class="h-8 w-auto"
                             src="{{ url_for('static', filename='images/icons/logo-2-white.DyAUH4zT.svg') }}"
@@ -113,17 +183,16 @@
                     </a>
                 </div>
 
-                <!-- Right: Actions -->
-                <div class="flex items-center flex-shrink-0 space-x-3 sm:space-x-6">
+                <!-- Right: Actions；lg 以下用短 CTA，避免横屏顶栏挤爆 -->
+                <div class="flex items-center flex-shrink-0 gap-2 sm:gap-4">
                     <a href="{{ url_for('admin.logout') }}"
-                        class="text-sm font-medium text-gray-300 hover:text-white flex-shrink-0 whitespace-nowrap min-h-[40px] inline-flex items-center">Log Out</a>
+                        class="admin-topbar-logout text-sm font-medium text-gray-300 hover:text-white flex-shrink-0 whitespace-nowrap min-h-[40px] inline-flex items-center px-1">Log Out</a>
 
-                    <!-- CTA Button (隐藏于编辑行程时)；小屏缩短文案 -->
                     {% if request.endpoint not in ['admin.trip_builder', 'admin.manage_trip'] %}
                     <a href="{{ url_for('admin.new_trip') }}"
-                        class="bg-wetravel-yellow hover:bg-yellow-400 text-white font-bold py-2 px-3 sm:px-4 rounded shadow-sm text-sm flex-shrink-0 whitespace-nowrap min-h-[40px] inline-flex items-center">
-                        <span class="sm:hidden">CREATE</span>
-                        <span class="hidden sm:inline">CREATE YOUR TRIP</span>
+                        class="admin-topbar-cta bg-wetravel-yellow hover:bg-yellow-400 text-white font-bold py-2 px-3 rounded shadow-sm text-sm flex-shrink-0 whitespace-nowrap min-h-[40px] inline-flex items-center">
+                        <span class="lg:hidden">CREATE</span>
+                        <span class="hidden lg:inline">CREATE YOUR TRIP</span>
                     </a>
                     {% endif %}
                 </div>
@@ -131,50 +200,47 @@
         </div>
     </div>
 
-    <!-- Mobile sidebar overlay -->
-    <div id="adminSidebarOverlay" class="fixed inset-0 bg-black/40 z-40 hidden md:hidden" aria-hidden="true"></div>
-
     <!-- L2: Main Nav -->
     {% block secondary_nav %}
-    <div class="bg-wetravel-dark text-white">
+    <div class="admin-l2-nav bg-wetravel-dark text-white">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex space-x-8 h-12 items-center text-sm font-medium overflow-x-auto">
+            <div class="admin-l2-row flex space-x-6 sm:space-x-8 h-12 items-center text-sm font-medium overflow-x-auto">
                 <a href="{{ url_for('admin.trips') }}"
-                    class="{% if request.endpoint and 'trips' in request.endpoint %}border-b-4 border-wetravel-cyan text-white{% else %}text-gray-300 hover:text-white{% endif %} h-full flex items-center px-1">
+                    class="{% if request.endpoint and 'trips' in request.endpoint %}border-b-4 border-wetravel-cyan text-white{% else %}text-gray-300 hover:text-white{% endif %} h-full flex items-center px-1 whitespace-nowrap">
                     MY TRIPS
                 </a>
                 <a href="{{ url_for('admin.customers') }}"
-                    class="{% if request.endpoint and ('customers' in request.endpoint or 'leads' in request.endpoint or 'testimonials' in request.endpoint) %}border-b-4 border-wetravel-cyan text-white{% else %}text-gray-300 hover:text-white{% endif %} h-full flex items-center px-1">
+                    class="{% if request.endpoint and ('customers' in request.endpoint or 'leads' in request.endpoint or 'testimonials' in request.endpoint) %}border-b-4 border-wetravel-cyan text-white{% else %}text-gray-300 hover:text-white{% endif %} h-full flex items-center px-1 whitespace-nowrap">
                     CUSTOMERS
                 </a>
                 <a href="{{ url_for('admin.payments') }}"
-                    class="{% if request.endpoint and 'payments' in request.endpoint %}border-b-4 border-wetravel-cyan text-white{% else %}text-gray-300 hover:text-white{% endif %} h-full flex items-center px-1">
+                    class="{% if request.endpoint and 'payments' in request.endpoint %}border-b-4 border-wetravel-cyan text-white{% else %}text-gray-300 hover:text-white{% endif %} h-full flex items-center px-1 whitespace-nowrap">
                     PAYMENTS
                 </a>
                 <a href="{{ url_for('admin.reports') }}"
-                    class="{% if request.endpoint and 'reports' in request.endpoint %}border-b-4 border-wetravel-cyan text-white{% else %}text-gray-300 hover:text-white{% endif %} h-full flex items-center px-1">
+                    class="{% if request.endpoint and 'reports' in request.endpoint %}border-b-4 border-wetravel-cyan text-white{% else %}text-gray-300 hover:text-white{% endif %} h-full flex items-center px-1 whitespace-nowrap">
                     REPORTS
                 </a>
-                <!-- Items removed: ITINERARIES, INVENTORY, NETWORK, ACCOUNT -->
             </div>
         </div>
     </div>
     {% endblock %}
 
-    <!-- Main Content Wrapper -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">
-        <div class="flex flex-col md:flex-row gap-6 md:gap-8">
+    <!-- L3: <lg 横向子导航（由侧栏 .admin-sidebar-nav 生成；Builder 自有步骤下拉则跳过） -->
+    <div id="adminL3Nav" class="admin-l3-nav bg-gray-100 text-gray-700 border-b border-gray-200 hidden" hidden>
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div id="adminL3NavRow" class="admin-l3-row flex gap-5 sm:gap-6 h-11 items-center text-sm font-medium overflow-x-auto"></div>
+        </div>
+    </div>
 
-            <!-- L3: Sidebar — 桌面常显；小屏抽屉（有 .admin-sidebar-nav 时才显示汉堡） -->
+    <!-- Main Content Wrapper -->
+    <div class="admin-main-pad max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+        <div class="flex flex-col lg:flex-row gap-6 lg:gap-8">
+
+            <!-- L3 desktop：lg+ 左侧常驻侧栏 -->
             <div id="adminSidebarDrawer"
-                class="fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] bg-white shadow-xl transform -translate-x-full transition-transform duration-200 ease-out md:static md:z-auto md:w-64 md:max-w-none md:bg-transparent md:shadow-none md:translate-x-0 md:flex-shrink-0 sidebar-container">
-                <div class="flex items-center justify-between px-4 h-14 border-b border-gray-100 md:hidden">
-                    <span class="text-sm font-semibold text-gray-700">Menu</span>
-                    <button type="button" id="adminSidebarClose" class="h-10 w-10 inline-flex items-center justify-center text-gray-500 hover:text-gray-800" aria-label="Close menu">
-                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                    </button>
-                </div>
-                <div class="overflow-y-auto h-[calc(100dvh-3.5rem)] md:h-auto p-4 md:p-0">
+                class="sidebar-container bg-transparent">
+                <div class="lg:p-0">
                     {% block sidebar %}
                     <!-- Default Sidebar for My Trips context -->
                     <nav class="admin-sidebar-nav space-y-1" aria-label="Trip filters">
@@ -397,46 +463,48 @@
         // Make it globally accessible
         window.showToast = showToast;
 
-        // Mobile sidebar drawer (only when page has .admin-sidebar-nav)
-        (function initAdminSidebarDrawer() {
-            const toggle = document.getElementById('adminSidebarToggle');
+        // <lg：把侧栏链接铺成 L3 横条（Builder 已有步骤下拉，跳过）
+        (function initAdminL3Subnav() {
             const drawer = document.getElementById('adminSidebarDrawer');
-            const overlay = document.getElementById('adminSidebarOverlay');
-            const closeBtn = document.getElementById('adminSidebarClose');
-            if (!toggle || !drawer || !overlay) return;
-            const hasNav = !!drawer.querySelector('.admin-sidebar-nav');
-            if (!hasNav) {
-                toggle.classList.add('hidden');
-                toggle.classList.remove('inline-flex');
+            const l3 = document.getElementById('adminL3Nav');
+            const row = document.getElementById('adminL3NavRow');
+            if (!drawer || !l3 || !row) return;
+
+            const nav = drawer.querySelector('.admin-sidebar-nav');
+            if (!nav) {
                 drawer.classList.add('hidden');
-                drawer.classList.remove('md:w-64');
                 return;
             }
-            toggle.classList.remove('hidden');
-            toggle.classList.add('inline-flex');
+            // Builder：保留桌面侧栏 + 手机步骤 select，不生成 L3
+            if ((nav.getAttribute('aria-label') || '').toLowerCase().indexOf('builder') !== -1) {
+                return;
+            }
 
-            function openDrawer() {
-                drawer.classList.remove('-translate-x-full');
-                overlay.classList.remove('hidden');
-                toggle.setAttribute('aria-expanded', 'true');
-                document.body.classList.add('overflow-hidden');
+            const links = Array.prototype.slice.call(nav.querySelectorAll(':scope > a'));
+            if (!links.length) return;
+
+            function linkIsActive(a) {
+                return a.classList.contains('font-bold')
+                    || a.classList.contains('text-wetravel-cyan')
+                    || a.classList.contains('bg-gray-100');
             }
-            function closeDrawer() {
-                drawer.classList.add('-translate-x-full');
-                overlay.classList.add('hidden');
-                toggle.setAttribute('aria-expanded', 'false');
-                document.body.classList.remove('overflow-hidden');
-            }
-            toggle.addEventListener('click', openDrawer);
-            closeBtn && closeBtn.addEventListener('click', closeDrawer);
-            overlay.addEventListener('click', closeDrawer);
-            document.addEventListener('keydown', function (e) {
-                if (e.key === 'Escape') closeDrawer();
+
+            row.innerHTML = '';
+            links.forEach(function (src) {
+                const a = document.createElement('a');
+                a.href = src.getAttribute('href') || '#';
+                a.textContent = (src.textContent || '').replace(/\s+/g, ' ').trim();
+                const active = linkIsActive(src);
+                a.className = (active
+                    ? 'border-b-4 border-wetravel-cyan text-gray-900'
+                    : 'text-gray-500 hover:text-gray-800')
+                    + ' h-full flex items-center px-1 whitespace-nowrap flex-shrink-0';
+                row.appendChild(a);
             });
-            // Desktop resize: ensure drawer closed state classes don't fight md:static
-            window.addEventListener('resize', function () {
-                if (window.matchMedia('(min-width: 768px)').matches) closeDrawer();
-            });
+
+            l3.hidden = false;
+            l3.classList.remove('hidden');
+            l3.classList.add('lg:hidden');
         })();
     </script>
 

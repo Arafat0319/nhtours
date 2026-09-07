@@ -170,29 +170,32 @@
         }
     });
 
-    // 切换分期付款显示/隐藏
+    // 切换分期付款显示/隐藏（桌面表行 + 手机卡片）
     function toggleInstallments(bookingId, forceOpen) {
         const rows = document.querySelectorAll(`tr.installment-row-${bookingId}`);
+        const mobilePanel = document.getElementById(`mobile-schedule-${bookingId}`);
         const icon = document.getElementById(`icon-${bookingId}`);
+        const expandBtn = document.querySelector(`[data-expand-btn="${bookingId}"]`);
 
-        if (rows.length > 0) {
-            const isHidden = rows[0].classList.contains('hidden');
-            const shouldOpen = forceOpen === true ? true : (forceOpen === false ? false : isHidden);
-            rows.forEach(row => {
-                if (shouldOpen) {
-                    row.classList.remove('hidden');
-                } else {
-                    row.classList.add('hidden');
-                }
-            });
+        const rowHidden = rows.length ? rows[0].classList.contains('hidden') : null;
+        const panelHidden = mobilePanel ? mobilePanel.classList.contains('hidden') : null;
+        const currentlyClosed = rowHidden !== null ? rowHidden : (panelHidden !== null ? panelHidden : true);
+        const shouldOpen = forceOpen === true ? true : (forceOpen === false ? false : currentlyClosed);
 
-            if (icon) {
-                if (shouldOpen) {
-                    icon.classList.add('rotate-180');
-                } else {
-                    icon.classList.remove('rotate-180');
-                }
-            }
+        rows.forEach(row => {
+            if (shouldOpen) row.classList.remove('hidden');
+            else row.classList.add('hidden');
+        });
+        if (mobilePanel) {
+            if (shouldOpen) mobilePanel.classList.remove('hidden');
+            else mobilePanel.classList.add('hidden');
+        }
+        if (icon) {
+            if (shouldOpen) icon.classList.add('rotate-180');
+            else icon.classList.remove('rotate-180');
+        }
+        if (expandBtn) {
+            expandBtn.textContent = shouldOpen ? 'Collapse schedule' : 'Expand schedule';
         }
     }
 
@@ -201,19 +204,46 @@
         const bookingId = row.getAttribute('data-auto-expand');
         if (bookingId) toggleInstallments(bookingId, true);
     });
+    document.querySelectorAll('[data-auto-expand-mobile]').forEach(card => {
+        const bookingId = card.getAttribute('data-auto-expand-mobile');
+        if (bookingId) toggleInstallments(bookingId, true);
+    });
 
-    // 切换下拉菜单显示/隐藏
+    // 切换下拉菜单：用 fixed 定位，避免 overflow-x-auto 裁切
     function toggleDropdown(dropdownId) {
         const dropdown = document.getElementById(dropdownId);
-        if (dropdown) {
-            // 关闭所有其他下拉菜单
-            document.querySelectorAll('[id^="dropdown-"]').forEach(menu => {
-                if (menu.id !== dropdownId) {
-                    menu.classList.add('hidden');
-                }
-            });
-            // 切换当前下拉菜单
-            dropdown.classList.toggle('hidden');
+        if (!dropdown) return;
+        document.querySelectorAll('[id^="dropdown-"]').forEach(menu => {
+            if (menu.id !== dropdownId) {
+                menu.classList.add('hidden');
+                menu.style.position = '';
+                menu.style.top = '';
+                menu.style.left = '';
+                menu.style.right = '';
+            }
+        });
+        const willOpen = dropdown.classList.contains('hidden');
+        if (!willOpen) {
+            dropdown.classList.add('hidden');
+            dropdown.style.position = '';
+            dropdown.style.top = '';
+            dropdown.style.left = '';
+            dropdown.style.right = '';
+            return;
+        }
+        const btn = dropdown.parentElement && dropdown.parentElement.querySelector('button');
+        dropdown.classList.remove('hidden');
+        if (btn) {
+            const r = btn.getBoundingClientRect();
+            const menuW = dropdown.offsetWidth || 208;
+            let left = r.right - menuW;
+            if (left < 8) left = 8;
+            if (left + menuW > window.innerWidth - 8) left = Math.max(8, window.innerWidth - menuW - 8);
+            dropdown.style.position = 'fixed';
+            dropdown.style.top = (r.bottom + 4) + 'px';
+            dropdown.style.left = left + 'px';
+            dropdown.style.right = 'auto';
+            dropdown.style.zIndex = '80';
         }
     }
 
@@ -222,6 +252,10 @@
         if (!event.target.closest('[id^="dropdown-"]') && !event.target.closest('button[onclick*="toggleDropdown"]')) {
             document.querySelectorAll('[id^="dropdown-"]').forEach(menu => {
                 menu.classList.add('hidden');
+                menu.style.position = '';
+                menu.style.top = '';
+                menu.style.left = '';
+                menu.style.right = '';
             });
         }
     });

@@ -24,7 +24,7 @@
 		</div>
 	</div>
 
-	<div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+	<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
 		<div class="bg-white rounded-lg shadow-sm p-4">
 			<p class="text-sm text-gray-500">Total</p>
 			<p class="text-2xl font-semibold text-gray-800">{{ stats.total }}</p>
@@ -79,7 +79,55 @@
 		</div>
 	</div>
 
-	<div class="bg-white rounded-lg shadow-sm overflow-x-auto">
+	{# 手机/平板卡片；拖拽排序仅桌面表 #}
+	<div class="lg:hidden space-y-3">
+		{% for item in testimonials %}
+		<div class="bg-white rounded-lg shadow-sm border border-gray-100 p-4 testimonial-row"
+			data-id="{{ item.id }}"
+			data-status="{{ item.status }}">
+			<div class="flex justify-between gap-2 items-start">
+				<div class="min-w-0">
+					<div class="text-sm font-medium text-gray-900 truncate">{{ item.author_name }}</div>
+					{% if item.organization %}
+					<div class="text-xs text-gray-500 truncate">{{ item.organization }}</div>
+					{% endif %}
+				</div>
+				<div class="flex items-center gap-1 shrink-0">
+					{% if item.status == 'pending' %}
+					<span class="px-2 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800">Pending</span>
+					{% elif item.status == 'approved' %}
+					<span class="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Approved</span>
+					{% else %}
+					<span class="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-600">Rejected</span>
+					{% endif %}
+					<button type="button"
+						class="testimonial-action-btn inline-flex items-center justify-center min-h-[40px] min-w-[40px] text-gray-400 hover:text-gray-600 focus:outline-none"
+						data-id="{{ item.id }}"
+						data-author="{{ item.author_name|e }}"
+						data-status="{{ item.status }}"
+						aria-label="Manage testimonial">
+						<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+							<path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+						</svg>
+					</button>
+				</div>
+			</div>
+			<p class="mt-2 text-sm text-gray-700 line-clamp-3 whitespace-pre-wrap">{{ item.quote }}</p>
+			<div class="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
+				{% if item.source == 'feedback' %}
+				<span class="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">Post-trip</span>
+				{% else %}
+				<span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">Homepage</span>
+				{% endif %}
+				{% if item.rating_label %}<span>{{ item.rating_label }}</span>{% endif %}
+			</div>
+		</div>
+		{% else %}
+		<p class="text-center text-sm text-gray-500 py-8">No testimonials found.</p>
+		{% endfor %}
+	</div>
+
+	<div class="bg-white rounded-lg shadow-sm overflow-x-auto hidden lg:block">
 		<table class="w-full min-w-[720px] table-fixed divide-y divide-gray-200">
 			<thead class="bg-gray-50">
 				<tr>
@@ -182,8 +230,8 @@
 				{% endfor %}
 			</tbody>
 		</table>
-		{% include 'admin/includes/pagination.html' %}
 	</div>
+	{% include 'admin/includes/pagination.html' %}
 </div>
 
 {% if can_reorder %}

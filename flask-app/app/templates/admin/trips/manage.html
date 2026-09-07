@@ -261,7 +261,7 @@
             </div>
 
             <!-- Mobile booking cards -->
-            <div id="bookings-cards" class="md:hidden space-y-3 mb-4">
+            <div id="bookings-cards" class="lg:hidden space-y-3 mb-4">
                 {% if bookings %}
                 {% for booking in bookings %}
                 {% set pay_status = booking_payment_statuses.get(booking.id, booking.status) %}
@@ -335,7 +335,7 @@
             </div>
 
             <!-- Bookings Table (desktop) -->
-            <div id="bookings-table-scroll" class="overflow-x-auto hidden md:block">
+            <div id="bookings-table-scroll" class="overflow-x-auto hidden lg:block">
                 <table id="bookings-table" class="min-w-full">
                     <thead>
                         <tr
@@ -758,12 +758,11 @@
 
 <!-- Manual Booking Modal (Advanced Stepper) -->
 <div id="addParticipantModal" class="admin-modal-sheet fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50" style="z-index: 50;">
-    <div class="admin-modal-panel relative top-10 mx-auto w-full max-w-4xl shadow-lg rounded-md bg-white flex flex-col"
-        style="height: 80vh;">
+    <div class="admin-modal-panel relative top-10 mx-auto w-full max-w-4xl shadow-lg rounded-md bg-white flex flex-col lg:h-[80vh] lg:max-h-[90vh]">
 
         <!-- Header -->
-        <div class="p-5 border-b flex justify-between items-center bg-gray-50 rounded-t-md relative">
-            <div class="text-center w-full">
+        <div class="admin-modal-compact-pad p-4 sm:p-5 border-b flex justify-between items-center bg-gray-50 rounded-t-md relative">
+            <div class="text-center w-full pr-8">
                 <!-- Circular Image Placeholder (Trip Image) -->
                 <div class="w-16 h-16 rounded-full overflow-hidden mx-auto border-2 border-white shadow-md -mt-10 mb-2">
                     <img src="{{ url_for('static', filename=trip.hero_image) if trip.hero_image else 'https://via.placeholder.com/150' }}"
@@ -773,13 +772,13 @@
                 <p class="text-sm text-gray-500">Manual Booking</p>
 
                 <!-- Stepper Nav -->
-                <div class="flex justify-center mt-4 space-x-2 text-sm text-gray-500">
+                <div class="flex justify-center mt-4 flex-wrap gap-x-2 gap-y-1 text-xs sm:text-sm text-gray-500">
                     <span class="step-nav cursor-pointer text-wetravel-cyan font-bold" data-step="1">Package</span>
-                    <span>&gt;</span>
+                    <span class="hidden sm:inline">&gt;</span>
                     <span class="step-nav cursor-pointer" data-step="2">Buyer and Participant info</span>
-                    <span>&gt;</span>
+                    <span class="hidden sm:inline">&gt;</span>
                     <span class="step-nav cursor-pointer" data-step="3">Add-ons</span>
-                    <span>&gt;</span>
+                    <span class="hidden sm:inline">&gt;</span>
                     <span class="step-nav cursor-pointer" data-step="4">Payment</span>
                 </div>
             </div>
@@ -790,10 +789,10 @@
             </button>
         </div>
 
-        <!-- content -->
-        <div class="flex-1 overflow-auto p-8 flex">
+        <!-- content：平板/手机单栏（Summary 在上），lg+ 双栏 -->
+        <div class="flex-1 overflow-auto p-4 sm:p-8 flex flex-col lg:flex-row admin-modal-compact-pad">
             <!-- Left: Form Steps -->
-            <div class="w-2/3 pr-8 border-r">
+            <div class="w-full lg:w-2/3 lg:pr-8 lg:border-r order-2 lg:order-1">
 
                 <!-- Step 1: Package Selection -->
                 <div id="step1" class="step-content">
@@ -885,8 +884,8 @@
 
             </div>
 
-            <!-- Right: Summary -->
-            <div class="w-1/3 pl-8">
+            <!-- Right: Summary（平板/手机置顶） -->
+            <div class="w-full lg:w-1/3 lg:pl-8 mb-4 lg:mb-0 order-1 lg:order-2">
                 <h4 class="text-lg font-medium mb-4">Your Booking</h4>
                 <div class="bg-gray-50 p-4 rounded mb-4">
                     <div id="bookingSummary" class="text-sm space-y-2">
@@ -902,13 +901,14 @@
         </div>
 
         <!-- Footer -->
-        <div class="p-5 border-t bg-gray-50 rounded-b-md flex justify-between items-center">
-            <button type="button" id="backStepBtn" class="hidden border border-gray-300 text-gray-700 px-4 py-2 rounded text-sm font-medium hover:bg-gray-100 focus:outline-none">
+        <div class="p-4 sm:p-5 border-t bg-gray-50 rounded-b-md flex justify-between items-center gap-2"
+            style="padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));">
+            <button type="button" id="backStepBtn" class="hidden border border-gray-300 text-gray-700 px-4 py-2 rounded text-sm font-medium hover:bg-gray-100 focus:outline-none min-h-[44px]">
                 ← Back
             </button>
             <div class="flex-1"></div>
             <button type="button" id="mainActionBtn"
-                class="bg-wetravel-cyan text-white px-6 py-2 rounded text-base font-medium hover:bg-cyan-400 w-full md:w-auto focus:outline-none">
+                class="bg-wetravel-cyan text-white px-6 py-2 rounded text-base font-medium hover:bg-cyan-400 w-full lg:w-auto focus:outline-none min-h-[44px]">
                 Continue
             </button>
         </div>
@@ -934,10 +934,10 @@
         </div>
 
         <!-- Content -->
-        <div class="flex-1 overflow-auto p-8">
+        <div class="flex-1 overflow-auto p-4 sm:p-8">
             <!-- Tabs -->
             <div class="border-b border-gray-200 mb-6">
-                <nav class="-mb-px flex space-x-8">
+                <nav class="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto">
                     <button type="button" id="bookingDetailsTab" class="border-wetravel-cyan text-wetravel-cyan whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
                         Booking Details
                     </button>
@@ -983,7 +983,8 @@
         </div>
 
         <!-- Footer -->
-        <div class="p-4 sm:p-5 border-t bg-gray-50 rounded-b-md flex flex-col-reverse sm:flex-row sm:justify-between sm:items-center gap-3 sticky bottom-0">
+        <div class="p-4 sm:p-5 border-t bg-gray-50 rounded-b-md flex flex-col-reverse sm:flex-row sm:justify-between sm:items-center gap-3 sticky bottom-0"
+            style="padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));">
             <div class="flex flex-wrap gap-2 sm:space-x-3 sm:gap-0">
                 <button type="button" id="cancelOrderBtn" class="px-4 py-2 min-h-[40px] border border-blue-300 rounded text-sm font-medium text-blue-700 hover:bg-blue-50 focus:outline-none">
                     Cancel order
@@ -1091,8 +1092,8 @@
 </div>
 
 <!-- Delete Confirmation Modal -->
-<div id="deleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-[60]">
-    <div class="relative top-20 mx-auto w-full max-w-md shadow-lg rounded-md bg-white">
+<div id="deleteModal" class="admin-modal-sheet fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-[60]">
+    <div class="admin-modal-panel relative top-20 mx-auto w-[calc(100%-2rem)] max-w-md shadow-lg rounded-md bg-white">
         <div class="p-6">
             <div class="flex items-center mb-4">
                 <div class="flex-shrink-0 mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
@@ -2329,10 +2330,35 @@
         function manageToggleDropdownById(dropdownId) {
             const dropdown = document.getElementById(dropdownId);
             if (!dropdown) return;
+            function resetMenu(menu) {
+                menu.classList.add('hidden');
+                menu.style.position = '';
+                menu.style.top = '';
+                menu.style.left = '';
+                menu.style.right = '';
+            }
             document.querySelectorAll('[id^="manage-inst-dd-"], [id^="manage-addon-dd-"]').forEach(function (menu) {
-                if (menu.id !== dropdownId) menu.classList.add('hidden');
+                if (menu.id !== dropdownId) resetMenu(menu);
             });
-            dropdown.classList.toggle('hidden');
+            const willOpen = dropdown.classList.contains('hidden');
+            if (!willOpen) {
+                resetMenu(dropdown);
+                return;
+            }
+            const btn = dropdown.parentElement && dropdown.parentElement.querySelector('button');
+            dropdown.classList.remove('hidden');
+            if (btn) {
+                const r = btn.getBoundingClientRect();
+                const menuW = dropdown.offsetWidth || 192;
+                let left = r.right - menuW;
+                if (left < 8) left = 8;
+                if (left + menuW > window.innerWidth - 8) left = Math.max(8, window.innerWidth - menuW - 8);
+                dropdown.style.position = 'fixed';
+                dropdown.style.top = (r.bottom + 4) + 'px';
+                dropdown.style.left = left + 'px';
+                dropdown.style.right = 'auto';
+                dropdown.style.zIndex = '90';
+            }
         }
 
         async function manageCopyAddonPaymentLink(baId) {
@@ -2550,6 +2576,10 @@
                 && !event.target.closest('button[onclick*="manageToggleAddonDropdown"]')) {
                 document.querySelectorAll('[id^="manage-inst-dd-"], [id^="manage-addon-dd-"]').forEach(function (menu) {
                     menu.classList.add('hidden');
+                    menu.style.position = '';
+                    menu.style.top = '';
+                    menu.style.left = '';
+                    menu.style.right = '';
                 });
             }
         });

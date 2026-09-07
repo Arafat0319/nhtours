@@ -51,7 +51,8 @@
     </div>
 
     <!-- Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <!-- Stats Cards：平板 2 列，桌面 4 列 -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div class="bg-white rounded-lg shadow-sm p-4">
             <div class="flex items-center">
                 <div class="flex-shrink-0 bg-blue-100 rounded-lg p-3">
@@ -59,7 +60,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                     </svg>
                 </div>
-                <div class="ml-4">
+                <div class="ml-4 min-w-0">
                     <p class="text-sm font-medium text-gray-500">Total Leads</p>
                     <p class="text-2xl font-semibold text-gray-900">{{ stats.total }}</p>
                 </div>
@@ -72,7 +73,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                 </div>
-                <div class="ml-4">
+                <div class="ml-4 min-w-0">
                     <p class="text-sm font-medium text-gray-500">New Leads</p>
                     <p class="text-2xl font-semibold text-gray-900">{{ stats.new }}</p>
                 </div>
@@ -85,7 +86,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                 </div>
-                <div class="ml-4">
+                <div class="ml-4 min-w-0">
                     <p class="text-sm font-medium text-gray-500">Replied</p>
                     <p class="text-2xl font-semibold text-gray-900">{{ stats.replied }}</p>
                 </div>
@@ -98,7 +99,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
                 </div>
-                <div class="ml-4">
+                <div class="ml-4 min-w-0">
                     <p class="text-sm font-medium text-gray-500">Converted</p>
                     <p class="text-2xl font-semibold text-gray-900">{{ stats.converted }}</p>
                 </div>
@@ -121,8 +122,61 @@
     </div>
     {% endif %}
 
-    <!-- Leads Table（与 Testimonials 同套：table-fixed、data 属性菜单、截断） -->
-    <div class="bg-white rounded-lg shadow-sm overflow-x-auto">
+    <!-- Leads：手机/平板卡片；lg+ 宽表 -->
+    <div class="lg:hidden space-y-3">
+        {% for lead in leads %}
+        {% set interest_items = (lead.interest_list or [])|select|list %}
+        {% set interest_text = interest_items|join(', ') if interest_items else '' %}
+        <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+            <div class="flex justify-between gap-2 items-start">
+                <div class="min-w-0">
+                    <div class="text-sm font-medium text-gray-900 truncate">{{ lead.name or '-' }}</div>
+                    {% if lead.email %}
+                    <a href="mailto:{{ lead.email }}" class="text-xs text-slate-600 truncate block hover:underline">{{ lead.email }}</a>
+                    {% endif %}
+                    {% if lead.organization %}
+                    <div class="text-xs text-gray-500 mt-0.5 truncate">{{ lead.organization }}</div>
+                    {% endif %}
+                </div>
+                <div class="flex items-center gap-1 shrink-0">
+                    {% if lead.status == 'new' %}
+                    <span class="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">New</span>
+                    {% elif lead.status == 'replied' %}
+                    <span class="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Replied</span>
+                    {% elif lead.status == 'archived' %}
+                    <span class="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">Archived</span>
+                    {% elif lead.status == 'converted' %}
+                    <span class="px-2 py-1 text-xs font-medium rounded-full bg-purple-100 text-purple-800">Converted</span>
+                    {% else %}
+                    <span class="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">{{ lead.status or 'New' }}</span>
+                    {% endif %}
+                    <button type="button"
+                        class="lead-action-btn inline-flex items-center justify-center min-h-[40px] min-w-[40px] text-gray-400 hover:text-gray-600 focus:outline-none"
+                        data-id="{{ lead.id }}"
+                        data-name="{{ (lead.name or '')|e }}"
+                        data-status="{{ lead.status or 'new' }}"
+                        data-email="{{ (lead.email or '')|e }}"
+                        aria-label="Manage lead">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            {% if interest_text %}
+            <div class="mt-2 text-xs text-gray-600 line-clamp-2">{{ interest_text }}</div>
+            {% endif %}
+            {% if lead.message %}
+            <div class="mt-1 text-sm text-gray-700 line-clamp-3 whitespace-pre-wrap">{{ lead.message }}</div>
+            {% endif %}
+            <div class="mt-2 text-xs text-gray-400">{{ lead.created_at.strftime('%Y/%m/%d') if lead.created_at else '-' }}</div>
+        </div>
+        {% else %}
+        <p class="text-center text-sm text-gray-500 py-8">No leads found.</p>
+        {% endfor %}
+    </div>
+
+    <div class="bg-white rounded-lg shadow-sm overflow-x-auto hidden lg:block">
         <table class="w-full min-w-[800px] table-fixed divide-y divide-gray-200">
             <thead class="bg-gray-50">
                 <tr>
@@ -246,8 +300,8 @@
                 {% endfor %}
             </tbody>
         </table>
-        {% include 'admin/includes/pagination.html' %}
     </div>
+    {% include 'admin/includes/pagination.html' %}
 </div>
 
 <!-- Bulk Delete Confirmation Modal -->

@@ -4,25 +4,10 @@
 <div class="space-y-6">
     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
         <h2 class="text-xl sm:text-2xl font-normal text-gray-500">Customers</h2>
-        <div class="flex space-x-2">
-            <!-- Filter Dropdown -->
-            <div class="relative inline-block text-left">
-                <button type="button"
-                    class="inline-flex justify-center w-full rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none min-h-[40px]">
-                    Filters
-                    <svg class="-mr-1 ml-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"
-                        fill="currentColor" aria-hidden="true">
-                        <path fill-rule="evenodd"
-                            d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                            clip-rule="evenodd" />
-                    </svg>
-                </button>
-            </div>
-        </div>
     </div>
 
-    <!-- Mobile cards -->
-    <div class="md:hidden space-y-3">
+    <!-- Mobile/tablet cards -->
+    <div class="lg:hidden space-y-3">
         {% for client in clients %}
         {% set stats = client_stats.get(client.id, {}) %}
         {% set trips = stats.get('trips', []) %}
@@ -49,8 +34,8 @@
         {% endfor %}
     </div>
 
-    <!-- Customers Table (desktop) -->
-    <div class="bg-white shadow overflow-hidden sm:rounded-lg hidden md:block">
+    <!-- Customers Table (desktop / large tablet landscape) -->
+    <div class="bg-white shadow overflow-hidden sm:rounded-lg hidden lg:block">
         <div class="overflow-x-auto">
         <table class="w-full table-fixed divide-y divide-gray-200">
             <thead class="bg-gray-50">
@@ -127,13 +112,13 @@
             </tbody>
         </table>
         </div>
-        {% include 'admin/includes/pagination.html' %}
     </div>
+    {% include 'admin/includes/pagination.html' %}
 </div>
 
 <!-- Delete Confirmation Modal -->
-<div id="deleteModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+<div id="deleteModal" class="admin-modal-sheet hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="admin-modal-panel relative top-20 mx-auto p-5 border w-[calc(100%-2rem)] max-w-md shadow-lg rounded-md bg-white">
         <div class="mt-3 text-center">
             <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
                 <svg class="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">

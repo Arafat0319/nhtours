@@ -5,19 +5,19 @@
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
 
 <div class="space-y-6">
-    <!-- Header Area -->
-    <div class="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
+    <!-- Header Area：lg 以下标题与工具分行，避免横屏挤成一行 -->
+    <div class="admin-page-toolbar flex flex-col gap-3 lg:flex-row lg:justify-between lg:items-center">
         <div>
             <h2 class="text-xl sm:text-2xl font-normal text-gray-500">
                 Upcoming Trips
             </h2>
         </div>
 
-        <div class="flex flex-col sm:flex-row gap-3 sm:space-x-4 sm:gap-0 w-full sm:w-auto">
+        <div class="admin-page-toolbar-tools flex flex-col sm:flex-row gap-3 sm:items-center sm:space-x-4 sm:gap-0 w-full lg:w-auto">
             <!-- Reuse search and view toggle -->
-            <div class="relative w-full sm:w-auto">
+            <div class="relative w-full sm:w-auto sm:min-w-[12rem] sm:max-w-xs flex-1">
                 <input type="text" placeholder="Search for participants and trips"
-                    class="pl-8 pr-4 py-2 border border-gray-300 rounded text-sm w-full sm:w-64 focus:outline-none focus:border-wetravel-cyan min-h-[40px]">
+                    class="pl-8 pr-4 py-2 border border-gray-300 rounded text-sm w-full focus:outline-none focus:border-wetravel-cyan min-h-[40px]">
                 <svg class="w-4 h-4 text-wetravel-cyan absolute left-2.5 top-3" fill="none" stroke="currentColor"
                     viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -26,7 +26,7 @@
             </div>
 
             <!-- View Toggle -->
-            <div class="border border-wetravel-cyan rounded flex overflow-hidden self-start">
+            <div class="border border-wetravel-cyan rounded flex overflow-hidden self-start shrink-0">
                 <a href="{{ url_for('admin.trips', view='list', filter=filter_type) }}"
                     class="bg-white text-gray-400 hover:text-wetravel-cyan hover:bg-gray-50 px-3 py-2 flex items-center space-x-1 text-sm border-r border-wetravel-cyan min-h-[40px]">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -56,11 +56,19 @@
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         var calendarEl = document.getElementById('calendar');
-        var isNarrow = window.matchMedia('(max-width: 767px)').matches;
+        function adminCalendarAspect() {
+            var w = window.innerWidth;
+            var h = window.innerHeight;
+            var landscapeShort = window.matchMedia('(orientation: landscape) and (max-width: 1023px)').matches;
+            if (landscapeShort) return 2.2;
+            if (w < 768) return 1.05;
+            if (w < 1024) return 1.35; // tablet portrait
+            return 1.8;
+        }
         var calendar = new FullCalendar.Calendar(calendarEl, {
             initialView: 'dayGridMonth',
-            contentHeight: 'auto', // Better for dynamic height
-            aspectRatio: isNarrow ? 1.05 : 1.8,
+            contentHeight: 'auto',
+            aspectRatio: adminCalendarAspect(),
             headerToolbar: {
                 left: 'prev,next today',
                 center: 'title',
@@ -93,10 +101,18 @@
         });
         calendar.render();
 
-        // Force update size after a short delay to fix rendering glitches
         setTimeout(function () {
             calendar.updateSize();
         }, 100);
+
+        var resizeTimer;
+        window.addEventListener('resize', function () {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(function () {
+                calendar.setOption('aspectRatio', adminCalendarAspect());
+                calendar.updateSize();
+            }, 150);
+        });
     });
 </script>
 
