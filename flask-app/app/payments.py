@@ -425,6 +425,105 @@ def installment_display_label(installment=None, *, installment_number=None, book
     return f'Installment #{num}'
 
 
+def _merge_installment_status(statuses, *, settled_via_payoff=False):
+    """同日多行状态聚合：overdue > pending > paid > cancelled。"""
+    norms = []
+    for raw in statuses or []:
+        s = (raw or 'pending')
+        if s == 'cancelled' and settled_via_payoff:
+            s = 'cancelled (payoff)'
+        norms.append(s)
+    active = [s for s in norms if not str(s).startswith('cancelled')]
+    pool = active or norms
+    if any(s == 'overdue' for s in pool):
+        return 'overdue'
+    if any(s == 'pending' for s in pool):
+        return 'pending'
+    if pool and all(s == 'paid' for s in pool):
+        return 'paid'
+    if norms and all(str(s).startswith('cancelled') for s in norms):
+        return 'cancelled (payoff)' if settled_via_payoff else 'cancelled'
+    return pool[0] if pool else 'pending'
+
+
+def group_installments_by_due_date(installments, *, settled_via_payoff=False):
+    """
+    按日历日合并分期行（多套餐双轨同日 → 一组）。
+    定金（installment_number==0）单独一组，不与同日分期混并。
+    返回 list[dict]: is_deposit, due_date, installments, anchor, amount, status, ids
+    """
+    buckets = {}
+    for inst in installments or []:
+        num = getattr(inst, 'installment_number', None)
+        try:
+            num = int(num) if num is not None else 999
+        except (TypeError, ValueError):
+            num = 999
+        is_deposit = num == 0
+        due = getattr(inst, 'due_date', None)
+        if is_deposit:
+            key = 'deposit'
+        elif due is not None:
+            key = f'due:{due.isoformat() if hasattr(due, "isoformat") else due}'
+        else:
+            key = f'id:{getattr(inst, "id", id(inst))}'
+        if key not in buckets:
+            buckets[key] = {
+                'is_deposit': is_deposit,
+                'due_date': None if is_deposit else due,
+                'installments': [],
+                'installment_number': num,
+            }
+        b = buckets[key]
+        b['installments'].append(inst)
+        if not is_deposit and num < b['installment_number']:
+            b['installment_number'] = num
+
+    groups = []
+    for b in buckets.values():
+        rows = sorted(
+            b['installments'],
+            key=lambda i: (getattr(i, 'installment_number', 999) or 999, getattr(i, 'id', 0) or 0),
+        )
+        statuses = [getattr(i, 'status', None) or 'pending' for i in rows]
+        unpaid = [
+            i for i in rows
+            if (getattr(i, 'status', None) or 'pending') in ('pending', 'overdue')
+        ]
+        anchor = unpaid[0] if unpaid else rows[0]
+        amount = round(sum(float(getattr(i, 'amount', None) or 0) for i in rows), 2)
+        groups.append({
+            'is_deposit': b['is_deposit'],
+            'due_date': b['due_date'],
+            'installments': rows,
+            'installment_ids': [getattr(i, 'id', None) for i in rows if getattr(i, 'id', None)],
+            'anchor': anchor,
+            'anchor_id': getattr(anchor, 'id', None),
+            'amount': amount,
+            'status': _merge_installment_status(statuses, settled_via_payoff=settled_via_payoff),
+            'installment_number': 0 if b['is_deposit'] else b['installment_number'],
+        })
+
+    def _sort_key(g):
+        if g['is_deposit']:
+            return (0, '', 0)
+        due = g.get('due_date')
+        due_s = due.isoformat() if hasattr(due, 'isoformat') else (str(due) if due else '')
+        return (1, due_s, g.get('installment_number') or 0)
+
+    groups.sort(key=_sort_key)
+    return groups
+
+
+def format_installment_due_label(due_date):
+    """客户可见的到期日文案（美式月日年）。"""
+    if not due_date:
+        return 'Payment'
+    if hasattr(due_date, 'strftime'):
+        return due_date.strftime('%b %d, %Y')
+    return str(due_date)[:10]
+
+
 def unpaid_installments_through(installment):
     """
     强制补齐：本单中 status 为 pending/overdue、且 installment_number ≤ 锚定期 的行（升序）。
@@ -451,7 +550,7 @@ def unpaid_installments_through(installment):
 
 
 def catch_up_summary_items(installment, *, post_deposit_count=None):
-    """付款页 summary_items：每期一行 {label, amount_cents}。"""
+    """付款页 summary_items：按 due date 合并（同日多套餐一行）。"""
     rows = unpaid_installments_through(installment)
     if not rows:
         return []
@@ -460,16 +559,30 @@ def catch_up_summary_items(installment, *, post_deposit_count=None):
     if count is None and bid:
         count = booking_post_deposit_installment_count(bid)
     items = []
-    for inst in rows:
-        amt = float(getattr(inst, 'amount', None) or 0.0)
+    for group in group_installments_by_due_date(rows):
+        amt = float(group.get('amount') or 0.0)
+        if group.get('is_deposit'):
+            label = 'Deposit'
+        elif count == 1:
+            label = 'Final payment'
+        else:
+            # 客户按日期理解；多轨同日不再拆两行 Installment #n
+            label = format_installment_due_label(group.get('due_date'))
+            if not group.get('due_date'):
+                label = installment_display_label(
+                    group.get('anchor'),
+                    post_deposit_count=count,
+                    booking_id=bid,
+                )
+        ids = [i for i in (group.get('installment_ids') or []) if i]
         items.append({
-            'label': installment_display_label(
-                inst, post_deposit_count=count, booking_id=bid
-            ),
+            'label': label,
             'amount_cents': int(round(amt * 100)),
-            'installment_id': getattr(inst, 'id', None),
-            'installment_number': getattr(inst, 'installment_number', None),
+            'installment_id': group.get('anchor_id'),
+            'installment_ids': ids,
+            'installment_number': group.get('installment_number'),
             'amount': round(amt, 2),
+            'due_date': group.get('due_date'),
         })
     return items
 
@@ -485,16 +598,27 @@ def catch_up_metadata_fields(installment, *, summary_items=None):
     payment_step: 多期为 catch_up，单期为 installment。
     """
     items = summary_items if summary_items is not None else catch_up_summary_items(installment)
-    ids = [str(i['installment_id']) for i in items if i.get('installment_id')]
+    ids = []
+    for i in items:
+        multi = i.get('installment_ids') or []
+        if multi:
+            for x in multi:
+                if x is not None and int(x) not in ids:
+                    ids.append(int(x))
+        elif i.get('installment_id') is not None:
+            iid = int(i['installment_id'])
+            if iid not in ids:
+                ids.append(iid)
     breakdown_bits = [
         f"{i['label']} ${float(i.get('amount') or 0):,.2f}" for i in items
     ]
-    multi = len(items) > 1
+    # 覆盖 >1 行（含同日两轨）即 catch_up
+    multi = len(ids) > 1
     return {
         'payment_step': 'catch_up' if multi else 'installment',
         'installment_id': getattr(installment, 'id', None),
         'installment_number': getattr(installment, 'installment_number', None),
-        'catch_up_ids': ','.join(ids),
+        'catch_up_ids': ','.join(str(x) for x in ids),
         'catch_up_breakdown': ' + '.join(breakdown_bits) if breakdown_bits else '',
     }
 
@@ -1091,39 +1215,66 @@ def build_receipt_ledger_sections(booking):
         .order_by(InstallmentPayment.installment_number.asc(), InstallmentPayment.id.asc())
         .all()
     )
-    post_deposit_count = sum(
-        1 for inst in rows if (inst.installment_number or 0) > 0
-    )
-    for inst in rows:
+    post_deposit_count = booking_post_deposit_installment_count(booking.id)
+    # 客户收据按 due date 合并（与 Manage / 催款一致）；库内仍可双轨
+    for group in group_installments_by_due_date(rows):
         note = None
-        status_label = (inst.status or 'pending').replace('_', ' ').title()
-        if (
-            inst.installment_number
-            and inst.installment_number > 0
-            and inst.status == 'paid'
-            and book_date
-            and inst.due_date
-            and inst.due_date < book_date
-        ):
-            note = 'Included in initial payment'
-            status_label = 'Paid (in initial)'
-        elif inst.id in covered_non_anchor_ids and inst.status == 'paid':
-            note = 'Included in catch-up payment'
-            status_label = 'Paid (in catch-up)'
-        elif inst.installment_number == 0:
-            status_label = f'Deposit — {status_label}'
-        installment_schedule.append({
-            'number': inst.installment_number,
-            'label': installment_display_label(
-                inst,
+        status = group.get('status') or 'pending'
+        status_label = status.replace('_', ' ').title()
+        members = group.get('installments') or []
+        # 追缴计入首付 / catch-up 覆盖：组内任一行有备注则带上
+        notes = []
+        for inst in members:
+            if (
+                inst.installment_number
+                and inst.installment_number > 0
+                and inst.status == 'paid'
+                and book_date
+                and inst.due_date
+                and inst.due_date < book_date
+            ):
+                notes.append('Included in initial payment')
+            elif inst.id in covered_non_anchor_ids and inst.status == 'paid':
+                notes.append('Included in catch-up payment')
+        if notes:
+            # 去重保序
+            seen = set()
+            uniq = []
+            for n in notes:
+                if n not in seen:
+                    seen.add(n)
+                    uniq.append(n)
+            note = '; '.join(uniq)
+            if 'initial' in note:
+                status_label = 'Paid (in initial)'
+            elif 'catch-up' in note:
+                status_label = 'Paid (in catch-up)'
+        if group.get('is_deposit'):
+            label = 'Deposit'
+            status_label = f'Deposit — {status_label}' if 'Deposit' not in status_label else status_label
+        else:
+            label = installment_display_label(
+                group.get('anchor'),
+                installment_number=group.get('installment_number'),
                 post_deposit_count=post_deposit_count,
+                booking_id=booking.id,
+            )
+        paid_ats = [getattr(i, 'paid_at', None) for i in members if getattr(i, 'paid_at', None)]
+        installment_schedule.append({
+            'number': group.get('installment_number'),
+            'label': label,
+            'amount': group.get('amount') or 0.0,
+            'due_date': (
+                None if group.get('is_deposit')
+                else (group.get('due_date') or (
+                    getattr(members[0], 'due_date', None) if members else None
+                ))
             ),
-            'amount': round(float(inst.amount or 0), 2),
-            'due_date': inst.due_date,
-            'status': inst.status,
+            'status': status,
             'status_label': status_label,
             'note': note,
-            'paid_at': inst.paid_at,
+            'paid_at': max(paid_ats) if paid_ats else None,
+            'installment_ids': group.get('installment_ids') or [],
         })
 
     return {
@@ -1248,17 +1399,30 @@ def installment_has_other_unpaid(installment, all_installments=None):
 
 
 def booking_post_deposit_installment_count(booking_id):
-    """定金之后的期数（installment_number > 0）。"""
+    """定金之后的期数：按 due_date 去重（多套餐同日合并视为一期）。"""
+    from app import db
     from app.models import InstallmentPayment
+    from sqlalchemy import func
 
     if not booking_id:
         return 0
-    return (
+    distinct_dates = (
+        db.session.query(func.count(func.distinct(InstallmentPayment.due_date)))
+        .filter(
+            InstallmentPayment.booking_id == booking_id,
+            InstallmentPayment.installment_number > 0,
+            InstallmentPayment.due_date.isnot(None),
+        )
+        .scalar()
+    )
+    null_due = (
         InstallmentPayment.query.filter(
             InstallmentPayment.booking_id == booking_id,
             InstallmentPayment.installment_number > 0,
+            InstallmentPayment.due_date.is_(None),
         ).count()
     )
+    return int(distinct_dates or 0) + int(null_due or 0)
 
 
 def booking_is_multi_period_plan(booking_id):
@@ -1270,19 +1434,23 @@ def booking_is_multi_period_plan(booking_id):
 
 
 def _booking_ids_with_post_deposit_count(count_op, count_value, booking_ids=None):
-    """按定金后期数筛选 booking_id。count_op: 'eq' | 'gt'。"""
+    """按定金后期数（due_date 去重）筛选 booking_id。count_op: 'eq' | 'gt'。"""
     from app import db
     from app.models import InstallmentPayment
     from sqlalchemy import func
 
+    period_expr = func.count(func.distinct(InstallmentPayment.due_date))
     having = (
-        func.count(InstallmentPayment.id) == count_value
+        period_expr == count_value
         if count_op == 'eq'
-        else func.count(InstallmentPayment.id) > count_value
+        else period_expr > count_value
     )
     q = (
         db.session.query(InstallmentPayment.booking_id)
-        .filter(InstallmentPayment.installment_number > 0)
+        .filter(
+            InstallmentPayment.installment_number > 0,
+            InstallmentPayment.due_date.isnot(None),
+        )
         .group_by(InstallmentPayment.booking_id)
         .having(having)
     )

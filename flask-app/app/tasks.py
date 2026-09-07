@@ -40,6 +40,58 @@ def _installment_label(installment):
     return installment_display_label(installment)
 
 
+def _same_due_unpaid_group(installment):
+    """同订单、同 due date 的未付分期（含自身）；定金只与定金合并。"""
+    from app.payments import group_installments_by_due_date
+
+    if not installment or not installment.booking_id:
+        return [installment] if installment else []
+    raw_num = getattr(installment, 'installment_number', None)
+    try:
+        num = int(raw_num) if raw_num is not None else 999
+    except (TypeError, ValueError):
+        num = 999
+    q = InstallmentPayment.query.filter(
+        InstallmentPayment.booking_id == installment.booking_id,
+        InstallmentPayment.status.in_(_UNPAID_INSTALLMENT_STATUSES),
+    )
+    if num == 0:
+        q = q.filter(InstallmentPayment.installment_number == 0)
+    elif installment.due_date is not None:
+        q = q.filter(
+            InstallmentPayment.installment_number > 0,
+            InstallmentPayment.due_date == installment.due_date,
+        )
+    else:
+        return [installment]
+    rows = q.order_by(InstallmentPayment.id.asc()).all()
+    if not rows:
+        return [installment]
+    groups = group_installments_by_due_date(rows)
+    for g in groups:
+        ids = set(g.get('installment_ids') or [])
+        if installment.id in ids:
+            return g.get('installments') or [installment]
+    return [installment]
+
+
+def _group_installments_for_notice(installments):
+    """催款任务：按 (booking_id, due_date|deposit) 去重，每组只发一封。"""
+    from app.payments import group_installments_by_due_date
+
+    by_booking = {}
+    for inst in installments or []:
+        bid = getattr(inst, 'booking_id', None)
+        if not bid:
+            continue
+        by_booking.setdefault(bid, []).append(inst)
+    out = []
+    for rows in by_booking.values():
+        for g in group_installments_by_due_date(rows):
+            out.append(g)
+    return out
+
+
 def _reminder_style(days_until_due=None, days_overdue=None):
     """主题色：3天蓝 / 明天琥珀 / 当天与逾期红。"""
     if days_overdue is not None:
@@ -88,7 +140,8 @@ def _reminder_style(days_until_due=None, days_overdue=None):
 
 
 def _send_installment_notice_email(installment, *, subject, urgency_text, footer_note,
-                                   days_until_due=None, days_overdue=None):
+                                   days_until_due=None, days_overdue=None,
+                                   amount=None, installment_label=None):
     """渲染 HTML 催款模板并经 SES 发送（含纯文本备援）。"""
     booking = installment.booking
     if not booking or not booking.buyer_email:
@@ -120,13 +173,15 @@ def _send_installment_notice_email(installment, *, subject, urgency_text, footer
             else 'Amount due tomorrow' if days_until_due == 1
             else 'Upcoming Auto Pay charge'
         )
+    amt = float(amount) if amount is not None else float(installment.amount or 0)
+    label = installment_label if installment_label is not None else _installment_label(installment)
     context = {
         'subject_line': subject,
         'customer_name': booking.buyer_first_name or 'Customer',
         'trip_title': trip_title,
         'urgency_text': urgency_text,
-        'installment_label': _installment_label(installment),
-        'amount': float(installment.amount or 0),
+        'installment_label': label,
+        'amount': amt,
         'due_date_label': due_date_label,
         'order_number': booking.order_number or booking.id,
         'payment_link': _installment_payment_link(installment),
@@ -184,6 +239,15 @@ def send_payment_failed_email(installment, *, failure_reason=None, days_overdue=
     due_date_label = (
         installment.due_date.strftime('%B %d, %Y') if installment.due_date else 'N/A'
     )
+    group = _same_due_unpaid_group(installment)
+    amount = round(sum(float(i.amount or 0) for i in group), 2)
+    label = (
+        due_date_label if len(group) > 1 and installment.due_date
+        else _installment_label(installment)
+    )
+    if len(group) > 1 and (getattr(installment, 'installment_number', None) or 0) == 0:
+        label = 'Deposit'
+    anchor = min(group, key=lambda i: i.id)
     auto_pay_enabled = bool(getattr(booking, 'auto_pay_enabled', False))
     auto_pay_url = None
     try:
@@ -218,11 +282,11 @@ def send_payment_failed_email(installment, *, failure_reason=None, days_overdue=
         'intro_text': intro,
         'highlight_title': highlight_title,
         'trip_title': trip_title,
-        'installment_label': _installment_label(installment),
-        'amount': float(installment.amount or 0),
+        'installment_label': label,
+        'amount': amount,
         'due_date_label': due_date_label,
         'order_number': booking.order_number or booking.id,
-        'payment_link': _installment_payment_link(installment),
+        'payment_link': _installment_payment_link(anchor),
         'email_logo_url': _email_brand_logo_url(),
         'footer_note': (
             'If you already paid this installment, please ignore this email. '
@@ -428,6 +492,19 @@ def send_installment_reminders():
         def _auto_pay_on(booking):
             return bool(booking and getattr(booking, 'auto_pay_enabled', False))
 
+        def _mark_group_reminded(group_installments, *, bump_count=True, mark_overdue=False):
+            now = datetime.utcnow()
+            for inst in group_installments or []:
+                inst.reminder_sent = True
+                inst.reminder_sent_at = now
+                if bump_count:
+                    inst.reminder_count = (inst.reminder_count or 0) + 1
+                if mark_overdue and inst.status == 'pending':
+                    inst.status = 'overdue'
+
+        def _group_already_reminded_today(group_installments):
+            return any(_already_reminded_pacific_today(i) for i in (group_installments or []))
+
         # 1. 3 天前提醒（Auto Pay 与手动付款均发；Auto Pay 到期前仅此一封）
         three_days_later = today + timedelta(days=3)
         installments_3days = (
@@ -439,15 +516,23 @@ def send_installment_reminders():
             .all()
         )
 
-        for installment in installments_3days:
-            if _booking_is_settled(installment.booking):
+        for group in _group_installments_for_notice(installments_3days):
+            members = group.get('installments') or []
+            anchor = group.get('anchor') or (members[0] if members else None)
+            if not anchor:
                 continue
-            if _skip_ach_in_flight(installment):
+            members = _same_due_unpaid_group(anchor)
+            if not members:
                 continue
-            if send_installment_reminder_email(installment, days_until_due=3):
-                installment.reminder_sent = True
-                installment.reminder_sent_at = datetime.utcnow()
-                installment.reminder_count = (installment.reminder_count or 0) + 1
+            # 半组已 reminder_sent 时 query 只捞到 sibling → 用整组判断，避免同日再发
+            if any(bool(getattr(i, 'reminder_sent', False)) for i in members):
+                continue
+            if _booking_is_settled(anchor.booking):
+                continue
+            if any(_skip_ach_in_flight(i) for i in members):
+                continue
+            if send_installment_reminder_email(anchor, days_until_due=3):
+                _mark_group_reminded(members)
                 sent_pre += 1
 
         # 2. 1 天前提醒（未开 Auto Pay；不要求必有 D-3，避免漏发后断档）
@@ -458,19 +543,24 @@ def send_installment_reminders():
             .all()
         )
 
-        for installment in installments_1day:
-            if _booking_is_settled(installment.booking):
+        for group in _group_installments_for_notice(installments_1day):
+            members = group.get('installments') or []
+            anchor = group.get('anchor') or (members[0] if members else None)
+            if not anchor:
                 continue
-            if _skip_ach_in_flight(installment):
+            members = _same_due_unpaid_group(anchor)
+            if not members:
                 continue
-            if _auto_pay_on(installment.booking):
+            if _booking_is_settled(anchor.booking):
                 continue
-            if _already_reminded_pacific_today(installment):
+            if any(_skip_ach_in_flight(i) for i in members):
                 continue
-            if send_installment_reminder_email(installment, days_until_due=1):
-                installment.reminder_sent = True
-                installment.reminder_sent_at = datetime.utcnow()
-                installment.reminder_count = (installment.reminder_count or 0) + 1
+            if _auto_pay_on(anchor.booking):
+                continue
+            if _group_already_reminded_today(members):
+                continue
+            if send_installment_reminder_email(anchor, days_until_due=1):
+                _mark_group_reminded(members)
                 sent_pre += 1
 
         # 3. 到期当天提醒（未开 Auto Pay；已开则由 9:15 扣款任务处理）
@@ -480,55 +570,65 @@ def send_installment_reminders():
             .all()
         )
 
-        for installment in installments_today:
-            if _booking_is_settled(installment.booking):
+        for group in _group_installments_for_notice(installments_today):
+            members = group.get('installments') or []
+            anchor = group.get('anchor') or (members[0] if members else None)
+            if not anchor:
                 continue
-            if _skip_ach_in_flight(installment):
+            members = _same_due_unpaid_group(anchor)
+            if not members:
                 continue
-            if _auto_pay_on(installment.booking):
+            if _booking_is_settled(anchor.booking):
                 continue
-            if _already_reminded_pacific_today(installment):
+            if any(_skip_ach_in_flight(i) for i in members):
                 continue
-            if send_installment_reminder_email(installment, days_until_due=0):
-                installment.reminder_sent = True
-                installment.reminder_sent_at = datetime.utcnow()
-                installment.reminder_count = (installment.reminder_count or 0) + 1
+            if _auto_pay_on(anchor.booking):
+                continue
+            if _group_already_reminded_today(members):
+                continue
+            if send_installment_reminder_email(anchor, days_until_due=0):
+                _mark_group_reminded(members)
                 sent_pre += 1
 
         # 4. 逾期催款（含 status=overdue；每 3 天一次，最多 6 次总提醒）
         overdue_installments = (
             _active_unpaid_installments_query()
-            .filter(
-                InstallmentPayment.due_date < today,
-                InstallmentPayment.reminder_count < 6,
-            )
+            .filter(InstallmentPayment.due_date < today)
             .all()
         )
 
-        for installment in overdue_installments:
-            if _booking_is_settled(installment.booking):
+        for group in _group_installments_for_notice(overdue_installments):
+            members = group.get('installments') or []
+            # 整组未付（含 reminder_count 已满的 sibling），避免半组过滤导致多催
+            anchor = group.get('anchor') or (members[0] if members else None)
+            if not anchor or not anchor.due_date:
                 continue
-            if _skip_ach_in_flight(installment):
+            members = _same_due_unpaid_group(anchor)
+            if not members:
                 continue
-            days_overdue = (today - installment.due_date).days
+            if _booking_is_settled(anchor.booking):
+                continue
+            if any(_skip_ach_in_flight(i) for i in members):
+                continue
+            max_count = max(int(getattr(i, 'reminder_count', None) or 0) for i in members)
+            if max_count >= 6:
+                continue
+            days_overdue = (today - anchor.due_date).days
             should_send = False
-
-            last_pacific = to_pacific_date(installment.reminder_sent_at)
-            if not last_pacific:
+            last_dates = [to_pacific_date(i.reminder_sent_at) for i in members]
+            last_dates = [d for d in last_dates if d]
+            if not last_dates:
                 should_send = True
             else:
-                days_since_last = (today - last_pacific).days
+                days_since_last = (today - max(last_dates)).days
                 if days_since_last >= 3:
                     should_send = True
 
-            if should_send and send_overdue_reminder_email(installment, days_overdue):
-                installment.reminder_sent_at = datetime.utcnow()
-                installment.reminder_count = (installment.reminder_count or 0) + 1
-                if installment.status == 'pending':
-                    installment.status = 'overdue'
+            if should_send and send_overdue_reminder_email(anchor, days_overdue):
+                _mark_group_reminded(members, mark_overdue=True)
                 sent_overdue += 1
 
-        # 5. 逾期 ≥3 天 → 通知管理员（所有分期单，含未开 Auto Pay；每期最多一次）
+        # 5. 逾期 ≥3 天 → 通知管理员（所有分期单，含未开 Auto Pay；同日合并一次）
         admin_overdue_notified = notify_admins_of_overdue_installments(
             today=today,
             booking_is_settled=_booking_is_settled,
@@ -558,7 +658,7 @@ def notify_admins_of_overdue_installments(
 ):
     """
     未付分期逾期 ≥ min_days 天时邮件通知管理员。
-    每期仅通知一次（写 admin_overdue_notified_at）；不 commit（由调用方 commit）。
+    同 due date 合并一封；组内全部写 admin_overdue_notified_at；不 commit（由调用方 commit）。
     """
     today = today or pacific_today()
     cutoff = today - timedelta(days=int(min_days))
@@ -573,30 +673,41 @@ def notify_admins_of_overdue_installments(
         .all()
     )
 
-    for installment in candidates:
-        booking = installment.booking
+    for group in _group_installments_for_notice(candidates):
+        members = group.get('installments') or []
+        anchor = group.get('anchor') or (members[0] if members else None)
+        if not anchor or not anchor.due_date:
+            continue
+        booking = anchor.booking
         if booking_is_settled and booking_is_settled(booking):
             continue
-        if skip_ach_in_flight and skip_ach_in_flight(installment):
+        if skip_ach_in_flight and any(skip_ach_in_flight(i) for i in members):
             continue
-        days_overdue = (today - installment.due_date).days if installment.due_date else 0
+        days_overdue = (today - anchor.due_date).days
         if days_overdue < min_days:
             continue
-        if installment.status == 'pending':
-            installment.status = 'overdue'
-        if send_admin_overdue_installment_email(installment, days_overdue):
-            installment.admin_overdue_notified_at = datetime.utcnow()
+        for inst in members:
+            if inst.status == 'pending':
+                inst.status = 'overdue'
+        if send_admin_overdue_installment_email(
+            anchor, days_overdue, group_members=members
+        ):
+            now = datetime.utcnow()
+            for inst in members:
+                inst.admin_overdue_notified_at = now
             notified += 1
 
     return notified
 
 
-def send_admin_overdue_installment_email(installment, days_overdue):
+def send_admin_overdue_installment_email(installment, days_overdue, group_members=None):
     """Send ≥3-day overdue alert to RECIPIENT_EMAIL (admin inbox)."""
     booking = installment.booking
     if not booking:
         return False
 
+    members = group_members or _same_due_unpaid_group(installment)
+    amount = round(sum(float(i.amount or 0) for i in members), 2)
     trip_title = booking.trip.title if booking.trip else 'Trip Booking'
     order_number = booking.order_number or booking.id
     customer_name = (
@@ -607,6 +718,12 @@ def send_admin_overdue_installment_email(installment, days_overdue):
     due_date_label = (
         installment.due_date.strftime('%B %d, %Y') if installment.due_date else 'N/A'
     )
+    label = (
+        due_date_label if len(members) > 1 and installment.due_date
+        else _installment_label(installment)
+    )
+    if len(members) > 1 and (getattr(installment, 'installment_number', None) or 0) == 0:
+        label = 'Deposit'
     manage_url = None
     if booking.trip_id:
         try:
@@ -623,9 +740,9 @@ def send_admin_overdue_installment_email(installment, days_overdue):
         'customer_name': customer_name,
         'customer_email': booking.buyer_email or '',
         'trip_title': trip_title,
-        'installment_label': _installment_label(installment),
+        'installment_label': label,
         'due_date_label': due_date_label,
-        'amount': float(installment.amount or 0),
+        'amount': amount,
         'days_overdue': days_overdue,
         'manage_url': manage_url,
         'email_logo_url': _email_brand_logo_url(),
@@ -653,7 +770,7 @@ def send_installment_reminder_email(installment, days_until_due=3):
     发送分期付款提醒邮件（HTML，与收据同品牌样式）
 
     Args:
-        installment: InstallmentPayment 对象
+        installment: InstallmentPayment 对象（同日多轨时作锚点）
         days_until_due: 距离到期日还有几天（0 表示今天到期）
     """
     if not installment.booking:
@@ -668,6 +785,14 @@ def send_installment_reminder_email(installment, days_until_due=3):
         installment.due_date.strftime('%B %d, %Y') if installment.due_date else 'N/A'
     )
     auto_on = bool(getattr(booking, 'auto_pay_enabled', False))
+    group = _same_due_unpaid_group(installment)
+    amount = round(sum(float(i.amount or 0) for i in group), 2)
+    label = (
+        due_label if len(group) > 1 and installment.due_date
+        else _installment_label(installment)
+    )
+    if len(group) > 1 and (getattr(installment, 'installment_number', None) or 0) == 0:
+        label = 'Deposit'
 
     if auto_on:
         if days_until_due == 0:
@@ -707,17 +832,20 @@ def send_installment_reminder_email(installment, days_until_due=3):
             "Thank you for your prompt attention."
         )
 
+    anchor = min(group, key=lambda i: i.id)
     ok = _send_installment_notice_email(
-        installment,
+        anchor,
         subject=subject,
         urgency_text=urgency_text,
         footer_note=footer_note,
         days_until_due=days_until_due,
+        amount=amount,
+        installment_label=label,
     )
     if ok:
         current_app.logger.info(
-            f"Reminder email sent for installment {installment.id} "
-            f"(due in {days_until_due} days)"
+            f"Reminder email sent for installment {anchor.id} "
+            f"(group={[i.id for i in group]}, due in {days_until_due} days, amount={amount})"
         )
     return ok
 
@@ -735,7 +863,18 @@ def send_overdue_reminder_email(installment, days_overdue):
 
     booking = installment.booking
     trip_title = booking.trip.title if booking.trip else 'Trip Booking'
+    due_label = (
+        installment.due_date.strftime('%B %d, %Y') if installment.due_date else 'N/A'
+    )
     auto_on = bool(getattr(booking, 'auto_pay_enabled', False))
+    group = _same_due_unpaid_group(installment)
+    amount = round(sum(float(i.amount or 0) for i in group), 2)
+    label = (
+        due_label if len(group) > 1 and installment.due_date
+        else _installment_label(installment)
+    )
+    if len(group) > 1 and (getattr(installment, 'installment_number', None) or 0) == 0:
+        label = 'Deposit'
 
     subject = f"OVERDUE Payment Notice - {trip_title}"
     if auto_on:
@@ -750,24 +889,27 @@ def send_overdue_reminder_email(installment, days_overdue):
         )
     else:
         urgency_text = (
-            f"This is an overdue payment notice. Your payment is now "
-            f"{days_overdue} day(s) overdue."
+            f"This is an overdue payment notice. Your payment was due on {due_label} "
+            f"and is now {days_overdue} day(s) overdue."
         )
         footer_note = (
             "If you have already made this payment, please contact us so we can update "
             "your record. Failure to pay may result in cancellation of your booking."
         )
+    anchor = min(group, key=lambda i: i.id)
     ok = _send_installment_notice_email(
-        installment,
+        anchor,
         subject=subject,
         urgency_text=urgency_text,
         footer_note=footer_note,
         days_overdue=days_overdue,
+        amount=amount,
+        installment_label=label,
     )
     if ok:
         current_app.logger.info(
-            f"Overdue reminder email sent for installment {installment.id} "
-            f"({days_overdue} days overdue)"
+            f"Overdue reminder email sent for installment {anchor.id} "
+            f"(group={[i.id for i in group]}, {days_overdue} days overdue, amount={amount})"
         )
     return ok
 
@@ -813,7 +955,13 @@ def process_auto_pay_charges():
                 db.session.commit()
                 continue
 
-            if detail in ('ach_deferred', 'already_settled', 'zero_amount', 'ach_processing'):
+            if detail in (
+                'ach_deferred',
+                'already_settled',
+                'zero_amount',
+                'ach_processing',
+                'open_payment_in_progress',
+            ):
                 skip_n += 1
                 db.session.commit()
                 continue

@@ -2634,8 +2634,15 @@ def api_payment_status():
         intent_status = getattr(intent, 'status', None) if intent else None
         if intent and intent_status == 'succeeded':
             try:
-                handle_booking_payment_intent_succeeded(intent)
-                handle_payment_intent_succeeded(intent)
+                pi_dict = _stripe_intent_as_dict(intent, payment.stripe_payment_intent_id)
+                step = ((pi_dict.get('metadata') or {}).get('payment_step') or '').strip().lower()
+                if step == 'payoff':
+                    handle_booking_payment_intent_succeeded(pi_dict)
+                elif _payment_intent_is_installment_flow(pi_dict):
+                    handle_payment_intent_succeeded(pi_dict)
+                else:
+                    handle_booking_payment_intent_succeeded(pi_dict)
+                    handle_payment_intent_succeeded(pi_dict)
             except Exception as e:
                 db.session.rollback()
                 current_app.logger.warning(f"Error handling payment (may already be processed): {str(e)}")
@@ -4179,8 +4186,19 @@ def stripe_webhook():
         elif event_type == 'payment_intent.processing':
             handle_payment_intent_processing(event['data']['object'])
         elif event_type == 'payment_intent.succeeded':
-            handle_booking_payment_intent_succeeded(event['data']['object'])
-            handle_payment_intent_succeeded(event['data']['object'])
+            pi_obj = event['data']['object']
+            pi_meta = (pi_obj.get('metadata') if isinstance(pi_obj, dict) else None) or {}
+            if isinstance(pi_obj, dict) and not pi_meta and hasattr(pi_obj, 'get'):
+                pi_meta = pi_obj.get('metadata') or {}
+            step = (pi_meta.get('payment_step') or '').strip().lower()
+            if step == 'payoff':
+                handle_booking_payment_intent_succeeded(pi_obj)
+            elif _payment_intent_is_installment_flow(pi_obj):
+                # 分期/catch-up/Auto Pay：禁止先走报名入账
+                handle_payment_intent_succeeded(pi_obj)
+            else:
+                handle_booking_payment_intent_succeeded(pi_obj)
+                handle_payment_intent_succeeded(pi_obj)
         elif event_type == 'payment_intent.payment_failed':
             handle_payment_intent_failed(event['data']['object'])
         elif event_type == 'charge.refunded':
@@ -4837,6 +4855,38 @@ def handle_payment_intent_processing(payment_intent):
         )
 
 
+def _payment_intent_is_installment_flow(payment_intent):
+    """
+    分期 / catch-up / payoff / Auto Pay：应走 handle_payment_intent_succeeded，
+    不可先走报名入账（否则 Payment=succeeded 后 sibling 无法续结）。
+    """
+    if not payment_intent:
+        return False
+    if isinstance(payment_intent, dict):
+        metadata = payment_intent.get('metadata') or {}
+        pi_id = payment_intent.get('id')
+    else:
+        metadata = dict(getattr(payment_intent, 'metadata', None) or {})
+        pi_id = getattr(payment_intent, 'id', None)
+    step = (metadata.get('payment_step') or '').strip().lower()
+    flow = (metadata.get('payment_flow') or '').strip().lower()
+    if step in ('installment', 'catch_up'):
+        return True
+    if flow in ('installment', 'auto_pay'):
+        return True
+    if metadata.get('installment_id') or (metadata.get('catch_up_ids') or '').strip():
+        # payoff 也常带 installment_id；payoff 走报名结清分支
+        if step != 'payoff':
+            return True
+    if pi_id:
+        pay = Payment.query.filter_by(stripe_payment_intent_id=pi_id).first()
+        if pay and getattr(pay, 'installment_payment_id', None):
+            return True
+        if InstallmentPayment.query.filter_by(payment_intent_id=pi_id).first():
+            return True
+    return False
+
+
 def handle_booking_payment_intent_succeeded(payment_intent):
     """
     处理 Payment Intent 成功事件（站内 Payment Element 全额/定金）
@@ -4856,6 +4906,15 @@ def handle_booking_payment_intent_succeeded(payment_intent):
     if is_addon_purchase_intent(metadata):
         handle_addon_payment_succeeded(payment_intent)
         return
+
+    # 分期流（含 metadata 有 installment_id 但行上尚未挂 PI）：直接分期入账
+    if _payment_intent_is_installment_flow(payment_intent):
+        if metadata.get('payment_step') == 'payoff':
+            # payoff 仍走下方全款结清分支（取消未付分期）
+            pass
+        else:
+            handle_payment_intent_succeeded(payment_intent)
+            return
     
     # 行锁：防 webhook 与 status 轮询并发双加 amount_paid / 双建单
     existing_payment = (
@@ -5112,21 +5171,104 @@ def handle_payment_intent_succeeded(payment_intent):
         .with_for_update()
         .first()
     )
-    if existing_payment and existing_payment.status == 'succeeded':
-        current_app.logger.info(f"Payment for payment_intent {payment_intent_id} already succeeded (id={existing_payment.id}), skipping duplicate")
-        return existing_payment
-    
-    # 查找关联的 InstallmentPayment（锚定期：链接上的那一期）
-    installment = InstallmentPayment.query.filter_by(
-        payment_intent_id=payment_intent_id
-    ).first()
-    
+    payment_already_succeeded = bool(
+        existing_payment and existing_payment.status == 'succeeded'
+    )
+
+    # 锚定期：优先 metadata / Payment 行（建单时写入），再回退 PI 反查。
+    installment = None
+    meta_iid = _parse_int(metadata.get('installment_id'))
+    if meta_iid:
+        installment = InstallmentPayment.query.get(meta_iid)
+    if (
+        not installment
+        and existing_payment
+        and getattr(existing_payment, 'installment_payment_id', None)
+    ):
+        installment = InstallmentPayment.query.get(
+            existing_payment.installment_payment_id
+        )
     if not installment:
-        current_app.logger.warning(f"InstallmentPayment not found for payment_intent {payment_intent_id}")
+        installment = InstallmentPayment.query.filter_by(
+            payment_intent_id=payment_intent_id
+        ).first()
+    if not installment:
+        _early_catch = parse_catch_up_ids(metadata)
+        if _early_catch:
+            installment = InstallmentPayment.query.get(_early_catch[0])
+
+    if not installment:
+        current_app.logger.warning(
+            f"InstallmentPayment not found for payment_intent {payment_intent_id}"
+        )
         return
-    
-    if installment.status == 'paid':
-        current_app.logger.info(f"InstallmentPayment {installment.id} already processed, skipping")
+
+    catch_ids = parse_catch_up_ids(metadata)
+    meta_had_catch_ids = bool(catch_ids)
+    if not catch_ids:
+        # 缺 metadata：按当前未付补齐集合重建，避免只用锚点却把整笔 base 入账
+        try:
+            rebuilt = catch_up_summary_items(installment)
+            for item in rebuilt:
+                for iid in (item.get('installment_ids') or []):
+                    if iid is not None and int(iid) not in catch_ids:
+                        catch_ids.append(int(iid))
+                if item.get('installment_id') is not None:
+                    iid = int(item['installment_id'])
+                    if iid not in catch_ids:
+                        catch_ids.append(iid)
+        except Exception as e:
+            current_app.logger.warning(
+                'Rebuild catch_up_ids failed installment=%s: %s', installment.id, e
+            )
+        if not catch_ids:
+            catch_ids = [installment.id]
+
+    unpaid_covered = (
+        InstallmentPayment.query.filter(
+            InstallmentPayment.booking_id == installment.booking_id,
+            InstallmentPayment.id.in_(catch_ids),
+            InstallmentPayment.status.in_(('pending', 'overdue')),
+        ).count()
+        if catch_ids
+        else 0
+    )
+
+    # Payment 已 succeeded：若 sibling 仍未付则续结分期，但不再加 amount_paid
+    if payment_already_succeeded and unpaid_covered == 0:
+        current_app.logger.info(
+            f"Payment for payment_intent {payment_intent_id} already succeeded "
+            f"(id={existing_payment.id}), skipping duplicate"
+        )
+        return existing_payment
+
+    # 锚点已 paid 且无未付 sibling：只抬 pending Payment（若有）
+    if installment.status == 'paid' and unpaid_covered == 0:
+        if existing_payment and existing_payment.status in (
+            'pending',
+            'processing',
+            'failed',
+        ):
+            paid_at = datetime.utcnow()
+            existing_payment.status = 'succeeded'
+            existing_payment.paid_at = paid_at
+            existing_payment.payment_metadata = (
+                metadata or existing_payment.payment_metadata
+            )
+            if booking := installment.booking:
+                void_stale_pending_payments(
+                    booking, except_payment_intent_id=payment_intent_id
+                )
+            db.session.commit()
+            current_app.logger.info(
+                "Installment set already paid; marked Payment %s succeeded for pi=%s",
+                existing_payment.id,
+                payment_intent_id,
+            )
+            return existing_payment
+        current_app.logger.info(
+            f"InstallmentPayment {installment.id} already processed, skipping"
+        )
         return
 
     paid_at = datetime.utcnow()
@@ -5149,10 +5291,6 @@ def handle_payment_intent_succeeded(payment_intent):
         db.session.commit()
         return existing_payment
 
-    catch_ids = parse_catch_up_ids(metadata)
-    if not catch_ids:
-        catch_ids = [installment.id]
-
     # 强制补齐：将覆盖集合内未付分期全部标 paid（一笔 Payment）
     covered = (
         InstallmentPayment.query.filter(
@@ -5164,26 +5302,78 @@ def handle_payment_intent_succeeded(payment_intent):
         .all()
     )
     if not covered:
-        covered = [installment]
+        if installment.status in ('pending', 'overdue'):
+            covered = [installment]
+        else:
+            covered = []
+
+    # 入账额：Payment 已 succeeded 只补分期状态；缺 catch_up_ids 时勿用整笔 base 只结锚点
+    if payment_already_succeeded:
+        amount_to_add = 0.0
+    elif (not meta_had_catch_ids) and len(catch_ids) <= 1:
+        amount_to_add = (
+            round(sum(float(i.amount or 0) for i in covered), 2)
+            if covered
+            else round(float(installment.amount or 0), 2)
+        )
+    elif unpaid_covered > 0 and unpaid_covered >= len(catch_ids):
+        amount_to_add = base_amount
+    elif covered:
+        amount_to_add = round(sum(float(i.amount or 0) for i in covered), 2)
+    else:
+        amount_to_add = 0.0
+
+    # payment_intent_id 列有唯一索引：先清空所有挂此 PI 的行，再只挂锚点
+    holders = (
+        InstallmentPayment.query.filter_by(payment_intent_id=payment_intent_id).all()
+    )
+    for h in holders:
+        if h.id == getattr(installment, 'id', None):
+            continue
+        if h in covered:
+            continue
+        h.payment_intent_id = None
 
     for inst in covered:
         inst.status = 'paid'
         inst.paid_at = paid_at
-        # 被覆盖期上残留的单期 PI（非本次）取消
         other_pi = getattr(inst, 'payment_intent_id', None)
         if other_pi and other_pi != payment_intent_id:
             safe_cancel_payment_intent(
                 other_pi,
                 reason=f'catch-up covered installment {inst.id}',
             )
-            inst.payment_intent_id = payment_intent_id
+        inst.payment_intent_id = None
 
-    # 锚定期确保指向本次 PI
+    # 锚点若不在 covered（已是 paid），也要让出/挂上本次 PI
+    if installment not in covered:
+        other_pi = getattr(installment, 'payment_intent_id', None)
+        if other_pi and other_pi != payment_intent_id:
+            safe_cancel_payment_intent(
+                other_pi,
+                reason=f'catch-up anchor rebind installment {installment.id}',
+            )
+        installment.payment_intent_id = None
+
+    db.session.flush()
+
     installment.payment_intent_id = payment_intent_id
+    if installment.status != 'paid':
+        installment.status = 'paid'
+        installment.paid_at = paid_at
 
-    # 创建或更新 Payment 记录 - amount 记录总金额（含手续费）；只一笔
-    # 入账仅在本分支（上方已排除 prior succeeded）
-    if existing_payment and existing_payment.status in ('pending', 'processing', 'failed'):
+    # 创建或更新 Payment 记录
+    if payment_already_succeeded:
+        payment = existing_payment
+        payment.installment_payment_id = installment.id
+        if metadata:
+            payment.payment_metadata = metadata
+        current_app.logger.info(
+            "Resuming sibling settle for already-succeeded Payment %s pi=%s",
+            payment.id,
+            payment_intent_id,
+        )
+    elif existing_payment and existing_payment.status in ('pending', 'processing', 'failed'):
         payment = existing_payment
         payment.amount = total_amount
         payment.status = 'succeeded'
@@ -5208,7 +5398,8 @@ def handle_payment_intent_succeeded(payment_intent):
         db.session.add(payment)
 
     # 更新 Booking - amount_paid 只记录基础金额（不含手续费）；仅跃迁时执行一次
-    booking.amount_paid = (booking.amount_paid or 0.0) + base_amount
+    if amount_to_add:
+        booking.amount_paid = (booking.amount_paid or 0.0) + amount_to_add
     
     # 检查是否所有分期都已完成
     total_info = calculate_booking_total(booking)
@@ -5249,11 +5440,12 @@ def handle_payment_intent_succeeded(payment_intent):
     
     db.session.commit()
     
-    # 发送确认邮件（锚定期）
-    try:
-        send_installment_confirmation_email(installment, payment=payment)
-    except Exception as e:
-        current_app.logger.error(f"Failed to send installment confirmation email: {str(e)}")
+    # 发送确认邮件（锚定期）；续结 sibling 不重发
+    if not payment_already_succeeded:
+        try:
+            send_installment_confirmation_email(installment, payment=payment)
+        except Exception as e:
+            current_app.logger.error(f"Failed to send installment confirmation email: {str(e)}")
     
     current_app.logger.info(
         "Successfully processed installment payment installment_id=%s catch_up_ids=%s",

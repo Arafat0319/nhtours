@@ -2663,11 +2663,15 @@ def send_installment_reminder(installment_id):
         if not ok:
             return jsonify({'success': False, 'error': 'Failed to send reminder email'}), 500
 
-        installment.reminder_sent = True
-        installment.reminder_sent_at = datetime.utcnow()
-        installment.reminder_count = (installment.reminder_count or 0) + 1
-        if due and due < today and installment.status == 'pending':
-            installment.status = 'overdue'
+        from app.tasks import _same_due_unpaid_group
+        group = _same_due_unpaid_group(installment)
+        now = datetime.utcnow()
+        for inst in group:
+            inst.reminder_sent = True
+            inst.reminder_sent_at = now
+            inst.reminder_count = (inst.reminder_count or 0) + 1
+            if due and due < today and inst.status == 'pending':
+                inst.status = 'overdue'
         db.session.commit()
 
         return jsonify({

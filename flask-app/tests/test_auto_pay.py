@@ -155,7 +155,7 @@ def test_charge_skips_open_pending_payment(app):
         auto_pay_last_error=None,
         auto_pay_last_charge_at=None,
     )
-    inst = SimpleNamespace(id=10, booking=booking, booking_id=1)
+    inst = SimpleNamespace(id=10, booking=booking, booking_id=1, payment_intent_id=None)
     pending = SimpleNamespace(
         id=5,
         booking_id=1,
@@ -164,12 +164,18 @@ def test_charge_skips_open_pending_payment(app):
         payment_metadata={},
         stripe_payment_intent_id="pi_open",
     )
-    with patch("app.auto_pay.Payment") as P:
-        P.query.filter.return_value.order_by.return_value.all.return_value = [pending]
-        with patch("app.payments.installment_has_processing_ach", return_value=False):
-            with patch("app.payments.booking_has_processing_ach_payment", return_value=False):
-                with patch("app.payments.payment_covers_installment", return_value=True):
-                    ok, detail = charge_installment_via_auto_pay(inst)
+    with app.app_context():
+        with patch("app.auto_pay.Payment") as P:
+            P.query.filter.return_value.order_by.return_value.all.return_value = [pending]
+            with patch("app.payments.installment_has_processing_ach", return_value=False):
+                with patch("app.payments.booking_has_processing_ach_payment", return_value=False):
+                    with patch("app.payments.payment_covers_installment", return_value=True):
+                        with patch("app.auto_pay._stripe_ready", return_value=True):
+                            with patch(
+                                "app.auto_pay.stripe.PaymentIntent.retrieve",
+                                return_value=SimpleNamespace(status="requires_action"),
+                            ):
+                                ok, detail = charge_installment_via_auto_pay(inst)
     assert ok is False and detail == "open_payment_in_progress"
 
 

@@ -375,6 +375,7 @@ def charge_installment_via_auto_pay(installment, *, card_only=True):
         catch_up_summary_items,
         installment_has_processing_ach,
         payment_covers_installment,
+        safe_cancel_payment_intent,
         _normalize_metadata,
     )
 
@@ -386,7 +387,22 @@ def charge_installment_via_auto_pay(installment, *, card_only=True):
     if installment_has_processing_ach(installment) or booking_has_processing_ach_payment(booking.id):
         return False, 'ach_processing'
 
-    # 客户可能已打开付款链接留下 pending Payment / PI — 避免双扣
+    def _settle_succeeded_intent(intent_obj, pi_id):
+        from app.routes import _stripe_intent_as_dict, handle_payment_intent_succeeded
+
+        try:
+            handle_payment_intent_succeeded(_stripe_intent_as_dict(intent_obj))
+            booking.auto_pay_last_error = None
+            return True, pi_id
+        except Exception as e:
+            booking.auto_pay_last_error = f'settle_failed:{e}'[:500]
+            current_app.logger.error(
+                'Auto Pay settle failed pi=%s: %s', pi_id, e, exc_info=True
+            )
+            return False, f'settle_failed:{e}'
+
+    # 客户可能已打开付款链接留下 pending Payment / PI — 避免双扣；
+    # Stripe 已成功 → 只 settle；已作废 → 作废本地 pending 后可新建；真正进行中才 block。
     open_pay = (
         Payment.query.filter(
             Payment.booking_id == booking.id,
@@ -396,8 +412,40 @@ def charge_installment_via_auto_pay(installment, *, card_only=True):
         .all()
     )
     for pay in open_pay:
-        if payment_covers_installment(pay, installment):
+        if not payment_covers_installment(pay, installment):
+            continue
+        pi_id = (getattr(pay, 'stripe_payment_intent_id', None) or '').strip()
+        if not pi_id or not _stripe_ready():
             return False, 'open_payment_in_progress'
+        try:
+            existing_intent = stripe.PaymentIntent.retrieve(pi_id)
+            st = getattr(existing_intent, 'status', None)
+        except Exception as e:
+            current_app.logger.warning(
+                'Auto Pay retrieve open Payment PI %s failed: %s', pi_id, e
+            )
+            return False, 'open_payment_in_progress'
+
+        if st == 'succeeded':
+            return _settle_succeeded_intent(existing_intent, pi_id)
+        if st in (
+            'processing',
+            'requires_action',
+            'requires_confirmation',
+            'requires_capture',
+        ):
+            return False, 'open_payment_in_progress'
+        # canceled / requires_payment_method 等：本地 pending 已无有效扣款，放行新建
+        pay.status = 'failed'
+        if getattr(installment, 'payment_intent_id', None) == pi_id:
+            installment.payment_intent_id = None
+        current_app.logger.info(
+            'Auto Pay voiding stale open Payment id=%s pi=%s status=%s',
+            getattr(pay, 'id', None),
+            pi_id,
+            st,
+        )
+
     try:
         due = float(calculate_booking_total(booking).get('amount_due') or 0)
     except Exception:
@@ -433,6 +481,33 @@ def charge_installment_via_auto_pay(installment, *, card_only=True):
 
     if not _stripe_ready():
         return False, 'stripe_not_configured'
+
+    # 已有 PI：succeeded 只 settle；进行中 block；其它先 cancel 再 create
+    existing_pi_id = getattr(installment, 'payment_intent_id', None)
+    if existing_pi_id:
+        try:
+            existing_intent = stripe.PaymentIntent.retrieve(existing_pi_id)
+            st = getattr(existing_intent, 'status', None)
+            if st == 'succeeded':
+                return _settle_succeeded_intent(existing_intent, existing_pi_id)
+            if st in (
+                'processing',
+                'requires_action',
+                'requires_confirmation',
+                'requires_capture',
+            ):
+                return False, 'open_payment_in_progress'
+            safe_cancel_payment_intent(
+                existing_pi_id, reason=f'auto_pay replace stale pi installment={installment.id}'
+            )
+            installment.payment_intent_id = None
+            db.session.flush()
+        except Exception as e:
+            current_app.logger.warning(
+                'Auto Pay retrieve existing PI %s failed: %s', existing_pi_id, e
+            )
+            # retrieve 失败时不盲目 create，避免可能双扣
+            return False, 'open_payment_in_progress'
 
     try:
         intent = stripe.PaymentIntent.create(
@@ -471,21 +546,18 @@ def charge_installment_via_auto_pay(installment, *, card_only=True):
     installment.payment_intent_id = intent.id
     booking.auto_pay_last_charge_at = datetime.utcnow()
     booking.auto_pay_last_error = None
-    db.session.flush()
+    # 尽早落库 PI，缩小 webhook 竞态窗（webhook 靠 metadata 识别分期流）
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        db.session.flush()
 
     if status == 'succeeded':
-        from app.routes import _stripe_intent_as_dict, handle_payment_intent_succeeded
-
-        try:
-            handle_payment_intent_succeeded(_stripe_intent_as_dict(intent))
-        except Exception as e:
-            current_app.logger.error(
-                'Auto Pay: handle_payment_intent_succeeded failed pi=%s: %s',
-                intent.id,
-                e,
-                exc_info=True,
-            )
-            return False, f'settle_failed:{e}'
+        ok, detail = _settle_succeeded_intent(intent, intent.id)
+        if not ok:
+            # 保留 last_error，同日可重试 re-settle；勿当成「已成功扣款跳过」
+            return False, detail
         return True, intent.id
 
     return False, f'status_{status}'
