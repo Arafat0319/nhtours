@@ -3945,6 +3945,7 @@ def manage_booking(trip_id, booking_id):
                 payment_step_label,
                 payment_is_payoff,
                 booking_has_payoff,
+                payment_hidden_from_admin_history,
             )
             settled_via_payoff = False
             for payment in (
@@ -3953,6 +3954,8 @@ def manage_booking(trip_id, booking_id):
                 .order_by(Payment.paid_at.asc(), Payment.created_at.asc(), Payment.id.asc())
                 .all()
             ):
+                if payment_hidden_from_admin_history(payment):
+                    continue
                 amt = payment_charged_amount(payment)
                 fee_dollars = payment_fee_amount(payment)
                 base_dollars = payment_base_amount(payment)

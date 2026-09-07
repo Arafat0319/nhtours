@@ -696,6 +696,32 @@ def installment_has_processing_ach(installment):
     return find_processing_ach_covering_installment(installment) is not None
 
 
+# Manage Payment History：隐藏未成交尝试，避免与成功收款并列误导管理员
+_ADMIN_PAYMENT_HISTORY_HIDDEN_STATUSES = frozenset({
+    'failed',
+    'canceled',
+    'cancelled',
+    'voided',
+})
+
+
+def payment_hidden_from_admin_history(payment):
+    """作废/失败未成交记录不进 Manage Payment History（真收款仍显示）。"""
+    if not payment:
+        return True
+    st = (getattr(payment, 'status', None) or '').strip().lower()
+    if st in _ADMIN_PAYMENT_HISTORY_HIDDEN_STATUSES:
+        return True
+    meta = getattr(payment, 'payment_metadata', None) or {}
+    if isinstance(meta, dict) and (
+        meta.get('hidden_from_admin_history')
+        or meta.get('voided_attempt')
+        or meta.get('admin_hidden')
+    ):
+        return True
+    return False
+
+
 def payment_step_label(payment):
     """收据/Manage：Initial / Installment #n / Catch-up 区间 / Payoff。"""
     meta = dict(payment.payment_metadata or {})

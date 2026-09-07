@@ -363,7 +363,7 @@ class Payment(db.Model):
     final_amount_cents = db.Column(db.Integer)
     
     # 状态
-    status = db.Column(db.String(20), default='pending')  # pending, processing, succeeded, failed, refunded, partially_refunded
+    status = db.Column(db.String(20), default='pending')  # pending, processing, succeeded, failed, canceled, refunded, partially_refunded
     
     # 分期付款关联（如果是分期付款）
     installment_payment_id = db.Column(db.Integer, db.ForeignKey('installment_payments.id'), nullable=True)  # 新增

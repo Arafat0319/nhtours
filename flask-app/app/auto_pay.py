@@ -436,7 +436,11 @@ def charge_installment_via_auto_pay(installment, *, card_only=True):
         ):
             return False, 'open_payment_in_progress'
         # canceled / requires_payment_method 等：本地 pending 已无有效扣款，放行新建
-        pay.status = 'failed'
+        pay.status = 'canceled'
+        meta = dict(pay.payment_metadata or {}) if isinstance(pay.payment_metadata, dict) else {}
+        meta['voided_attempt'] = True
+        meta['hidden_from_admin_history'] = True
+        pay.payment_metadata = meta
         if getattr(installment, 'payment_intent_id', None) == pi_id:
             installment.payment_intent_id = None
         current_app.logger.info(
