@@ -10,3 +10,4 @@
 - **订单收据 PDF 版式已最终确认**（所有订单统一该视觉；仅内容不同）；见 `.cursor/rules/receipt-pdf-layout.mdc`
 - **发给客户的邮件**：一律项目品牌 HTML 模板（禁止裸 HTML）；见 `.cursor/rules/customer-email-brand-template.mdc`
 - **后台弹窗**：一律 `customAlert` / `customConfirm`，禁止 `window.alert` / `confirm`；见 `.cursor/rules/admin-alerts-project-style.mdc`
+- **功能验收测试**：用户要求「按测试准则测 / 全面测」时，对照 `context/12_功能测试准则.md` 执行并出报告；见 `.cursor/rules/feature-testing-criteria.mdc`

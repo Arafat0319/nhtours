@@ -1,0 +1,22 @@
+{{ subject_line }}
+
+Hi{% if customer_name and customer_name != 'Customer' %} {{ customer_name }}{% endif %},
+
+You started a US bank account (ACH) payment for {{ trip_title }}{% if order_ref %} ({{ order_ref }}){% endif %}.
+Your bank authorization was received, but your payment is not finished yet — and your trip registration is not confirmed until this payment completes.
+
+ACTION NEEDED: Verify your bank account
+Closing the checkout page is fine. Use the verification link below when your code appears.
+
+What to do next:
+1. Within 1–2 business days, open your bank app or online banking and find a small Stripe-related transaction. It includes a short verification code (often like SMXXXX).
+2. Open this secure verification page and enter that code. You do not need to return to the original checkout page:
+   {{ verify_url }}
+3. After verification succeeds, the bank transfer will process (often several more business days). We will email your confirmation and receipt when it clears.
+{% if amount is not none %}
+Amount submitted: ${{ '%.2f'|format(amount) }}
+{% endif %}
+{{ footer_note }}
+
+Questions? Please email us at info@nhtours.com (this message was sent from a no-reply address).
+Nexus Horizons Tours · https://nhtours.com

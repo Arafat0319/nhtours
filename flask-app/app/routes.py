@@ -48,6 +48,8 @@ from app.payments import (
     retrieve_payment_method_details,
     calculate_fee,
     safe_cancel_payment_intent,
+    expire_pending_booking_for_pi,
+    extend_pending_for_microdeposit,
     extract_stripe_charge_id,
     payment_charged_amount,
     payment_base_amount,
@@ -2598,6 +2600,32 @@ def api_payment_status():
                     return jsonify({'status': 'processing', 'payment_intent_id': payment_intent_id}), 200
                 elif intent and intent_status in {'requires_payment_method', 'canceled', 'requires_action'}:
                     # 支付失败或需要操作
+                    if intent_status == 'requires_action':
+                        try:
+                            handle_payment_intent_requires_action(
+                                intent if isinstance(intent, dict) else (
+                                    intent.to_dict() if hasattr(intent, 'to_dict') else intent
+                                )
+                            )
+                        except Exception as e:
+                            db.session.rollback()
+                            current_app.logger.warning(
+                                "ACH microdeposit verify notify fallback failed: %s", e
+                            )
+                    elif intent_status in {'requires_payment_method', 'canceled'}:
+                        # 微存款超时等：status 轮询兜底立刻释放 Pending
+                        try:
+                            expire_pending_booking_for_pi(
+                                payment_intent_id,
+                                reason=f'status_poll:{intent_status}',
+                                cancel_pi=True,
+                                commit=True,
+                            )
+                        except Exception as e:
+                            db.session.rollback()
+                            current_app.logger.warning(
+                                "Expire pending on status poll failed: %s", e
+                            )
                     payload = {
                         'status': 'failed' if intent_status in {'requires_payment_method', 'canceled'} else 'requires_action',
                         'payment_intent_id': payment_intent_id,
@@ -4185,6 +4213,8 @@ def stripe_webhook():
             handle_checkout_completed(event['data']['object'])
         elif event_type == 'payment_intent.processing':
             handle_payment_intent_processing(event['data']['object'])
+        elif event_type == 'payment_intent.requires_action':
+            handle_payment_intent_requires_action(event['data']['object'])
         elif event_type == 'payment_intent.succeeded':
             pi_obj = event['data']['object']
             pi_meta = (pi_obj.get('metadata') if isinstance(pi_obj, dict) else None) or {}
@@ -4669,6 +4699,159 @@ def _payment_method_type_from_intent(payment_intent, metadata=None):
     if meta.get('funding') == 'ach':
         return 'us_bank_account'
     return pm_type or 'card'
+
+
+def _payment_intent_microdeposit_verify_url(payment_intent):
+    """若 PI 为 ACH 微存款验证，返回 hosted_verification_url，否则 None。"""
+    if not payment_intent:
+        return None
+    if isinstance(payment_intent, dict):
+        status = payment_intent.get('status')
+        next_action = payment_intent.get('next_action') or {}
+    else:
+        status = getattr(payment_intent, 'status', None)
+        next_action = getattr(payment_intent, 'next_action', None) or {}
+    if status != 'requires_action':
+        return None
+    if isinstance(next_action, dict):
+        if next_action.get('type') != 'verify_with_microdeposits':
+            return None
+        url = (next_action.get('verify_with_microdeposits') or {}).get('hosted_verification_url')
+    else:
+        if getattr(next_action, 'type', None) != 'verify_with_microdeposits':
+            return None
+        details = getattr(next_action, 'verify_with_microdeposits', None)
+        if not details:
+            return None
+        if isinstance(details, dict):
+            url = details.get('hosted_verification_url')
+        else:
+            url = getattr(details, 'hosted_verification_url', None)
+    return url if _is_safe_stripe_hosted_verify_url(url) else None
+
+
+def _is_safe_stripe_hosted_verify_url(url):
+    """仅接受 Stripe HTTPS 验证域名，防止异常/伪造 next_action 链接。"""
+    from urllib.parse import urlparse
+
+    if not url or not isinstance(url, str):
+        return False
+    try:
+        parsed = urlparse(url.strip())
+    except Exception:
+        return False
+    if parsed.scheme != 'https':
+        return False
+    host = (parsed.hostname or '').lower()
+    return host == 'payments.stripe.com' or host.endswith('.stripe.com')
+
+
+def handle_payment_intent_requires_action(payment_intent):
+    """
+    ACH 微存款验证：延长 PendingBooking，并发送带验证链接的客户说明邮件。
+    客户通常已关掉付款页，必须靠邮件导航到 Stripe hosted verification URL。
+    """
+    if isinstance(payment_intent, dict):
+        payment_intent_id = payment_intent.get('id')
+        metadata = payment_intent.get('metadata') or {}
+        amount_cents = payment_intent.get('amount') or 0
+    else:
+        payment_intent_id = getattr(payment_intent, 'id', None)
+        metadata = getattr(payment_intent, 'metadata', None) or {}
+        if hasattr(metadata, 'to_dict'):
+            metadata = metadata.to_dict()
+        elif not isinstance(metadata, dict):
+            try:
+                metadata = dict(metadata)
+            except Exception:
+                metadata = {}
+        amount_cents = getattr(payment_intent, 'amount', 0) or 0
+
+    verify_url = _payment_intent_microdeposit_verify_url(payment_intent)
+    if not verify_url or not payment_intent_id:
+        current_app.logger.info(
+            "requires_action for %s is not microdeposit verify (or missing url); skip",
+            payment_intent_id,
+        )
+        return
+
+    pending = PendingBooking.query.filter_by(payment_intent_id=payment_intent_id).first()
+    booking = None
+    booking_id = metadata.get('booking_id')
+    if booking_id:
+        try:
+            booking = Booking.query.get(int(booking_id))
+        except (TypeError, ValueError):
+            booking = None
+
+    # 延期 pending 至硬上限（created_at+12d，对齐 Stripe ~10d），避免 24h 误杀
+    if pending and pending.status == 'pending':
+        if not extend_pending_for_microdeposit(pending):
+            expire_pending_booking_for_pi(
+                payment_intent_id,
+                reason='microdeposit_hold_hard_cap',
+                cancel_pi=True,
+                commit=True,
+            )
+            return
+        data = dict(pending.booking_data or {})
+        if str(data.get('ach_verify_email_sent') or '') == '1':
+            db.session.commit()
+            current_app.logger.info(
+                "ACH verify email already sent for pending %s PI=%s",
+                pending.id,
+                payment_intent_id,
+            )
+            return
+        trip = Trip.query.get(pending.trip_id) if pending.trip_id else None
+        buyer = data.get('buyer_info') or {}
+        email = (buyer.get('email') or data.get('email') or '').strip()
+        name = (buyer.get('first_name') or '').strip() or 'Customer'
+        trip_title = trip.title if trip else (data.get('trip_slug') or 'Trip Booking')
+        amount = (amount_cents / 100.0) if amount_cents else None
+        order_ref = f"registration hold #{pending.id}"
+        sent = send_ach_microdeposit_verify_email(
+            recipient_email=email,
+            customer_name=name,
+            trip_title=trip_title,
+            order_ref=order_ref,
+            amount=amount,
+            verify_url=verify_url,
+        )
+        if sent:
+            data['ach_verify_email_sent'] = '1'
+            data['ach_verify_email_sent_at'] = datetime.utcnow().isoformat() + 'Z'
+            data['ach_verify_url'] = verify_url
+            pending.booking_data = data
+        db.session.commit()
+        return
+
+    # 已有 Booking 的分期/后续 ACH（少见微存款路径）
+    if booking and booking.buyer_email:
+        payment = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
+        meta = dict((payment.payment_metadata if payment else None) or {})
+        if str(meta.get('ach_verify_email_sent') or '') == '1':
+            return
+        trip_title = booking.trip.title if booking.trip else 'Trip Booking'
+        amount = (amount_cents / 100.0) if amount_cents else None
+        sent = send_ach_microdeposit_verify_email(
+            recipient_email=booking.buyer_email,
+            customer_name=(booking.buyer_first_name or '').strip() or 'Customer',
+            trip_title=trip_title,
+            order_ref=f"order {booking.order_number or booking.id}",
+            amount=amount,
+            verify_url=verify_url,
+        )
+        if sent and payment is not None:
+            meta['ach_verify_email_sent'] = '1'
+            payment.payment_metadata = meta
+            db.session.commit()
+        return
+
+    current_app.logger.warning(
+        "ACH microdeposit verify for PI %s: no pending/booking to notify",
+        payment_intent_id,
+    )
 
 
 def handle_payment_intent_processing(payment_intent):
@@ -5458,6 +5641,7 @@ def handle_payment_intent_failed(payment_intent):
     """
     处理 Payment Intent 失败事件。
     ACH：若 Booking 仍为 processing，取消订单以释放名额。
+    微存款超时等：若仍只有 PendingBooking，立刻 expire 释放名额（对齐 Stripe）。
     """
     payment_intent_id = payment_intent['id']
     err_msg = payment_intent_error_message(payment_intent)
@@ -5465,6 +5649,14 @@ def handle_payment_intent_failed(payment_intent):
         "Payment Intent %s failed%s",
         payment_intent_id,
         f": {err_msg}" if err_msg else "",
+    )
+
+    # 报名草稿阶段失败（微存款超时 / 取消等）：立即释放名额
+    expire_pending_booking_for_pi(
+        payment_intent_id,
+        reason=err_msg or 'payment_intent.payment_failed',
+        cancel_pi=True,
+        commit=True,
     )
 
     metadata = payment_intent.get('metadata') or {}
@@ -5723,6 +5915,56 @@ def _receipt_pdf_attachment(booking, payment_id=None):
     except Exception as e:
         current_app.logger.exception(f'receipt PDF attachment failed for booking {getattr(booking, "id", "?")}: {e}')
         return None
+
+
+def send_ach_microdeposit_verify_email(
+    *,
+    recipient_email,
+    customer_name,
+    trip_title,
+    order_ref,
+    amount,
+    verify_url,
+):
+    """
+    ACH 微存款验证说明邮件：解释发生了什么 + 下一步（含 Stripe 验证链接）。
+    """
+    email = (recipient_email or '').strip()
+    url = (verify_url or '').strip()
+    if not email or not url or not _is_safe_stripe_hosted_verify_url(url):
+        current_app.logger.warning(
+            'ACH verify email skipped: missing/unsafe email or url (email=%s)',
+            bool(email),
+        )
+        return False
+
+    subject = f"Action needed: verify your bank payment - {trip_title}"
+    context = {
+        'subject_line': subject,
+        'customer_name': (customer_name or '').strip() or 'Customer',
+        'trip_title': trip_title or 'Trip Booking',
+        'order_ref': order_ref,
+        'amount': amount,
+        'verify_url': url,
+        'email_logo_url': _email_brand_logo_url(),
+        'footer_note': (
+            'This email is not a payment confirmation or receipt. '
+            'Your registration is confirmed only after the bank transfer succeeds.'
+        ),
+    }
+    html_body = render_template('emails/ach_microdeposit_verify.html', **context)
+    text_body = render_template('emails/ach_microdeposit_verify.txt', **context)
+    sender = (
+        current_app.config.get('SENDER_EMAIL')
+        or current_app.config.get('RECIPIENT_EMAIL')
+        or 'nhtours-noreply@nhtours.com'
+    )
+    success, detail = send_email_via_ses(sender, email, subject, html_body, text_body)
+    if not success:
+        current_app.logger.error('ACH verify email failed for %s: %s', email, detail)
+        return False
+    current_app.logger.info('ACH verify email sent to %s for %s', email, order_ref)
+    return True
 
 
 def send_order_processing_email(booking, payment=None, *, is_new_order=False):

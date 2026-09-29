@@ -332,6 +332,8 @@ def cleanup_expired_pending_bookings():
     清理过期未支付的 PendingBooking（创建时 expires_at = now+24h）。
     - status=pending 且已过期 → 标为 expired
     - PI 已 processing/succeeded：不 expire（ACH 清算可能超过 24h），并延长 expires_at
+    - PI 为 requires_action + 微存款验证：延期至 created_at+12d 硬上限（对齐 Stripe ~10d）；
+      超过硬上限则 expire（即使 Stripe 仍显示 requires_action）
     - 尽量取消对应 Stripe PaymentIntent（已成功/已取消则忽略）
     每天由 APScheduler 调用。
     """
@@ -358,21 +360,52 @@ def cleanup_expired_pending_bookings():
         stripe.api_key = current_app.config.get('STRIPE_SECRET_KEY')
         cancelled_pi = 0
         skipped_active = 0
-        from app.payments import safe_cancel_payment_intent, retrieve_payment_intent
+        from app.payments import (
+            safe_cancel_payment_intent,
+            retrieve_payment_intent,
+            extend_pending_for_microdeposit,
+            extend_pending_for_processing,
+            pending_microdeposit_hard_cap,
+        )
+
+        def _is_microdeposit_verify(intent):
+            if not intent:
+                return False
+            st = getattr(intent, 'status', None) if not isinstance(intent, dict) else intent.get('status')
+            if st != 'requires_action':
+                return False
+            na = getattr(intent, 'next_action', None) if not isinstance(intent, dict) else intent.get('next_action')
+            if not na:
+                return False
+            na_type = na.get('type') if isinstance(na, dict) else getattr(na, 'type', None)
+            return na_type == 'verify_with_microdeposits'
+
         for pb in expired:
             pi_id = pb.payment_intent_id
             if pi_id and not str(pi_id).startswith('free_') and not str(pi_id).startswith('pending_'):
                 intent = retrieve_payment_intent(pi_id)
                 st = getattr(intent, 'status', None) if intent else None
                 if st in ('processing', 'succeeded', 'requires_capture'):
-                    # 保留报名草稿，等 webhook / status 补建单
-                    pb.expires_at = now + timedelta(days=14)
+                    extend_pending_for_processing(pb, now=now)
                     skipped_active += 1
                     current_app.logger.info(
                         "PendingBooking cleanup: keep id=%s PI=%s status=%s",
                         pb.id, pi_id, st,
                     )
                     continue
+                if _is_microdeposit_verify(intent):
+                    # 硬上限对齐 Stripe 微存款超时；超限则放名额
+                    if extend_pending_for_microdeposit(pb, now=now):
+                        skipped_active += 1
+                        current_app.logger.info(
+                            "PendingBooking cleanup: keep microdeposit id=%s PI=%s until=%s",
+                            pb.id, pi_id, pb.expires_at,
+                        )
+                        continue
+                    current_app.logger.info(
+                        "PendingBooking cleanup: microdeposit hard-cap expired id=%s PI=%s cap=%s",
+                        pb.id, pi_id, pending_microdeposit_hard_cap(pb, now=now),
+                    )
                 if safe_cancel_payment_intent(pi_id, reason=f'pending cleanup id={pb.id}'):
                     cancelled_pi += 1
             pb.status = 'expired'

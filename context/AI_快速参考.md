@@ -12,6 +12,7 @@
 | **后台弹窗** | 一律 `customAlert` / `customConfirm`（`base_builder.html`）；禁止 `window.alert` / `confirm` |
 | **后台移动** | 「能用」：`<lg` L3横条子导航+卡片+sheet；`≥lg` 桌面表；横屏压缩顶栏；细则见 `05` |
 | **改动影响溯源** | 设计新功能或改代码时，**须溯源**对其它模块的影响；有影响则判断是否为 bug、运行时错误或性能拖累；潜在问题须修或补测试/文档，勿 silent ship。详见 `.cursor/rules/change-impact-analysis.mdc` |
+| **功能测试** | 用户要求「按测试准则测 / 全面测」时，**必须**对照 **`context/12_功能测试准则.md`** 执行并输出报告（范围、分项、P0–P2）；不得只测 happy path。金钱相关一票否决见准则 §5 |
 
 ## 本地开发
 
@@ -70,6 +71,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 
 - PI：`payment_method_types=['card','us_bank_account']`；Element 同序；ACH 无卡费
 - ACH：`processing` 时建 Booking（防 PendingBooking 24h 过期）+ **受理邮件**；确认信+收据仅 `succeeded`
+- ACH 微存款：`requires_action` → 验证邮件；Pending 硬上限 **created_at+12d**；`payment_failed`/超时立刻 expire 放名额；凌晨清理兜底
 - ACH 清算中：整单锁定（提醒跳过、分期页/API 不可再付）；规则见 `手册/ACH付款规则.md`
 - `PendingBooking.payment_intent_id`（可以是 `pi_…` 或 `free_…`）
 - 折扣抵「现在应付」；`$0` 勿建 Stripe PI
@@ -128,10 +130,11 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 列宽 | 按内容撑开、不换行（`export_bookings` `_autosize`） |
 | 不再使用 | Power Query / Web 连接刷新；Manage「验证数据源」已移除 |
 
-## AI 快速参考 — 本地全量回归
+## AI 快速参考 — 测试准则与本地全量回归
 
 | 项 | 值 |
 |----|-----|
+| **验收准则（全文）** | [`12_功能测试准则.md`](12_功能测试准则.md) — 阶段 T0–T10、模块矩阵、账本/安全/邮件、报告格式 |
 | 冒烟编排 | `cd flask-app && python local_tests/run_all.py` |
 | 金钱 E2E | `python local_tests/e2e_full_suite.py`（Stripe Test 真扣/真退 + SES） |
 | Playwright 对抗 | `cd tests/e2e && npm test`（约 180 条：门禁+细节；需 8080 + QA trip + `E2E_STRIPE_*` / `E2E_ADMIN_*`） |

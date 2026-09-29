@@ -2,7 +2,7 @@ import json
 import math
 import stripe
 from flask import current_app
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 
 def _normalize_metadata(metadata):
@@ -282,6 +282,82 @@ def safe_cancel_payment_intent(payment_intent_id, reason=''):
             f"safe_cancel_payment_intent failed for {payment_intent_id} ({reason}): {e}"
         )
         return False
+
+
+# Stripe ACH 微存款验证超时约 10 天；本地硬上限略宽，避免时钟/ webhook 抖动后误杀。
+ACH_MICRODEPOSIT_HOLD_DAYS = 12
+# ACH processing（已提交清算）可超过微存款窗口，仍按滚动延期。
+ACH_PROCESSING_HOLD_DAYS = 14
+
+
+def pending_microdeposit_hard_cap(pending, now=None):
+    """Pending 自创建起最多保留至何时（对齐 Stripe 微存款超时）。"""
+    now = now or datetime.utcnow()
+    created = getattr(pending, 'created_at', None) or now
+    return created + timedelta(days=ACH_MICRODEPOSIT_HOLD_DAYS)
+
+
+def extend_pending_for_microdeposit(pending, now=None):
+    """
+    将 Pending expires_at 设为硬上限（created_at + 12d）。
+    若已超过硬上限，返回 False（调用方应 expire）。
+    """
+    now = now or datetime.utcnow()
+    cap = pending_microdeposit_hard_cap(pending, now=now)
+    if now >= cap:
+        return False
+    pending.expires_at = cap
+    return True
+
+
+def extend_pending_for_processing(pending, now=None):
+    """ACH processing：从现在起再延期 hold 天数（清算可能跨周末）。"""
+    now = now or datetime.utcnow()
+    pending.expires_at = now + timedelta(days=ACH_PROCESSING_HOLD_DAYS)
+    return True
+
+
+def expire_pending_booking_for_pi(payment_intent_id, reason='', *, cancel_pi=True, commit=True):
+    """
+    Stripe 微存款超时 / 付款失败时：立刻把仍 pending 的草稿标 expired，释放名额。
+    返回 True 表示找到并过期了一条 Pending。
+    """
+    if not payment_intent_id:
+        return False
+    from app import db
+    from app.models import PendingBooking
+
+    pending = (
+        PendingBooking.query.filter_by(
+            payment_intent_id=payment_intent_id,
+            status='pending',
+        ).first()
+    )
+    if not pending:
+        return False
+
+    data = dict(pending.booking_data or {})
+    data['expired_reason'] = (reason or 'payment_failed')[:200]
+    data['expired_at'] = datetime.utcnow().isoformat() + 'Z'
+    pending.booking_data = data
+    pending.status = 'expired'
+    pending.expires_at = datetime.utcnow()
+
+    if cancel_pi:
+        safe_cancel_payment_intent(
+            payment_intent_id,
+            reason=reason or f'expire pending id={pending.id}',
+        )
+
+    if commit:
+        db.session.commit()
+    current_app.logger.info(
+        "Expired PendingBooking id=%s PI=%s (%s)",
+        pending.id,
+        payment_intent_id,
+        reason or 'payment_failed',
+    )
+    return True
 
 
 def retrieve_payment_method_card_details(payment_method_id):

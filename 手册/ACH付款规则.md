@@ -1,6 +1,6 @@
 # ACH（美国银行转账）付款规则
 
-> **给人看** · 更新 2026-08-06  
+> **给人看** · 更新 2026-09-28  
 > 技术细节另见 `context/`（API / webhook）；日常以本文为准。
 
 ---
@@ -12,7 +12,7 @@
 - **Card**（信用卡 / 借记卡）
 - **US bank account（ACH）**
 
-选 ACH 时手续费为 **$0**（卡仍按原规则计费）。
+选 ACH 时手续费为 **$0**（卡仍按原规则计费）。**须为美国银行账户**（加国等非 US 账户通常无法完成 ACH）。
 
 ---
 
@@ -20,15 +20,22 @@
 
 | 阶段 | Stripe | 我们系统 | 客户看到 |
 |------|--------|----------|----------|
+| 需微存款验证银行 | `requires_action`（verify microdeposits） | 仍为 **PendingBooking**（未成正式单）；占位最长约 **12 天**（对齐 Stripe ~10 天超时） | 品牌邮件「请验证银行」+ Stripe 验证链接；**授权≠报名成功** |
 | 已提交、银行未清算 | `payment_intent.processing` | Booking / Payment → **Processing** | 弹窗「Payment Processing」 |
 | 到账成功 | `payment_intent.succeeded` | 升级为 Deposit Paid / Fully Paid；分期计划在此时创建 | 成功页；确认信 + 收据 |
-| 清算失败 | `payment_intent.payment_failed` | Payment → failed；若是建单阶段的 Processing 订单 → **Cancelled** | 失败提示 |
+| 清算失败 / 微存款超时 | `payment_intent.payment_failed` | Pending 立刻 expired 放名额；若已是 Processing 订单 → **Cancelled** | 失败提示 |
 
-测试环境 ACH 可能很快变成功；**生产通常要几个工作日**。
+测试环境 ACH 可能很快变成功；**生产通常要几个工作日**。微存款验证码常 **1–2 个工作日**才出现在银行流水里。
 
 ---
 
 ## 3. 邮件规则
+
+### 3.0 微存款验证（requires_action）
+
+- **会发**：`ach_microdeposit_verify`（说明还要验银行、给验证链接；无需回到原付款页）
+- **另可能有**：Stripe Link 的「direct debit authorization」确认信（第三方，不是我们系统发的）
+- **不发**：确认信、收据（尚未成单）
 
 ### 3.1 Processing（银行清算中）
 
@@ -46,14 +53,16 @@
 ### 3.3 Failed
 
 - 不发「成功」类邮件；订单按失败规则处理（见上表）
+- 微存款超时：Pending 立即释放；客户需重新报名付款
 
 ---
 
 ## 4. 首次报名（定金 / 全款）选 ACH
 
+0. 若银行需微存款验证：先停在 Pending + 验证邮件；客户填码后才进入 processing
 1. 客户 Confirm → Stripe 接受 ACH → `processing`
 2. 系统会立刻建 **Booking**（有订单号），状态 Processing，`amount_paid` 仍为 0  
-   - 原因：临时单 `PendingBooking` 约 24h 过期，ACH 不能等那么久
+   - 原因：临时单 `PendingBooking` 默认约 24h 过期；微存款/清算中会按规则延期或立刻释放（见上表）
 3. 发 Processing 通知邮件
 4. **到账成功后**才：
    - 记已付金额
