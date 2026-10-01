@@ -989,6 +989,17 @@ body.installment-modal-page #booking-modal #place-order-btn {
   border-radius: 50%;
   animation: payment-loading-spin 0.7s linear infinite;
 }
+#booking-modal .booking-result-spinner {
+  display: inline-block;
+  width: 40px;
+  height: 40px;
+  box-sizing: border-box;
+  border: 2px solid #e5e7eb;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: payment-loading-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
 @keyframes payment-loading-spin {
   to { transform: rotate(360deg); }
 }

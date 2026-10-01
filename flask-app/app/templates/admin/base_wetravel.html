@@ -472,6 +472,11 @@
 
             const nav = drawer.querySelector('.admin-sidebar-nav');
             if (!nav) {
+                // Manage 把确认框等 fixed 弹层写在 sidebar 块里。这里没有侧栏导航，
+                // 整槽会被 hidden，弹层跟着 display:none，按钮看起来没反应。
+                drawer.querySelectorAll('.fixed.inset-0').forEach(function (el) {
+                    document.body.appendChild(el);
+                });
                 drawer.classList.add('hidden');
                 return;
             }
