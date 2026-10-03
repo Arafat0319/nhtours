@@ -1,5 +1,6 @@
 """
-套餐名额：已确认订单 + 有效 PendingBooking 占位 + 提交时行锁，防止并发超售。
+套餐名额：未取消订单上的已确认套餐行 + 有效 PendingBooking 占位 + 提交时行锁，防止并发超售。
+订单已取消则释放名额，与定金是否退款无关。
 """
 
 from __future__ import annotations
@@ -9,9 +10,10 @@ from datetime import datetime
 from sqlalchemy import func, or_
 
 from app import db
-from app.models import BookingPackage, PendingBooking, TripPackage
+from app.models import Booking, BookingPackage, PendingBooking, TripPackage
 
 # 已占名额的 BookingPackage（含 ACH processing；不含未付款 pending 壳）
+# 父订单 status=cancelled 时不计入，即使套餐行仍是 deposit_paid / fully_paid。
 OCCUPIED_BOOKING_PACKAGE_STATUSES = (
     'processing',
     'deposit_paid',
@@ -53,11 +55,13 @@ def _pending_quantity_for_package(package_id, *, exclude_pending_id=None, now=No
 
 
 def committed_quantity_for_package(package_id):
-    """已建单并占用名额的数量（按 quantity 求和）。"""
+    """已建单并占用名额的数量（按 quantity 求和）。已取消订单不占名额。"""
     return (
-        BookingPackage.query.filter(
+        BookingPackage.query.join(Booking, BookingPackage.booking_id == Booking.id)
+        .filter(
             BookingPackage.package_id == package_id,
             BookingPackage.status.in_(OCCUPIED_BOOKING_PACKAGE_STATUSES),
+            Booking.status != 'cancelled',
         )
         .with_entities(func.coalesce(func.sum(BookingPackage.quantity), 0))
         .scalar()

@@ -148,3 +148,49 @@ def test_processing_booking_counts_as_occupied(app_ctx):
         db.session.delete(pkg)
         db.session.delete(trip)
         db.session.commit()
+
+
+def test_cancelled_booking_releases_seat_even_if_deposit_kept(app_ctx):
+    """订单取消后名额释放；套餐行仍可保持 deposit_paid，已付定金不必退。"""
+    trip, pkg = _seed_pkg(capacity=1)
+    email = f"{_uniq('c')}@example.com"
+    client = Client(email=email, first_name="C", last_name="X")
+    db.session.add(client)
+    db.session.flush()
+    booking = Booking(
+        trip_id=trip.id,
+        client_id=client.id,
+        buyer_email=email,
+        status="cancelled",
+        amount_paid=100,
+        passenger_count=1,
+    )
+    db.session.add(booking)
+    db.session.flush()
+    db.session.add(
+        BookingPackage(
+            booking_id=booking.id,
+            package_id=pkg.id,
+            quantity=1,
+            payment_plan_type="deposit_installment",
+            status="deposit_paid",
+            amount_paid=100,
+            unit_price=500,
+        )
+    )
+    db.session.commit()
+    try:
+        assert package_spots_available(pkg.id) == 1
+        err = validate_packages_capacity(
+            [{"package_id": pkg.id, "quantity": 1, "payment_plan_type": "full"}],
+            lock=False,
+        )
+        assert err is None
+    finally:
+        for bp in BookingPackage.query.filter_by(package_id=pkg.id).all():
+            db.session.delete(bp)
+        db.session.delete(booking)
+        db.session.delete(client)
+        db.session.delete(pkg)
+        db.session.delete(trip)
+        db.session.commit()

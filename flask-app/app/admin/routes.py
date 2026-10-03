@@ -119,6 +119,23 @@ def _prefetch_booking_finance_graph(trip_id):
     return bookings, bp_by_booking, participant_addons_by_booking, booking_addons_by_booking
 
 
+def count_going_participants(trip_id):
+    """未取消订单上仍 active 的参与者。withdrawn 不计。与 Manage 页 Going 同一口径。"""
+    return (
+        db.session.query(func.count(BookingParticipant.id))
+        .join(Booking, BookingParticipant.booking_id == Booking.id)
+        .filter(
+            Booking.trip_id == trip_id,
+            or_(Booking.status.is_(None), Booking.status != 'cancelled'),
+            or_(
+                BookingParticipant.status.is_(None),
+                BookingParticipant.status != 'withdrawn',
+            ),
+        )
+        .scalar()
+    ) or 0
+
+
 def calculate_trip_stats(trip):
     """
     计算行程的统计信息（参与者数量、已付金额、应付金额）
@@ -145,6 +162,7 @@ def calculate_trip_stats(trip):
         .filter(Booking.trip_id == trip.id)
         .scalar()
     ) or 0
+    going_count = count_going_participants(trip.id)
 
     # 计算已付金额（Booking.amount_paid 只记录基础金额，不含手续费）
     amount_paid = sum(b.amount_paid or 0.0 for b in bookings)
@@ -205,6 +223,7 @@ def calculate_trip_stats(trip):
     
     return {
         'participants_count': participants_count,
+        'going_count': going_count,
         'amount_paid': amount_paid,
         'amount_gross': amount_gross,
         'amount_discount': amount_discount,
@@ -355,7 +374,7 @@ def trips_json():
             'backgroundColor': color,
             'borderColor': color,
             'extendedProps': {
-                'spots_sold': trip.spots_sold,
+                'spots_sold': count_going_participants(trip.id),
                 'capacity': trip.capacity
             }
         })
@@ -554,13 +573,7 @@ def manage_trip(id):
             total_participants_count += 1
 
     # Going = 未取消订单上仍 active 的参与者（withdrawn 不计）
-    going_count = 0
-    for b in bookings:
-        if (b.status or '') == 'cancelled':
-            continue
-        for p in b.participants:
-            if (getattr(p, 'status', None) or 'active') != 'withdrawn':
-                going_count += 1
+    going_count = count_going_participants(trip.id)
     
     # Prepare Add Participant Form (deprecated - now using JSON API via multi-step modal)
     from app.admin.forms import AdminBookingForm
