@@ -7,7 +7,7 @@ from email.utils import formataddr
 from flask import current_app
 
 from app import db
-from app.models import InstallmentPayment, Message
+from app.models import Message
 from app.payments import booking_package_unit_price, booking_addon_unit_price
 from app.utils import (
     is_noreply_sender,
@@ -109,20 +109,6 @@ def collect_message_buyers(trip):
         if recipient:
             buyers.append(recipient)
     return _dedupe_by_email(buyers)
-
-
-def _booking_has_overdue_installment(booking):
-    from app.utils import pacific_today
-
-    today = pacific_today()
-    for inst in InstallmentPayment.query.filter_by(booking_id=booking.id).all():
-        if inst.status in ('cancelled', 'paid'):
-            continue
-        if inst.status == 'overdue':
-            return True
-        if inst.due_date and inst.due_date < today and inst.status == 'pending':
-            return True
-    return False
 
 
 def _booking_matches_package_filter(booking, package_id=None, addon_id=None):
@@ -291,9 +277,9 @@ def get_recipients_for_trip(trip, recipient_config):
             continue
 
         if recipient_type in ('balance_due', 'payment_due'):
-            bal = booking_balance_due(booking)
-            past_due = _booking_has_overdue_installment(booking)
-            if not past_due and (bal is None or bal <= 0):
+            # 与 Bookings 列表的 Overdue 徽章同一口径，不含尚未到期但仍有尾款的订单
+            from app.payments import booking_payment_display_status
+            if booking_payment_display_status(booking) != 'overdue':
                 continue
         elif recipient_type == 'package':
             if not _booking_matches_package_filter(booking, package_id, addon_id):
@@ -413,8 +399,8 @@ def recipient_type_label(recipient_config):
     t = cfg.get('type') or 'all'
     labels = {
         'all': 'Everyone on this trip',
-        'payment_due': 'Payments past due / balance due',
-        'balance_due': 'Balance due',
+        'payment_due': 'Payments past due',
+        'balance_due': 'Payments past due',
         'incomplete_questions': 'Incomplete required questions',
         'missing_signatures': 'Missing signatures',
         'package': 'Specific package or add-on',

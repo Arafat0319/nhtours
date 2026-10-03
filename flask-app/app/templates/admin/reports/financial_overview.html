@@ -189,35 +189,6 @@
             <div class="p-6">
                 <div id="category-upcoming" class="category-content">
                     {% if upcoming_summaries %}
-                    <div class="mb-6 p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg border border-gray-200">
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                            <div>
-                                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Expected</div>
-                                <div class="text-xl font-bold text-gray-900">${{ (upcoming_total.total_expected)|format_price }}</div>
-                            </div>
-                            {% if upcoming_total.total_discount > 0 %}
-                            <div>
-                                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Discounts</div>
-                                <div class="text-xl font-bold text-green-600">-${{ (upcoming_total.total_discount)|format_price }}</div>
-                            </div>
-                            {% endif %}
-                            <div>
-                                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Paid</div>
-                                <div class="text-xl font-bold text-wetravel-cyan">${{ (upcoming_total.total_paid)|format_price }}</div>
-                            </div>
-                            {% if upcoming_total.total_refunded > 0 %}
-                            <div>
-                                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Refunded</div>
-                                <div class="text-xl font-bold text-red-600">-${{ (upcoming_total.total_refunded)|format_price }}</div>
-                            </div>
-                            {% endif %}
-                            <div>
-                                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Pending</div>
-                                <div class="text-xl font-bold text-orange-600">${{ (upcoming_total.total_pending)|format_price }}</div>
-                            </div>
-                        </div>
-                    </div>
-
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
@@ -227,6 +198,7 @@
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bookings</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Participants</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expected</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Discount</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid</th>
                                     {% if upcoming_total.total_refunded > 0 %}
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Refunded</th>
@@ -254,6 +226,9 @@
                                     <td class="px-4 py-3 whitespace-nowrap text-xs text-gray-900">{{ summary.booking_count }}</td>
                                     <td class="px-4 py-3 whitespace-nowrap text-xs text-gray-900">{{ summary.participants_count }}</td>
                                     <td class="px-4 py-3 whitespace-nowrap text-xs text-gray-900">${{ (summary.amount_expected)|format_price }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-xs font-semibold text-green-600">
+                                        {% if summary.amount_discount > 0 %}-${{ (summary.amount_discount)|format_price }}{% else %}-{% endif %}
+                                    </td>
                                     <td class="px-4 py-3 whitespace-nowrap text-xs font-semibold text-wetravel-cyan">${{ (summary.amount_paid)|format_price }}</td>
                                     {% if upcoming_total.total_refunded > 0 %}
                                     <td class="px-4 py-3 whitespace-nowrap text-xs font-semibold text-red-600">
@@ -264,6 +239,23 @@
                                 </tr>
                                 {% endfor %}
                             </tbody>
+                            <tfoot class="bg-gray-50 border-t-2 border-gray-200">
+                                <tr>
+                                    <td class="px-4 py-3 text-sm font-semibold text-gray-900">Total</td>
+                                    <td class="px-4 py-3"></td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-xs font-semibold text-gray-900">{{ upcoming_total.total_bookings }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-xs font-semibold text-gray-900">{{ upcoming_total.total_participants }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-xs font-bold text-gray-900">${{ (upcoming_total.total_expected)|format_price }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-xs font-semibold text-green-600">
+                                        {% if upcoming_total.total_discount > 0 %}-${{ (upcoming_total.total_discount)|format_price }}{% else %}-{% endif %}
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-xs font-semibold text-wetravel-cyan">${{ (upcoming_total.total_paid)|format_price }}</td>
+                                    {% if upcoming_total.total_refunded > 0 %}
+                                    <td class="px-4 py-3 whitespace-nowrap text-xs font-semibold text-red-600">-${{ (upcoming_total.total_refunded)|format_price }}</td>
+                                    {% endif %}
+                                    <td class="px-4 py-3 whitespace-nowrap text-xs font-semibold text-orange-600">${{ (upcoming_total.total_pending)|format_price }}</td>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
                     {% else %}
@@ -279,35 +271,6 @@
 
                 <div id="category-past" class="category-content hidden">
                     {% if past_summaries %}
-                    <div class="mb-6 p-4 bg-gray-50 rounded-lg">
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                            <div>
-                                <div class="text-gray-500">Expected</div>
-                                <div class="font-semibold text-gray-900">${{ (past_total.total_expected)|format_price }}</div>
-                            </div>
-                            {% if past_total.total_discount > 0 %}
-                            <div>
-                                <div class="text-gray-500">Discounts</div>
-                                <div class="font-semibold text-green-600">-${{ (past_total.total_discount)|format_price }}</div>
-                            </div>
-                            {% endif %}
-                            <div>
-                                <div class="text-gray-500">Paid</div>
-                                <div class="font-semibold text-wetravel-cyan">${{ (past_total.total_paid)|format_price }}</div>
-                            </div>
-                            {% if past_total.total_refunded > 0 %}
-                            <div>
-                                <div class="text-gray-500">Refunded</div>
-                                <div class="font-semibold text-red-600">-${{ (past_total.total_refunded)|format_price }}</div>
-                            </div>
-                            {% endif %}
-                            <div>
-                                <div class="text-gray-500">Pending</div>
-                                <div class="font-semibold text-orange-600">${{ (past_total.total_pending)|format_price }}</div>
-                            </div>
-                        </div>
-                    </div>
-
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
@@ -317,6 +280,7 @@
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bookings</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Participants</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expected</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Discount</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid</th>
                                     {% if past_total.total_refunded > 0 %}
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Refunded</th>
@@ -344,6 +308,9 @@
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ summary.booking_count }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ summary.participants_count }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${{ (summary.amount_expected)|format_price }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">
+                                        {% if summary.amount_discount > 0 %}-${{ (summary.amount_discount)|format_price }}{% else %}-{% endif %}
+                                    </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-wetravel-cyan">${{ (summary.amount_paid)|format_price }}</td>
                                     {% if past_total.total_refunded > 0 %}
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-red-600">
@@ -354,6 +321,23 @@
                                 </tr>
                                 {% endfor %}
                             </tbody>
+                            <tfoot class="bg-gray-50 border-t-2 border-gray-200">
+                                <tr>
+                                    <td class="px-6 py-4 text-sm font-semibold text-gray-900">Total</td>
+                                    <td class="px-6 py-4"></td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">{{ past_total.total_bookings }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">{{ past_total.total_participants }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">${{ (past_total.total_expected)|format_price }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">
+                                        {% if past_total.total_discount > 0 %}-${{ (past_total.total_discount)|format_price }}{% else %}-{% endif %}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-wetravel-cyan">${{ (past_total.total_paid)|format_price }}</td>
+                                    {% if past_total.total_refunded > 0 %}
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-red-600">-${{ (past_total.total_refunded)|format_price }}</td>
+                                    {% endif %}
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-orange-600">${{ (past_total.total_pending)|format_price }}</td>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
                     {% else %}
@@ -365,35 +349,6 @@
 
                 <div id="category-deactivated" class="category-content hidden">
                     {% if deactivated_summaries %}
-                    <div class="mb-6 p-4 bg-gray-50 rounded-lg">
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                            <div>
-                                <div class="text-gray-500">Expected</div>
-                                <div class="font-semibold text-gray-900">${{ (deactivated_total.total_expected)|format_price }}</div>
-                            </div>
-                            {% if deactivated_total.total_discount > 0 %}
-                            <div>
-                                <div class="text-gray-500">Discounts</div>
-                                <div class="font-semibold text-green-600">-${{ (deactivated_total.total_discount)|format_price }}</div>
-                            </div>
-                            {% endif %}
-                            <div>
-                                <div class="text-gray-500">Paid</div>
-                                <div class="font-semibold text-wetravel-cyan">${{ (deactivated_total.total_paid)|format_price }}</div>
-                            </div>
-                            {% if deactivated_total.total_refunded > 0 %}
-                            <div>
-                                <div class="text-gray-500">Refunded</div>
-                                <div class="font-semibold text-red-600">-${{ (deactivated_total.total_refunded)|format_price }}</div>
-                            </div>
-                            {% endif %}
-                            <div>
-                                <div class="text-gray-500">Pending</div>
-                                <div class="font-semibold text-orange-600">${{ (deactivated_total.total_pending)|format_price }}</div>
-                            </div>
-                        </div>
-                    </div>
-
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
@@ -403,6 +358,7 @@
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bookings</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Participants</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expected</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Discount</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid</th>
                                     {% if deactivated_total.total_refunded > 0 %}
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Refunded</th>
@@ -430,6 +386,9 @@
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ summary.booking_count }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ summary.participants_count }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${{ (summary.amount_expected)|format_price }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">
+                                        {% if summary.amount_discount > 0 %}-${{ (summary.amount_discount)|format_price }}{% else %}-{% endif %}
+                                    </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-wetravel-cyan">${{ (summary.amount_paid)|format_price }}</td>
                                     {% if deactivated_total.total_refunded > 0 %}
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-red-600">
@@ -440,6 +399,23 @@
                                 </tr>
                                 {% endfor %}
                             </tbody>
+                            <tfoot class="bg-gray-50 border-t-2 border-gray-200">
+                                <tr>
+                                    <td class="px-6 py-4 text-sm font-semibold text-gray-900">Total</td>
+                                    <td class="px-6 py-4"></td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">{{ deactivated_total.total_bookings }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">{{ deactivated_total.total_participants }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">${{ (deactivated_total.total_expected)|format_price }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">
+                                        {% if deactivated_total.total_discount > 0 %}-${{ (deactivated_total.total_discount)|format_price }}{% else %}-{% endif %}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-wetravel-cyan">${{ (deactivated_total.total_paid)|format_price }}</td>
+                                    {% if deactivated_total.total_refunded > 0 %}
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-red-600">-${{ (deactivated_total.total_refunded)|format_price }}</td>
+                                    {% endif %}
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-orange-600">${{ (deactivated_total.total_pending)|format_price }}</td>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
                     {% else %}
