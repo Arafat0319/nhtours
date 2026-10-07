@@ -50,6 +50,8 @@
                 <div class="mb-6">
                     <form method="GET" action="{{ url_for('admin.payments') }}" class="flex flex-col md:flex-row md:items-center md:justify-between space-y-3 md:space-y-0 md:space-x-4">
                         <input type="hidden" name="tab" value="{{ tab }}">
+                        {% if sort %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
+                        {% if order %}<input type="hidden" name="order" value="{{ order }}">{% endif %}
                         <div class="flex-1">
                             <input type="text" name="search" placeholder="Search by Order number, buyer, trip..." value="{{ search or '' }}"
                                 class="block w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-wetravel-cyan focus:border-wetravel-cyan">
@@ -115,11 +117,9 @@
                 const currentSort = urlParams.get('sort');
                 const currentOrder = urlParams.get('order');
                 
-                let newOrder = 'desc'; // 默认从大到小
-                
-                // 如果当前已经是按这个字段排序，则切换顺序
+                let newOrder = 'asc';
                 if (currentSort === sortField) {
-                    newOrder = currentOrder === 'desc' ? 'asc' : 'desc';
+                    newOrder = currentOrder === 'asc' ? 'desc' : 'asc';
                 }
                 
                 // 更新 URL 参数
@@ -198,16 +198,6 @@
             expandBtn.textContent = shouldOpen ? 'Collapse schedule' : 'Expand schedule';
         }
     }
-
-    // 有未付期数时默认展开，方便 Reminder / Mark Paid
-    document.querySelectorAll('tr[data-auto-expand]').forEach(row => {
-        const bookingId = row.getAttribute('data-auto-expand');
-        if (bookingId) toggleInstallments(bookingId, true);
-    });
-    document.querySelectorAll('[data-auto-expand-mobile]').forEach(card => {
-        const bookingId = card.getAttribute('data-auto-expand-mobile');
-        if (bookingId) toggleInstallments(bookingId, true);
-    });
 
     // 切换下拉菜单：用 fixed 定位，避免 overflow-x-auto 裁切
     function toggleDropdown(dropdownId) {

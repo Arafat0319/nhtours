@@ -615,3 +615,130 @@ def build_one_time_order_groups(*, search='', status_filter='', limit=100, exclu
         reverse=True,
     )
     return result[:limit], today
+
+
+PAYMENT_LIST_SORT_FIELDS = frozenset({
+    'time',
+    'order_number',
+    'buyer',
+    'trip',
+    'type',
+    'amount',
+    'due_date',
+    'status',
+})
+
+
+def _group_moment(group):
+    """列表默认时间：定金创建时间，否则主付款创建时间。"""
+    deposit = group.get('deposit')
+    payment = group.get('primary_payment') or group.get('deposit_payment')
+    if deposit is not None and getattr(deposit, 'created_at', None):
+        return deposit.created_at
+    if payment is not None and getattr(payment, 'created_at', None):
+        return payment.created_at
+    return None
+
+
+def _group_due_value(group):
+    """与表上 Due Date 列同一天。"""
+    if group.get('plan_kind') == 'one_time':
+        payment = group.get('primary_payment') or group.get('deposit_payment')
+        if payment is None:
+            return None
+        moment = payment.paid_at or payment.created_at
+        if isinstance(moment, datetime):
+            return moment.date()
+        return moment
+    deposit = group.get('deposit')
+    if deposit is not None and getattr(deposit, 'due_date', None):
+        return deposit.due_date
+    return None
+
+
+def _group_status_label(group):
+    payment = group.get('primary_payment') or group.get('deposit_payment')
+    if group.get('plan_kind') == 'one_time':
+        status = (payment.status if payment else 'pending') or 'pending'
+        if status == 'succeeded':
+            return 'paid'
+        if status == 'partially_refunded':
+            return 'partially refunded'
+        if status == 'refunded':
+            return 'fully refunded'
+        return status
+    deposit = group.get('deposit')
+    return (
+        group.get('deposit_display_status')
+        or (deposit.status if deposit else None)
+        or 'pending'
+    )
+
+
+def _group_type_label(group):
+    if group.get('plan_kind') == 'one_time':
+        return 'full payment'
+    if group.get('mixed_portion') == 'installment':
+        return 'installment schedule'
+    return 'deposit'
+
+
+def _group_amount(group):
+    if group.get('display_amount') is not None:
+        return float(group.get('display_amount') or 0)
+    deposit = group.get('deposit')
+    if deposit is not None:
+        return float(deposit.amount or 0)
+    payment = group.get('primary_payment') or group.get('deposit_payment')
+    if payment is not None:
+        return float(payment.amount or 0)
+    return 0.0
+
+
+def payment_group_sort_value(group, field):
+    booking = group.get('booking')
+    if field == 'order_number':
+        return ((booking.order_number if booking else '') or '').casefold()
+    if field == 'buyer':
+        return ((booking.buyer_name if booking else '') or '').casefold()
+    if field == 'trip':
+        title = ''
+        if booking is not None and getattr(booking, 'trip', None):
+            title = booking.trip.title or ''
+        return title.casefold()
+    if field == 'type':
+        return _group_type_label(group)
+    if field == 'amount':
+        return _group_amount(group)
+    if field == 'due_date':
+        return _group_due_value(group)
+    if field == 'status':
+        return (_group_status_label(group) or '').casefold()
+    return _group_moment(group)
+
+
+def sort_payment_groups(groups, field='time', order=None):
+    """点击表头排序。未指定时按时间从新到旧。第一次点某列升序，再点倒序。"""
+    if field not in PAYMENT_LIST_SORT_FIELDS:
+        field = 'time'
+    if order not in ('asc', 'desc'):
+        order = 'desc' if field == 'time' else 'asc'
+
+    def _missing(group):
+        value = payment_group_sort_value(group, field)
+        return value is None or value == ''
+
+    def _key(group):
+        value = payment_group_sort_value(group, field)
+        if _missing(group):
+            return (1, '')
+        return (0, value)
+
+    ordered = sorted(groups, key=_key)
+    if order == 'desc':
+        present = [group for group in ordered if not _missing(group)]
+        absent = [group for group in ordered if _missing(group)]
+        present.reverse()
+        ordered = present + absent
+    groups[:] = ordered
+    return groups

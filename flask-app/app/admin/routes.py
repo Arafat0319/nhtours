@@ -2108,12 +2108,20 @@ def payments():
     from app.admin.payment_list_data import (
         build_mixed_full_portion_groups,
         build_one_time_order_groups,
+        PAYMENT_LIST_SORT_FIELDS,
         build_schedule_order_groups,
+        sort_payment_groups,
     )
 
     tab = request.args.get('tab', 'records')
     search = request.args.get('search', '').strip()
     status_filter = request.args.get('status', '')
+    sort_field = request.args.get('sort') or 'time'
+    if sort_field not in PAYMENT_LIST_SORT_FIELDS:
+        sort_field = 'time'
+    sort_order = request.args.get('order') or ''
+    if sort_order not in ('asc', 'desc'):
+        sort_order = ''
 
     if tab == 'records':
         # Full：纯定金+单笔尾款（排除混单 schedule）+ 一次付全款 + 混单全款产品行
@@ -2134,14 +2142,7 @@ def payments():
             status_filter=status_filter,
         )
         orders_grouped = schedule_groups + one_time_groups + mixed_full_groups
-        orders_grouped.sort(
-            key=lambda g: (
-                (g.get('deposit') and g['deposit'].created_at)
-                or (g.get('primary_payment') and g['primary_payment'].created_at)
-                or datetime.min
-            ),
-            reverse=True,
-        )
+        sort_payment_groups(orders_grouped, sort_field, sort_order or None)
         return render_template(
             'admin/payments/list.html',
             title='Payments',
@@ -2150,6 +2151,8 @@ def payments():
             today=today,
             search=search,
             status_filter=status_filter,
+            sort=sort_field if sort_field != 'time' else '',
+            order=sort_order,
         )
 
     if tab == 'installments':
@@ -2167,13 +2170,7 @@ def payments():
             mixed_mode='only',
         )
         orders_grouped = multi_groups + mixed_balance_groups
-        orders_grouped.sort(
-            key=lambda g: (
-                (g.get('deposit') and g['deposit'].created_at)
-                or datetime.min
-            ),
-            reverse=True,
-        )
+        sort_payment_groups(orders_grouped, sort_field, sort_order or None)
         return render_template(
             'admin/payments/list.html',
             title='Payments',
@@ -2182,6 +2179,8 @@ def payments():
             today=today,
             search=search,
             status_filter=status_filter,
+            sort=sort_field if sort_field != 'time' else '',
+            order=sort_order,
         )
 
     return redirect(url_for('admin.payments', tab='records'))
