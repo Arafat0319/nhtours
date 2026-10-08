@@ -15,6 +15,106 @@ def booking_addon_line_total(ba):
     return round(booking_addon_unit_price(ba) * qty, 2)
 
 
+def resolve_manual_addon_base_cents(
+    *,
+    booking_id=None,
+    payment_intent_id=None,
+    booking_addon_id=None,
+):
+    """
+    Manage 后加 add-on 结账用的基础金额（分）。
+
+    必须按 BookingAddOn 行计价，禁止回落到整单 calculate_booking_total
+    （否则会把已付套餐价加进 Total，例如 $2190+$1600=$3790）。
+
+    Returns:
+        (base_cents, booking_addon, error_message)
+    """
+    from app.models import BookingAddOn, Payment
+
+    ba = None
+    if booking_addon_id:
+        try:
+            ba = BookingAddOn.query.get(int(booking_addon_id))
+        except (TypeError, ValueError):
+            return None, None, 'invalid_booking_addon_id'
+
+    if ba is None and payment_intent_id:
+        ba = BookingAddOn.query.filter_by(
+            stripe_payment_intent_id=payment_intent_id
+        ).first()
+        if ba is None:
+            pay = Payment.query.filter_by(
+                stripe_payment_intent_id=payment_intent_id
+            ).first()
+            meta = dict((pay.payment_metadata if pay else None) or {})
+            raw_id = meta.get('booking_addon_id')
+            if raw_id:
+                try:
+                    ba = BookingAddOn.query.get(int(raw_id))
+                except (TypeError, ValueError):
+                    ba = None
+
+    if ba is None and booking_id:
+        try:
+            bid = int(booking_id)
+        except (TypeError, ValueError):
+            return None, None, 'invalid_booking_id'
+        # Prefer the unpaid manual line tied to a pending addon Payment
+        pending = (
+            Payment.query.filter_by(booking_id=bid, status='pending')
+            .order_by(Payment.id.desc())
+            .all()
+        )
+        for pay in pending:
+            meta = dict(pay.payment_metadata or {})
+            step = (meta.get('payment_step') or '').strip().lower()
+            ptype = (meta.get('payment_type') or '').strip().lower()
+            if step != 'addon' and ptype != 'addon_purchase':
+                continue
+            raw_id = meta.get('booking_addon_id')
+            if not raw_id:
+                continue
+            try:
+                cand = BookingAddOn.query.get(int(raw_id))
+            except (TypeError, ValueError):
+                cand = None
+            if cand and (cand.payment_status or '').lower() != 'paid':
+                ba = cand
+                break
+        if ba is None:
+            unpaid = (
+                BookingAddOn.query.filter_by(
+                    booking_id=bid, source='admin_manual'
+                )
+                .filter(BookingAddOn.payment_status != 'paid')
+                .order_by(BookingAddOn.id.desc())
+                .all()
+            )
+            if len(unpaid) == 1:
+                ba = unpaid[0]
+            elif len(unpaid) > 1:
+                return None, None, 'ambiguous_addon'
+            else:
+                return None, None, 'addon_not_found'
+
+    if ba is None:
+        return None, None, 'addon_not_found'
+    if (ba.payment_status or '').lower() == 'paid':
+        return None, ba, 'addon_already_paid'
+    if booking_id is not None:
+        try:
+            if int(ba.booking_id) != int(booking_id):
+                return None, None, 'addon_booking_mismatch'
+        except (TypeError, ValueError):
+            return None, None, 'addon_booking_mismatch'
+
+    cents = int(round(booking_addon_line_total(ba) * 100))
+    if cents <= 0:
+        return None, ba, 'invalid_amount'
+    return cents, ba, None
+
+
 def addon_payment_url(ba):
     from app.utils import generate_addon_payment_token
 

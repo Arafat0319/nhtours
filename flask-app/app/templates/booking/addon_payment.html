@@ -106,6 +106,7 @@
 <script>
     window.checkoutConfig = {
         bookingId: {% if booking and booking.id %}{{ booking.id }}{% else %}null{% endif %},
+        bookingAddonId: {% if booking_addon and booking_addon.id %}{{ booking_addon.id }}{% else %}null{% endif %},
         installmentId: null,
         clientSecret: {% if client_secret %}"{{ client_secret }}"{% else %}null{% endif %},
         publishableKey: {% if publishable_key %}"{{ publishable_key }}"{% else %}null{% endif %},
@@ -118,6 +119,6 @@
         paymentStep: "{{ payment_step }}"
     };
 </script>
-<script src="{{ url_for('static', filename='js/payment.js') }}?v=ach-1"></script>
+<script src="{{ url_for('static', filename='js/payment.js') }}?v=addon-amt-1"></script>
 {% endif %}
 {% endblock %}

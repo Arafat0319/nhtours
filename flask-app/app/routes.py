@@ -1317,9 +1317,51 @@ def api_payment_quote():
             f"installment_id={installment_id}, payment_intent_id={payment_intent_id}"
         )
         return jsonify({
-            'error': 'missing_parameters', 
+            'error': 'missing_parameters',
             'message': 'booking_id, installment_id, or payment_intent_id is required'
         }), 400
+
+    # Manage 后加 add-on：只按该行金额报价，禁止整单 total（套餐+附加）
+    if (payment_step or '').strip().lower() == 'addon':
+        from app.addon_admin import resolve_manual_addon_base_cents
+
+        base_amount_cents, ba, err = resolve_manual_addon_base_cents(
+            booking_id=booking_id,
+            payment_intent_id=payment_intent_id,
+            booking_addon_id=data.get('booking_addon_id'),
+        )
+        if err or base_amount_cents is None:
+            code = 404 if err in ('addon_not_found', 'addon_already_paid') else 400
+            return jsonify({'error': err or 'addon_not_found'}), code
+        if ba and booking_has_processing_ach_payment(ba.booking_id):
+            return jsonify({
+                'error': 'payment_processing',
+                'message': (
+                    'A bank transfer for this order is already processing. '
+                    'Please wait until it clears before starting another payment.'
+                ),
+            }), 409
+        funding, brand, pm_type = retrieve_payment_method_details(payment_method_id)
+        fee_cents = calculate_fee(base_amount_cents, funding, brand)
+        tax_amount_cents = 0
+        final_amount_cents = base_amount_cents + fee_cents + tax_amount_cents
+        current_app.logger.info(
+            "Quote addon booking_addon_id=%s booking_id=%s base=%s fee=%s final=%s",
+            getattr(ba, 'id', None),
+            booking_id,
+            base_amount_cents,
+            fee_cents,
+            final_amount_cents,
+        )
+        return jsonify({
+            'funding': funding,
+            'brand': brand,
+            'payment_method_type': pm_type,
+            'base_amount': base_amount_cents,
+            'fee': fee_cents,
+            'tax_amount': tax_amount_cents,
+            'final_amount': final_amount_cents,
+        })
 
     # 优先使用 payment_intent_id（新流程：首次支付，还没有Booking）
     if payment_intent_id:
@@ -1558,6 +1600,132 @@ def api_payment_intent():
     
     if not booking_id and not installment_id and not payment_intent_id:
         return jsonify({'error': 'missing_parameters', 'message': 'booking_id, installment_id, or payment_intent_id is required'}), 400
+
+    # Manage 后加 add-on：按行金额更新 PI，勿用整单 total
+    if (payment_step or '').strip().lower() == 'addon':
+        from app.addon_admin import (
+            booking_addon_line_total,
+            resolve_manual_addon_base_cents,
+        )
+
+        base_amount_cents, ba, err = resolve_manual_addon_base_cents(
+            booking_id=booking_id,
+            payment_intent_id=payment_intent_id,
+            booking_addon_id=data.get('booking_addon_id'),
+        )
+        if err or base_amount_cents is None or ba is None:
+            code = 404 if err in ('addon_not_found', 'addon_already_paid') else 400
+            return jsonify({'error': err or 'addon_not_found'}), code
+        booking = ba.booking
+        if not booking:
+            return jsonify({'error': 'booking_not_found'}), 404
+        if booking_has_processing_ach_payment(booking.id):
+            return jsonify({
+                'error': 'payment_processing',
+                'message': (
+                    'A bank transfer for this order is already processing. '
+                    'Please wait until it clears before starting another payment.'
+                ),
+            }), 409
+
+        payment = None
+        if payment_intent_id:
+            payment = Payment.query.filter_by(
+                stripe_payment_intent_id=payment_intent_id
+            ).first()
+        if not payment and ba.stripe_payment_intent_id:
+            payment = Payment.query.filter_by(
+                stripe_payment_intent_id=ba.stripe_payment_intent_id
+            ).first()
+            payment_intent_id = ba.stripe_payment_intent_id
+        if not payment:
+            for candidate in (
+                Payment.query.filter_by(booking_id=booking.id, status='pending')
+                .order_by(Payment.created_at.desc())
+                .all()
+            ):
+                meta = dict(candidate.payment_metadata or {})
+                if str(meta.get('booking_addon_id') or '') == str(ba.id):
+                    payment = candidate
+                    payment_intent_id = candidate.stripe_payment_intent_id
+                    break
+        if not payment or not payment.stripe_payment_intent_id:
+            return jsonify({'error': 'payment_intent_not_found'}), 404
+        if payment.status != 'pending':
+            return jsonify({'error': 'payment_not_pending'}), 409
+        payment_intent_id = payment.stripe_payment_intent_id
+
+        funding, brand, pm_type = retrieve_payment_method_details(payment_method_id)
+        fee_cents = calculate_fee(base_amount_cents, funding, brand)
+        tax_amount_cents = 0
+        final_amount_cents = base_amount_cents + fee_cents + tax_amount_cents
+
+        if (
+            payment.payment_method_id == payment_method_id
+            and payment.final_amount_cents == final_amount_cents
+            and payment.status == 'pending'
+        ):
+            return jsonify({
+                'payment_intent_id': payment_intent_id,
+                'final_amount': final_amount_cents,
+                'payment_method_type': pm_type,
+                'fee': fee_cents,
+            })
+
+        addon_label = ba.addon.name if ba.addon else 'Add-on'
+        existing_meta = dict(payment.payment_metadata or {})
+        quote_metadata = build_booking_metadata(booking, {
+            **existing_meta,
+            'payment_type': 'addon_purchase',
+            'payment_step': 'addon',
+            'payment_flow': 'addon',
+            'payment_plan': 'addon',
+            'booking_addon_id': str(ba.id),
+            'addon_id': str(ba.addon_id),
+            'addon_name': (addon_label or '')[:120],
+            'source': 'addon_payment_link',
+            'funding': funding,
+            'brand': brand,
+            'payment_method_type': pm_type,
+            'fee': fee_cents,
+            'tax_amount': tax_amount_cents,
+            'final_amount': final_amount_cents,
+            'payment_method_id': payment_method_id,
+            'base_amount': base_amount_cents,
+        })
+        updated_intent = update_payment_intent_amount(
+            payment_intent_id,
+            final_amount_cents,
+            quote_metadata,
+        )
+        if not updated_intent:
+            return jsonify({'error': 'payment_intent_update_failed'}), 500
+
+        payment.payment_method_id = payment_method_id
+        payment.payment_method_type = pm_type if pm_type != 'unknown' else 'card'
+        payment.funding = funding
+        payment.brand = brand
+        payment.base_amount_cents = base_amount_cents
+        payment.fee_cents = fee_cents
+        payment.tax_amount_cents = tax_amount_cents
+        payment.final_amount_cents = final_amount_cents
+        payment.amount = booking_addon_line_total(ba)
+        payment.payment_metadata = quote_metadata
+        db.session.commit()
+        current_app.logger.info(
+            "Payment intent updated addon booking_addon_id=%s pi=%s base=%s fee=%s final=%s",
+            ba.id,
+            payment_intent_id,
+            base_amount_cents,
+            fee_cents,
+            final_amount_cents,
+        )
+        return jsonify({
+            'payment_intent_id': payment_intent_id,
+            'final_amount': final_amount_cents,
+            'payment_method_type': pm_type,
+            'fee': fee_cents,
+        })
 
     # 优先处理 payment_intent_id（新流程：首次支付，还没有Booking）
     if payment_intent_id:
@@ -3854,7 +4022,9 @@ def pay_booking_addon(booking_addon_id):
                     ach_locked=True,
                     token=token,
                 )
-            need_rebuild = pi_status in ('succeeded', 'canceled')
+            need_rebuild = pi_status in (
+                'succeeded', 'canceled', 'requires_payment_method'
+            )
             if not need_rebuild:
                 pi_meta = dict(getattr(payment_intent, 'metadata', None) or {})
                 try:
@@ -3862,11 +4032,27 @@ def pay_booking_addon(booking_addon_id):
                         need_rebuild = True
                 except (TypeError, ValueError):
                     need_rebuild = True
+                try:
+                    # 卡费通常 ≤3.5%；若 PI 远高于 addon 基础额（如误用整单 $3790），须重建
+                    pi_amt = int(getattr(payment_intent, 'amount', 0) or 0)
+                    if pi_amt > int(base_amount_cents * 1.05) + 1:
+                        need_rebuild = True
+                except (TypeError, ValueError):
+                    need_rebuild = True
             if need_rebuild:
+                old_pi = getattr(payment_intent, 'id', None)
                 safe_cancel_payment_intent(
-                    getattr(payment_intent, 'id', None),
+                    old_pi,
                     reason=f'addon amount mismatch ba={ba.id}',
                 )
+                # 作废挂在错额 PI 上的 pending Payment，避免再被 quote/intent 捡到
+                if old_pi:
+                    stale = Payment.query.filter_by(
+                        stripe_payment_intent_id=old_pi,
+                        status='pending',
+                    ).first()
+                    if stale:
+                        stale.status = 'failed'
                 payment_intent = None
                 ba.stripe_payment_intent_id = None
 

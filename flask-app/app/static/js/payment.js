@@ -1,9 +1,11 @@
 const {
     bookingId,
+    bookingAddonId,
     installmentId,
     clientSecret,
     publishableKey,
     successUrl,
+    paymentIntentId,
     baseAmountCents,
     remainingAmountCents,
     paymentPlan,
@@ -207,6 +209,8 @@ const requestQuote = async (silent = false) => {
             payment_method_id: paymentMethod.id,
             payment_step: currentPaymentStep,
             base_amount_cents: currentBaseAmount || null,  // 用于测试场景或 payoff 模式
+            payment_intent_id: paymentIntentId || null,
+            booking_addon_id: bookingAddonId || null,
         };
         console.log("Sending quote request:", requestBody);
         const response = await fetch("/api/payment/quote", {
@@ -382,6 +386,8 @@ if (placeOrderButton) {
                     payment_method_id: lastPaymentMethodId,
                     payment_plan: paymentPlan || "full",
                     payment_step: currentPaymentStep,
+                    payment_intent_id: paymentIntentId || null,
+                    booking_addon_id: bookingAddonId || null,
                 }),
             });
             const result = await response.json();
@@ -409,6 +415,21 @@ if (placeOrderButton) {
                 window.location.href = successUrl;
                 return;
             }
+            // ACH 微存款：redirect=if_required 时不会自动跳转，须打开 Stripe hosted verify
+            if (paymentIntent && paymentIntent.status === "requires_action") {
+                const na = paymentIntent.next_action || {};
+                const md = na.verify_with_microdeposits || {};
+                const verifyUrl = md.hosted_verification_url;
+                if (na.type === "verify_with_microdeposits" && verifyUrl) {
+                    window.location.href = verifyUrl;
+                    return;
+                }
+                showMessage(
+                    "Your bank needs a quick verification. Check your email for a link from us, or watch for small deposits from Stripe and complete verification."
+                );
+                return;
+            }
+            showMessage("Payment is not complete yet. Please check your email or try again.");
         } catch (err) {
             showPaymentFailed(err);
         } finally {
