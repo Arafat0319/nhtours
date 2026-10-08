@@ -2,11 +2,14 @@
 from app.addon_admin import (
     ach_verify_display_amount_dollars,
     booking_addon_line_total,
+    cancel_manual_booking_addon,
     create_manual_booking_addon,
+    manual_addon_can_cancel,
     resolve_manual_addon_base_cents,
+    serialize_booking_addon,
 )
 from app.addon_payment import is_addon_purchase_intent
-from app.models import Booking, Payment, TripAddOn, db
+from app.models import Booking, BookingAddOn, Payment, TripAddOn, db
 from app.payments import booking_payoff_due, calculate_booking_total, unpaid_manual_addons_total
 
 
@@ -149,9 +152,75 @@ def test_create_manual_addon_and_payoff_excludes(app, client):
         db.session.commit()
 
 
+def test_cancel_manual_addon_unpaid_ok_processing_blocked(app):
+    """未付可取消；Processing / 已绑支付方式的 pending 不可取消。"""
+    with app.app_context():
+        booking = Booking.query.filter(Booking.status != 'cancelled').first()
+        if not booking or not booking.trip_id:
+            return
+        ta = TripAddOn.query.filter_by(trip_id=booking.trip_id).first()
+        if not ta:
+            return
+
+        ba, err = create_manual_booking_addon(booking, ta.id, quantity=1)
+        assert err is None
+        db.session.commit()
+        ba_id = ba.id
+        can, reason = manual_addon_can_cancel(ba)
+        assert can is True, reason
+        assert serialize_booking_addon(ba)['can_cancel'] is True
+
+        # Empty Incomplete pending (no PM) still cancellable
+        pay_empty = Payment(
+            booking_id=booking.id,
+            client_id=booking.client_id,
+            trip_id=booking.trip_id,
+            amount=booking_addon_line_total(ba),
+            status='pending',
+            currency='usd',
+            stripe_payment_intent_id='pi_test_addon_cancel_empty',
+            payment_metadata={
+                'booking_addon_id': ba.id,
+                'payment_step': 'addon',
+                'payment_type': 'addon_purchase',
+            },
+        )
+        ba.stripe_payment_intent_id = pay_empty.stripe_payment_intent_id
+        db.session.add(pay_empty)
+        db.session.commit()
+        can2, _ = manual_addon_can_cancel(ba)
+        assert can2 is True
+
+        # Pending with payment method → blocked
+        pay_empty.payment_method_id = 'pm_test_started'
+        db.session.commit()
+        can3, reason3 = manual_addon_can_cancel(ba)
+        assert can3 is False
+        assert 'started' in (reason3 or '').lower() or 'pending' in (reason3 or '').lower()
+
+        pay_empty.payment_method_id = None
+        pay_empty.status = 'failed'
+        db.session.commit()
+
+        ok, msg = cancel_manual_booking_addon(ba)
+        assert ok is True, msg
+        db.session.commit()
+        assert BookingAddOn.query.get(ba_id) is None
+        db.session.delete(pay_empty)
+        db.session.commit()
+
+        ba2, err2 = create_manual_booking_addon(booking, ta.id, quantity=1)
+        assert err2 is None
+        ba2.payment_status = 'processing'
+        db.session.commit()
+        can4, _ = manual_addon_can_cancel(ba2)
+        assert can4 is False
+        db.session.delete(ba2)
+        db.session.commit()
+
+
 def test_full_refund_reopens_manual_addon(app):
     """全额退回 addon Payment 后，行应回 unpaid 并可再计入 unpaid_manual。"""
-    from app.models import BookingAddOn, Payment
     from app.payments import apply_refund_to_ledger, unpaid_manual_addons_total
 
     with app.app_context():

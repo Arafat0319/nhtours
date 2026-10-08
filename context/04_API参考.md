@@ -85,6 +85,7 @@
 | `/admin/bookings/<booking_id>/addons` | POST | 后加一行 `admin_manual` unpaid，并尝试自动发付款邮件；JSON `{ trip_addon_id, quantity?, participant_id? }` |
 | `/admin/booking-addons/<id>/payment-link` | GET | 返回签名付款 URL |
 | `/admin/booking-addons/<id>/payment-link/send` | POST | 补发付款邀请邮件 |
+| `/admin/booking-addons/<id>/cancel` | POST | 付款前取消后加项（未付且无在途）；删行并作废空 pending PI |
 | `/admin/bookings/<booking_id>/auto-pay` | POST | 管理员开/关 Auto Pay；JSON `{ enabled, payment_method_id? }` |
 | `/admin/bookings/<booking_id>/auto-pay-link` | GET | Copy Auto Pay 管理链接 |
 | `/admin/bookings/<booking_id>/auto-pay-link/send` | POST | 发 Auto Pay 邀请邮件 |

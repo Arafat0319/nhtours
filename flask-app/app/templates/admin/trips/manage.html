@@ -2401,6 +2401,33 @@
             }
         }
 
+        async function manageCancelManualAddon(baId, bookingId) {
+            const ok = await showMessageConfirm(
+                'Cancel add-on',
+                'Remove this unpaid add-on from the order? The customer payment link will stop working.',
+                { confirmText: 'Cancel add-on', danger: true }
+            );
+            if (!ok) return;
+            try {
+                const response = await fetch(`/admin/booking-addons/${baId}/cancel`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                const result = await response.json();
+                if (!result.success) throw new Error(result.error || 'Failed to cancel');
+                showToast(result.message || 'Add-on cancelled', 'success');
+                const reloadId = bookingId || (currentBookingData && currentBookingData.id);
+                if (reloadId && typeof openManageBookingModal === 'function') {
+                    openManageBookingModal(parseInt(reloadId, 10));
+                }
+            } catch (err) {
+                showToast(err.message || 'Failed to cancel add-on', 'error');
+            }
+        }
+
         async function openAddAddonModal(bookingId) {
             const modal = document.getElementById('addAddonModal');
             const select = document.getElementById('addAddonSelect');
@@ -2518,6 +2545,7 @@
         window.manageToggleAddonDropdown = manageToggleAddonDropdown;
         window.manageCopyAddonPaymentLink = manageCopyAddonPaymentLink;
         window.manageSendAddonPaymentEmail = manageSendAddonPaymentEmail;
+        window.manageCancelManualAddon = manageCancelManualAddon;
         window.openAddAddonModal = openAddAddonModal;
         window.closeAddAddonModal = closeAddAddonModal;
         window.submitAddAddon = submitAddAddon;
@@ -2923,7 +2951,24 @@
                         : '';
                     const baId = addon.booking_addon_id;
                     const canPayLink = isManual && payStatus !== 'paid' && baId && booking.status !== 'cancelled';
+                    const canCancelAddon = !!addon.can_cancel;
+                    const cancelBlockedReason = addon.cancel_blocked_reason
+                        || (payStatus === 'paid'
+                            ? 'This add-on is already paid'
+                            : (payStatus === 'processing'
+                                ? 'Payment is processing'
+                                : 'Cannot cancel while payment is pending'));
+                    const cancelBlockedAttr = String(cancelBlockedReason)
+                        .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
                     const ddId = 'manage-addon-dd-' + baId;
+                    const cancelMenuItem = canCancelAddon
+                        ? `<button type="button" role="menuitem"
+                                        class="block w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50"
+                                        onclick="event.stopPropagation(); manageToggleAddonDropdown(${baId}); manageCancelManualAddon(${baId}, ${booking.id})">Cancel add-on</button>`
+                        : `<button type="button" role="menuitem" disabled
+                                        title="${cancelBlockedAttr}"
+                                        class="block w-full text-left px-4 py-2 text-xs text-gray-400 cursor-not-allowed bg-gray-50"
+                                        onclick="event.stopPropagation();">Cancel add-on</button>`;
                     const actions = canPayLink ? `
                         <div class="relative inline-block text-left flex-shrink-0" onclick="event.stopPropagation();">
                             <button type="button"
@@ -2943,6 +2988,8 @@
                                     <button type="button" role="menuitem"
                                         class="block w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100"
                                         onclick="event.stopPropagation(); manageToggleAddonDropdown(${baId}); manageSendAddonPaymentEmail(${baId})">Send payment email</button>
+                                    <div class="border-t border-gray-100 my-1"></div>
+                                    ${cancelMenuItem}
                                 </div>
                             </div>
                         </div>` : '';

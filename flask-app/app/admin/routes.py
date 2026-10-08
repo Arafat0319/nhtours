@@ -2532,6 +2532,30 @@ def booking_addon_payment_link_send(booking_addon_id):
     return jsonify({'success': True, 'message': msg})
 
 
+@bp.route('/booking-addons/<int:booking_addon_id>/cancel', methods=['POST'])
+@admin_required
+def booking_addon_cancel(booking_addon_id):
+    """Cancel an unpaid manual add-on (before customer pays / while not in-flight)."""
+    ba = BookingAddOn.query.get_or_404(booking_addon_id)
+    booking_id = ba.booking_id
+    from app.addon_admin import cancel_manual_booking_addon, manual_addon_can_cancel
+
+    can, reason = manual_addon_can_cancel(ba)
+    if not can:
+        return jsonify({'success': False, 'error': reason or 'Cannot cancel'}), 400
+    ok, msg = cancel_manual_booking_addon(ba)
+    if not ok:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': msg or 'Cannot cancel'}), 400
+    db.session.commit()
+    return jsonify({
+        'success': True,
+        'message': msg or 'Add-on cancelled',
+        'booking_id': booking_id,
+        'booking_addon_id': booking_addon_id,
+    })
+
+
 @bp.route('/bookings/<int:booking_id>/auto-pay-link', methods=['GET'])
 @admin_required
 def admin_auto_pay_link(booking_id):

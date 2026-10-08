@@ -184,6 +184,123 @@ def addon_payment_url(ba):
         return f'{base}/pay-addon/{ba.id}?token={token}'
 
 
+def iter_payments_for_booking_addon(ba):
+    """Payments tied to this BookingAddOn (payment_id, PI id, or metadata)."""
+    if not ba:
+        return []
+    seen = set()
+    out = []
+
+    def _add(pay):
+        if not pay or pay.id in seen:
+            return
+        seen.add(pay.id)
+        out.append(pay)
+
+    if getattr(ba, 'payment_id', None):
+        _add(Payment.query.get(ba.payment_id))
+    pi = (getattr(ba, 'stripe_payment_intent_id', None) or '').strip()
+    if pi:
+        _add(Payment.query.filter_by(stripe_payment_intent_id=pi).first())
+    booking_id = getattr(ba, 'booking_id', None)
+    if booking_id:
+        for pay in (
+            Payment.query.filter_by(booking_id=booking_id)
+            .order_by(Payment.id.desc())
+            .limit(40)
+            .all()
+        ):
+            meta = dict(pay.payment_metadata or {})
+            raw = meta.get('booking_addon_id')
+            if raw is None or str(raw).strip() == '':
+                continue
+            try:
+                if int(raw) == int(ba.id):
+                    _add(pay)
+            except (TypeError, ValueError):
+                continue
+    return out
+
+
+def manual_addon_can_cancel(ba):
+    """
+    Manage 可取消后加项：未入账成功、且没有在途/已提交的付款。
+
+    可取消：unpaid / failed，且无 processing / succeeded；
+    仅有「打开过付款页」的空 pending（未绑支付方式）仍可取消（一并清理）。
+    不可取消：已付、ACH Processing、或 pending 且已选支付方式。
+
+    Returns:
+        (can_cancel: bool, reason: str|None)
+    """
+    if not ba:
+        return False, 'Add-on not found'
+    source = (getattr(ba, 'source', None) or 'booking').strip() or 'booking'
+    if source != 'admin_manual':
+        return False, 'Only manually added add-ons can be cancelled'
+    status = (getattr(ba, 'payment_status', None) or 'paid').strip().lower() or 'paid'
+    if status == 'paid':
+        return False, 'This add-on is already paid'
+    if status == 'processing':
+        return False, 'Payment is processing — wait until it completes or fails'
+
+    for pay in iter_payments_for_booking_addon(ba):
+        pstatus = (pay.status or '').strip().lower()
+        if pstatus == 'succeeded':
+            return False, 'This add-on already has a successful payment'
+        if pstatus == 'processing':
+            return False, 'A payment is still processing'
+        if pstatus == 'pending':
+            has_pm = bool(
+                (getattr(pay, 'payment_method_id', None) or '').strip()
+                or (getattr(pay, 'payment_method_type', None) or '').strip()
+            )
+            if has_pm:
+                return False, 'Customer has started checkout — cancel blocked while pending'
+    return True, None
+
+
+def cancel_manual_booking_addon(ba):
+    """
+    Cancel an unpaid manual add-on: cancel open Stripe PIs, fail leftover
+    pending Payments, delete the BookingAddOn row. Caller commits.
+
+    Returns:
+        (ok: bool, message: str)
+    """
+    from app.payments import safe_cancel_payment_intent
+
+    can, reason = manual_addon_can_cancel(ba)
+    if not can:
+        return False, reason or 'Cannot cancel this add-on'
+
+    pi_ids = set()
+    for pay in iter_payments_for_booking_addon(ba):
+        pi = (pay.stripe_payment_intent_id or '').strip()
+        if pi:
+            pi_ids.add(pi)
+        pstatus = (pay.status or '').strip().lower()
+        if pstatus in ('pending', 'processing'):
+            # can_cancel already blocked real processing; belt-and-suspenders
+            if pstatus == 'processing':
+                return False, 'A payment is still processing'
+            pay.status = 'failed'
+            meta = dict(pay.payment_metadata or {})
+            meta['cancelled_with_manual_addon'] = True
+            meta['cancelled_at'] = datetime.utcnow().isoformat() + 'Z'
+            pay.payment_metadata = meta
+
+    ba_pi = (getattr(ba, 'stripe_payment_intent_id', None) or '').strip()
+    if ba_pi:
+        pi_ids.add(ba_pi)
+
+    for pi in pi_ids:
+        safe_cancel_payment_intent(pi, reason=f'cancel manual addon ba#{ba.id}')
+
+    db.session.delete(ba)
+    return True, 'Add-on cancelled'
+
+
 def serialize_booking_addon(ba):
     """JSON shape for Manage Order Summary Add-ons."""
     qty = int(ba.quantity or 1)
@@ -192,6 +309,9 @@ def serialize_booking_addon(ba):
     source = (getattr(ba, 'source', None) or 'booking').strip() or 'booking'
     status = (getattr(ba, 'payment_status', None) or 'paid').strip() or 'paid'
     participant = ba.participant
+    can_cancel, cancel_reason = (
+        manual_addon_can_cancel(ba) if source == 'admin_manual' else (False, None)
+    )
     return {
         'booking_addon_id': ba.id,
         'id': ba.addon.id if ba.addon else ba.addon_id,
@@ -205,6 +325,8 @@ def serialize_booking_addon(ba):
         'is_manual': source == 'admin_manual',
         'payment_status': status,
         'payment_id': ba.payment_id,
+        'can_cancel': bool(can_cancel),
+        'cancel_blocked_reason': None if can_cancel else cancel_reason,
     }
 
 
