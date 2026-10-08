@@ -1535,9 +1535,14 @@ def api_payment_quote():
                 initial_payment_info = calculate_initial_payment_amount(booking, payment_plan)
                 base_amount_cents = int(round(initial_payment_info['initial_amount'] * 100))
             else:
-                # 其他情况：使用总金额
-                total_info = calculate_booking_total(booking)
-                base_amount_cents = int(round(total_info['total'] * 100))
+                # 禁止回落到整单 total（曾导致后加 addon 报成套餐+附加）
+                return jsonify({
+                    'error': 'unsupported_payment_step',
+                    'message': (
+                        f'Unsupported payment_step={payment_step!r} for booking quote. '
+                        'Use initial, payoff, addon, or an installment_id.'
+                    ),
+                }), 400
     else:
         return jsonify({'error': 'missing_parameters'}), 400
 
@@ -1654,6 +1659,20 @@ def api_payment_intent():
         if payment.status != 'pending':
             return jsonify({'error': 'payment_not_pending'}), 409
         payment_intent_id = payment.stripe_payment_intent_id
+
+        live_pi = retrieve_payment_intent(payment_intent_id)
+        live_status = getattr(live_pi, 'status', None) if live_pi else None
+        if live_status in (
+            'requires_action', 'processing', 'succeeded', 'canceled'
+        ):
+            return jsonify({
+                'error': 'payment_intent_locked',
+                'message': (
+                    'This payment is already awaiting bank verification or processing. '
+                    'Please reload the page (do not submit again).'
+                ),
+                'status': live_status,
+            }), 409
 
         funding, brand, pm_type = retrieve_payment_method_details(payment_method_id)
         fee_cents = calculate_fee(base_amount_cents, funding, brand)
@@ -1837,9 +1856,13 @@ def api_payment_intent():
             initial_payment_info = calculate_initial_payment_amount(booking, payment_plan)
             base_amount_cents = int(round(initial_payment_info['initial_amount'] * 100))
         else:
-            # 其他情况：使用总金额
-            total_info = calculate_booking_total(booking)
-            base_amount_cents = int(round(total_info['total'] * 100))
+            return jsonify({
+                'error': 'unsupported_payment_step',
+                'message': (
+                    f'Unsupported payment_step={payment_step!r} for booking intent. '
+                    'Use initial, payoff, addon, or an installment_id.'
+                ),
+            }), 400
 
         # 查找Payment记录
         payments_query = Payment.query.filter(
@@ -4063,6 +4086,46 @@ def pay_booking_addon(booking_addon_id):
                         need_rebuild = True
                 except (TypeError, ValueError):
                     need_rebuild = True
+            # 金额正确且待微验证：勿再出示 Place Order，引导去 Stripe 验证页
+            if (
+                not need_rebuild
+                and pi_status == 'requires_action'
+            ):
+                verify_url = _payment_intent_microdeposit_verify_url(payment_intent)
+                try:
+                    handle_payment_intent_requires_action(
+                        payment_intent if isinstance(payment_intent, dict) else (
+                            payment_intent.to_dict()
+                            if hasattr(payment_intent, 'to_dict')
+                            else payment_intent
+                        )
+                    )
+                except Exception as e:
+                    db.session.rollback()
+                    current_app.logger.warning(
+                        'addon page microdeposit notify failed ba=%s: %s', ba.id, e
+                    )
+                return render_template(
+                    'booking/addon_payment.html',
+                    booking=booking,
+                    booking_addon=ba,
+                    addon_name=addon_label,
+                    base_amount_cents=base_amount_cents,
+                    publishable_key=current_app.config.get('STRIPE_PUBLISHABLE_KEY'),
+                    client_secret=None,
+                    payment_intent_id=getattr(payment_intent, 'id', None),
+                    success_url=url_for(
+                        'main.pay_booking_addon',
+                        booking_addon_id=ba.id,
+                        token=token,
+                        _external=True,
+                    ),
+                    payment_mode='addon',
+                    payment_step='addon',
+                    ach_locked=True,
+                    ach_verify_url=verify_url,
+                    token=token,
+                )
             if need_rebuild:
                 old_pi = getattr(payment_intent, 'id', None)
                 safe_cancel_payment_intent(
@@ -5018,7 +5081,10 @@ def handle_payment_intent_requires_action(payment_intent):
         email = (buyer.get('email') or data.get('email') or '').strip()
         name = (buyer.get('first_name') or '').strip() or 'Customer'
         trip_title = trip.title if trip else (data.get('trip_slug') or 'Trip Booking')
-        amount = (amount_cents / 100.0) if amount_cents else None
+        from app.addon_admin import ach_verify_display_amount_dollars
+        amount = ach_verify_display_amount_dollars(payment_intent, metadata)
+        if amount is None and amount_cents:
+            amount = amount_cents / 100.0
         order_ref = f"registration hold #{pending.id}"
         sent = send_ach_microdeposit_verify_email(
             recipient_email=email,
@@ -5043,7 +5109,10 @@ def handle_payment_intent_requires_action(payment_intent):
         if str(meta.get('ach_verify_email_sent') or '') == '1':
             return
         trip_title = booking.trip.title if booking.trip else 'Trip Booking'
-        amount = (amount_cents / 100.0) if amount_cents else None
+        from app.addon_admin import ach_verify_display_amount_dollars
+        amount = ach_verify_display_amount_dollars(payment_intent, metadata)
+        if amount is None and amount_cents:
+            amount = amount_cents / 100.0
         sent = send_ach_microdeposit_verify_email(
             recipient_email=booking.buyer_email,
             customer_name=(booking.buyer_first_name or '').strip() or 'Customer',

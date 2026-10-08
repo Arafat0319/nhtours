@@ -1,5 +1,6 @@
 """Smoke tests for Manage post-add add-ons."""
 from app.addon_admin import (
+    ach_verify_display_amount_dollars,
     booking_addon_line_total,
     create_manual_booking_addon,
     resolve_manual_addon_base_cents,
@@ -13,6 +14,53 @@ def test_is_addon_purchase_intent():
     assert is_addon_purchase_intent({'payment_type': 'addon_purchase'})
     assert is_addon_purchase_intent({'payment_step': 'addon'})
     assert not is_addon_purchase_intent({'payment_step': 'installment'})
+
+
+def test_ach_verify_email_amount_prefers_addon_line(app):
+    """微验证邮件金额用 addon 行，不用被污染的 PI.amount。"""
+    with app.app_context():
+        booking = Booking.query.filter(Booking.status != 'cancelled').first()
+        if not booking or not booking.trip_id:
+            return
+        ta = TripAddOn.query.filter_by(trip_id=booking.trip_id).first()
+        if not ta:
+            return
+        ba, err = create_manual_booking_addon(booking, ta.id, quantity=1)
+        assert err is None
+        line = booking_addon_line_total(ba)
+        poisoned_cents = int(round(line * 100)) + 219000
+        shown = ach_verify_display_amount_dollars(
+            {
+                'amount': poisoned_cents,
+                'metadata': {
+                    'booking_addon_id': str(ba.id),
+                    'base_amount': str(poisoned_cents),
+                    'payment_type': 'addon_purchase',
+                },
+            }
+        )
+        assert shown == line
+        db.session.delete(ba)
+        db.session.commit()
+
+
+def test_quote_rejects_unknown_payment_step_for_booking(app, client):
+    """未知 payment_step 不得再按整单 total 报价。"""
+    with app.app_context():
+        booking = Booking.query.filter(Booking.status != 'cancelled').first()
+        if not booking:
+            return
+        bid = booking.id
+    resp = client.post(
+        '/api/payment/quote',
+        json={
+            'booking_id': bid,
+            'payment_method_id': 'pm_card_visa',
+            'payment_step': 'deposit_installment',
+        },
+    )
+    assert resp.status_code == 400
+    assert resp.get_json().get('error') == 'unsupported_payment_step'
 
 
 def test_resolve_manual_addon_base_not_full_booking_total(app):

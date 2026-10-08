@@ -15,6 +15,59 @@ def booking_addon_line_total(ba):
     return round(booking_addon_unit_price(ba) * qty, 2)
 
 
+def ach_verify_display_amount_dollars(payment_intent, metadata=None):
+    """
+    微验证邮件展示金额：优先 BookingAddOn 行 / metadata.base_amount，
+    避免 PI 被错改成整单总额后邮件也显示错误大额。
+    """
+    meta = metadata
+    if meta is None:
+        if isinstance(payment_intent, dict):
+            meta = payment_intent.get('metadata') or {}
+        else:
+            meta = getattr(payment_intent, 'metadata', None) or {}
+            if hasattr(meta, 'to_dict'):
+                meta = meta.to_dict()
+            elif not isinstance(meta, dict):
+                try:
+                    meta = dict(meta)
+                except Exception:
+                    meta = {}
+    meta = dict(meta or {})
+
+    ba_id = meta.get('booking_addon_id')
+    if ba_id:
+        try:
+            from app.models import BookingAddOn
+
+            ba = BookingAddOn.query.get(int(ba_id))
+            if ba:
+                return booking_addon_line_total(ba)
+        except (TypeError, ValueError):
+            pass
+
+    raw_base = meta.get('base_amount')
+    if raw_base is not None and str(raw_base).strip() != '':
+        try:
+            cents = int(raw_base)
+            if cents > 0:
+                return round(cents / 100.0, 2)
+        except (TypeError, ValueError):
+            pass
+
+    if isinstance(payment_intent, dict):
+        amount_cents = payment_intent.get('amount') or 0
+    else:
+        amount_cents = getattr(payment_intent, 'amount', 0) or 0
+    try:
+        amount_cents = int(amount_cents)
+    except (TypeError, ValueError):
+        return None
+    if amount_cents <= 0:
+        return None
+    return round(amount_cents / 100.0, 2)
+
+
 def resolve_manual_addon_base_cents(
     *,
     booking_id=None,

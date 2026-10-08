@@ -89,6 +89,8 @@
 3. 验证通过后进入 Processing → 附加项行标 Processing → 到账后 Paid；**不会**取消整单
 4. 未付 Manual 附加项不进分期 / Auto Pay / Payoff
 
+**给客户口头说明（示例：已付清主行程、后加机票 $1600）**：打开邮件里的 Pay now → 确认 Total 只有附加项金额 → 选 US bank account → Place Order。若银行要验证，页面会跳到 Stripe 或邮件里有验证链接；到银行流水找 Stripe 小额/验证码（常 1–2 个工作日）完成验证后，付款进入 Processing，几个工作日到账；到账后会再收到确认。期间不要重复提交，也不要用旧的错误金额链接。
+
 ---
 
 ## 6. 清算期间的保护（Edge cases）

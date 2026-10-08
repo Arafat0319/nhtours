@@ -392,6 +392,14 @@ if (placeOrderButton) {
             });
             const result = await response.json();
             if (!response.ok) {
+                if (result.error === "payment_intent_locked") {
+                    showMessage(
+                        result.message
+                        || "This payment is already in progress. Reloading…"
+                    );
+                    setTimeout(function () { window.location.reload(); }, 1200);
+                    return;
+                }
                 throw new Error(result.error || "Payment update failed");
             }
 

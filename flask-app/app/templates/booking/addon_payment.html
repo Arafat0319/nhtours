@@ -33,7 +33,17 @@
         <div class="lg:col-span-2 space-y-6">
             <div>
                 <h2 class="text-2xl font-medium text-zinc-800 mb-2 uppercase tracking-wide">Add-on Payment</h2>
-                {% if ach_locked %}
+                {% if ach_verify_url %}
+                <p id="ach-payment-hint" class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-2" role="status">
+                    Your bank needs a quick verification before this <strong>${{ (base_amount_cents / 100)|format_currency }}</strong> ACH payment can continue.
+                    Look for a small deposit or a code from Stripe in your bank activity (often within 1–2 business days), then complete verification.
+                    We also emailed you a link. Do not submit payment again.
+                </p>
+                <a href="{{ ach_verify_url }}"
+                   class="inline-flex items-center justify-center w-full sm:w-auto px-4 py-3 bg-amber-800 text-white uppercase tracking-tight font-semibold text-sm rounded-xs hover:bg-amber-800/90 transition-colors mb-2">
+                    Verify bank account
+                </a>
+                {% elif ach_locked %}
                 <p id="ach-payment-hint" class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-2" role="status">
                     This payment is <strong>Processing</strong>. ACH bank transfers usually take several business days. Please wait until it clears — do not submit again.
                 </p>
@@ -119,6 +129,6 @@
         paymentStep: "{{ payment_step }}"
     };
 </script>
-<script src="{{ url_for('static', filename='js/payment.js') }}?v=addon-amt-1"></script>
+<script src="{{ url_for('static', filename='js/payment.js') }}?v=addon-amt-2"></script>
 {% endif %}
 {% endblock %}
