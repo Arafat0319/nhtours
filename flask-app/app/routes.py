@@ -2798,6 +2798,10 @@ def api_payment_status():
                         'status': 'failed' if intent_status in {'requires_payment_method', 'canceled'} else 'requires_action',
                         'payment_intent_id': payment_intent_id,
                     }
+                    if intent_status == 'requires_action':
+                        verify_url = _payment_intent_microdeposit_verify_url(intent)
+                        if verify_url:
+                            payload['verify_url'] = verify_url
                     err_msg = payment_intent_error_message(intent)
                     if err_msg:
                         payload['error_message'] = err_msg
@@ -2858,6 +2862,26 @@ def api_payment_status():
             except Exception as e:
                 db.session.rollback()
                 current_app.logger.warning(f"ACH processing sync failed: {e}")
+        elif intent and intent_status == 'requires_action':
+            # 已有 Payment（addon/分期）时 webhook 丢失的兜底：补发微验证邮件并返回 verify_url
+            try:
+                handle_payment_intent_requires_action(
+                    intent if isinstance(intent, dict) else (
+                        intent.to_dict() if hasattr(intent, 'to_dict') else intent
+                    )
+                )
+            except Exception as e:
+                db.session.rollback()
+                current_app.logger.warning(
+                    "ACH microdeposit verify notify (payment poll) failed: %s", e
+                )
+            verify_url = _payment_intent_microdeposit_verify_url(intent)
+            return jsonify({
+                'status': 'requires_action',
+                'booking_id': payment.booking_id,
+                'payment_intent_id': payment.stripe_payment_intent_id,
+                'verify_url': verify_url,
+            }), 200
         elif intent and intent_status in {'requires_payment_method', 'canceled'}:
             payment.status = 'failed'
             booking = Booking.query.get(payment.booking_id) if payment.booking_id else None

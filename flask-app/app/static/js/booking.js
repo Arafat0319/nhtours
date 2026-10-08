@@ -3052,6 +3052,19 @@
             } else {
                 const pi = embeddedPaymentSession.payment_intent_id
                     || (paymentIntent && paymentIntent.id);
+                // ACH 微存款：if_required 不会自动跳转，须打开 Stripe hosted verify
+                if (paymentIntent && paymentIntent.status === 'requires_action') {
+                    var na = paymentIntent.next_action || {};
+                    var md = na.verify_with_microdeposits || {};
+                    if (na.type === 'verify_with_microdeposits' && md.hosted_verification_url) {
+                        window.location.href = md.hosted_verification_url;
+                        return;
+                    }
+                    showBookingModalResult('failure', {
+                        message: 'Your bank needs a quick verification. Check your email for a link from us, or watch for small deposits from Stripe and complete verification.'
+                    });
+                    return;
+                }
                 if (paymentIntent && paymentIntent.status === 'processing') {
                     showBookingModalResult('processing', {
                         booking_id: null,
@@ -3427,6 +3440,18 @@
                         });
                         var btnP = submitButton || nextButton;
                         if (btnP) { btnP.disabled = false; btnP.textContent = 'Confirm Booking'; }
+                        return;
+                    }
+                    if (data.status === 'requires_action') {
+                        if (data.verify_url) {
+                            window.location.href = data.verify_url;
+                            return;
+                        }
+                        showBookingModalResult('failure', {
+                            message: 'Your bank needs a quick verification. Check your email for a link from us to complete ACH verification.'
+                        });
+                        var btnV = submitButton || nextButton;
+                        if (btnV) { btnV.disabled = false; btnV.textContent = 'Confirm Booking'; }
                         return;
                     }
                     if (data.status === 'failed') {

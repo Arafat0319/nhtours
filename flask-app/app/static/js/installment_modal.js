@@ -251,6 +251,20 @@
                         }
                         return;
                     }
+                    if (data.status === 'requires_action') {
+                        if (data.verify_url) {
+                            window.location.href = data.verify_url;
+                            return;
+                        }
+                        showResult('failure', {
+                            message: 'Your bank needs a quick verification. Check your email for a link from us to complete ACH verification.'
+                        });
+                        if (placeOrderBtn) {
+                            placeOrderBtn.disabled = false;
+                            placeOrderBtn.textContent = 'Confirm payment';
+                        }
+                        return;
+                    }
                     if (data.status === 'failed') {
                         showResult('failure', {
                             message: data.error_message || data.message || PAYMENT_FAILURE_FALLBACK
@@ -403,6 +417,18 @@
                 } else {
                     var pi = paymentIntentId || (result && result.payment_intent_id)
                         || (paymentIntent && paymentIntent.id);
+                    if (paymentIntent && paymentIntent.status === 'requires_action') {
+                        var na = paymentIntent.next_action || {};
+                        var md = na.verify_with_microdeposits || {};
+                        if (na.type === 'verify_with_microdeposits' && md.hosted_verification_url) {
+                            window.location.href = md.hosted_verification_url;
+                            return;
+                        }
+                        showResult('failure', {
+                            message: 'Your bank needs a quick verification. Check your email for a link from us, or watch for small deposits from Stripe and complete verification.'
+                        });
+                        return;
+                    }
                     if (paymentIntent && paymentIntent.status === 'processing') {
                         showResult('processing', { booking_id: bookingId });
                         if (pi) pollPaymentStatus(pi);

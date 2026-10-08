@@ -261,9 +261,10 @@
 
 | 事件类型 | 处理函数 | 说明 |
 |----------|----------|------|
+| `payment_intent.requires_action` | `handle_payment_intent_requires_action` | ACH 微存款：Pending 延期（硬上限 12d）+ 品牌验证邮件（含 hosted URL）；已有 Booking/addon/分期同发 |
 | `payment_intent.processing` | `handle_payment_intent_processing` | ACH 等异步：建/挂 Processing；发受理通知（无收据）；确认+收据在 succeeded |
 | `payment_intent.succeeded` | `handle_booking_payment_intent_succeeded` + `handle_payment_intent_succeeded` | 支付成功（双处理器）；从 processing 升级并确认邮件 |
-| `payment_intent.payment_failed` | `handle_payment_intent_failed` | 支付失败；processing 订单 → cancelled |
+| `payment_intent.payment_failed` | `handle_payment_intent_failed` | 支付失败；Pending 立刻 expire；processing 订单 → cancelled |
 | `checkout.session.completed` | `handle_checkout_completed` | Checkout 完成 |
 | `charge.refunded` | `handle_refund` | Charge.`amount_refunded` 幂等同步 Payment / Booking |
 
