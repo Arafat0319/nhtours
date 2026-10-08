@@ -186,11 +186,28 @@
 
         if (state === 'loading') {
             if (loadingEl) loadingEl.classList.remove('hidden');
-        } else if (state === 'processing') {
+        } else if (state === 'processing' || state === 'verify') {
             if (processingEl) processingEl.classList.remove('hidden');
             var copyEl = document.getElementById('booking-result-processing-copy');
-            if (copyEl && data && data.locked) {
+            var closeBtn = document.getElementById('booking-result-processing-close-btn');
+            if (state === 'verify' && copyEl) {
+                copyEl.textContent =
+                    'Your bank needs a quick verification before this ACH payment can continue. ' +
+                    'We emailed you a verification link — please open that email and complete verification there. ' +
+                    'You may also see a small deposit or code from Stripe in your bank activity (often within 1–2 business days). ' +
+                    'Do not submit payment again.';
+            } else if (copyEl && data && data.locked) {
                 copyEl.innerHTML = 'A US bank account (ACH) payment for this order is already processing. Please wait until it clears before making another payment. Confirmation and receipt will follow by email.';
+            }
+            if (closeBtn) {
+                if (state === 'verify' && data && data.verify_url) {
+                    closeBtn.textContent = 'Open verification page';
+                    closeBtn.onclick = function () {
+                        window.location.href = data.verify_url;
+                    };
+                } else if (state === 'verify') {
+                    closeBtn.textContent = 'Close';
+                }
             }
             var payoffSec = document.getElementById('installment-payoff-section');
             if (payoffSec) payoffSec.classList.add('hidden');
@@ -252,12 +269,9 @@
                         return;
                     }
                     if (data.status === 'requires_action') {
-                        if (data.verify_url) {
-                            window.location.href = data.verify_url;
-                            return;
-                        }
-                        showResult('failure', {
-                            message: 'Your bank needs a quick verification. Check your email for a link from us to complete ACH verification.'
+                        showResult('verify', {
+                            booking_id: data.booking_id,
+                            verify_url: data.verify_url || null
                         });
                         if (placeOrderBtn) {
                             placeOrderBtn.disabled = false;
@@ -420,13 +434,17 @@
                     if (paymentIntent && paymentIntent.status === 'requires_action') {
                         var na = paymentIntent.next_action || {};
                         var md = na.verify_with_microdeposits || {};
-                        if (na.type === 'verify_with_microdeposits' && md.hosted_verification_url) {
-                            window.location.href = md.hosted_verification_url;
-                            return;
-                        }
-                        showResult('failure', {
-                            message: 'Your bank needs a quick verification. Check your email for a link from us, or watch for small deposits from Stripe and complete verification.'
+                        var verifyUrl = (na.type === 'verify_with_microdeposits')
+                            ? (md.hosted_verification_url || null)
+                            : null;
+                        showResult('verify', {
+                            booking_id: bookingId,
+                            verify_url: verifyUrl
                         });
+                        if (pi) {
+                            fetch('/api/payment/status?payment_intent_id=' + encodeURIComponent(pi))
+                                .catch(function () {});
+                        }
                         return;
                     }
                     if (paymentIntent && paymentIntent.status === 'processing') {

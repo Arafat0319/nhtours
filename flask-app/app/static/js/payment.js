@@ -24,6 +24,60 @@ let quoteInFlight = false;
 let quoteTimer = null;
 let lastQuote = null;
 let isPayoffMode = false;
+/** Place Order 后进入 ACH 微验证等待态（勿在 finally 里恢复 Place Order） */
+let achVerifyWaiting = false;
+let pendingAchVerifyUrl = null;
+
+const ACH_MICRODEPOSIT_WAIT_MSG =
+    "Your bank needs a quick verification before this ACH payment can continue. " +
+    "We emailed you a verification link — please open that email and complete verification there. " +
+    "You may also see a small deposit or code from Stripe in your bank activity (often within 1–2 business days). " +
+    "Do not submit payment again.";
+
+/** 触发后端补发验证邮件（webhook 丢失时的兜底） */
+const triggerAchVerifyEmailNotify = (piId) => {
+    if (!piId) return;
+    try {
+        fetch(
+            "/api/payment/status?payment_intent_id=" + encodeURIComponent(piId),
+            { headers: { "X-Requested-With": "XMLHttpRequest" } }
+        ).catch(function () {});
+    } catch (e) {
+        /* ignore */
+    }
+};
+
+const showAchMicrodepositWaiting = (verifyUrl, piId) => {
+    achVerifyWaiting = true;
+    pendingAchVerifyUrl = verifyUrl || null;
+    clearMessage();
+
+    const hint = document.getElementById("ach-payment-hint");
+    if (hint) {
+        hint.textContent = ACH_MICRODEPOSIT_WAIT_MSG;
+        hint.classList.remove("hidden");
+    } else {
+        showMessage(ACH_MICRODEPOSIT_WAIT_MSG);
+    }
+
+    const paymentBox = document.getElementById("payment-element");
+    if (paymentBox) {
+        const wrap = paymentBox.closest(".bg-white") || paymentBox.parentElement;
+        if (wrap) wrap.classList.add("hidden");
+    }
+
+    if (placeOrderButton) {
+        if (pendingAchVerifyUrl) {
+            placeOrderButton.disabled = false;
+            placeOrderButton.textContent = "Open verification page";
+        } else {
+            placeOrderButton.disabled = true;
+            placeOrderButton.textContent = "Check your email";
+        }
+    }
+
+    triggerAchVerifyEmailNotify(piId || paymentIntentId || null);
+};
 
 function formatMoneyAmount(num) {
     const n = typeof num === 'number' ? num : parseFloat(num);
@@ -354,6 +408,15 @@ if (paymentElement) {
 if (placeOrderButton) {
     placeOrderButton.addEventListener("click", async (e) => {
         e.preventDefault();
+
+        // 已进入微验证等待：可选再打开 Stripe 验证页（主路径仍是邮件）
+        if (achVerifyWaiting) {
+            if (pendingAchVerifyUrl) {
+                window.location.href = pendingAchVerifyUrl;
+            }
+            return;
+        }
+
         clearMessage();
 
         if (!stripe || !elements) {
@@ -423,17 +486,17 @@ if (placeOrderButton) {
                 window.location.href = successUrl;
                 return;
             }
-            // ACH 微存款：redirect=if_required 时不会自动跳转，须打开 Stripe hosted verify
+            // ACH 微存款：停在本页说明「会发验证邮件」（原设计）；可选打开 Stripe 验证页
             if (paymentIntent && paymentIntent.status === "requires_action") {
                 const na = paymentIntent.next_action || {};
                 const md = na.verify_with_microdeposits || {};
-                const verifyUrl = md.hosted_verification_url;
-                if (na.type === "verify_with_microdeposits" && verifyUrl) {
-                    window.location.href = verifyUrl;
-                    return;
-                }
-                showMessage(
-                    "Your bank needs a quick verification. Check your email for a link from us, or watch for small deposits from Stripe and complete verification."
+                const verifyUrl =
+                    na.type === "verify_with_microdeposits"
+                        ? (md.hosted_verification_url || null)
+                        : null;
+                showAchMicrodepositWaiting(
+                    verifyUrl,
+                    (paymentIntent && paymentIntent.id) || paymentIntentId || null
                 );
                 return;
             }
@@ -441,7 +504,7 @@ if (placeOrderButton) {
         } catch (err) {
             showPaymentFailed(err);
         } finally {
-            if (placeOrderButton) {
+            if (placeOrderButton && !achVerifyWaiting) {
                 placeOrderButton.disabled = false;
                 placeOrderButton.textContent = "Place Order";
             }

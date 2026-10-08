@@ -85,11 +85,11 @@
 ## 5.1 Manage 后加 Add-on 选 ACH
 
 1. 管理员在订单上 **+ Add add-on** → 客户打开 `/pay-addon/…` 独立付款（**金额只含该附加项**，不含已付套餐）
-2. 若银行需微存款：同 §3.0，发验证邮件；付款页点 Place Order 后应跳转 Stripe 验证页（不要停在原页无反馈）
+2. 若银行需微存款：同 §3.0，发验证邮件；付款页点 Place Order 后**停在本页**说明「我们会发验证邮件，请在邮件里完成验证」（可选按钮 Open verification page）；**不要**无提示地卡住或默默跳走
 3. 验证通过后进入 Processing → 附加项行标 Processing → 到账后 Paid；**不会**取消整单
 4. 未付 Manual 附加项不进分期 / Auto Pay / Payoff
 
-**给客户口头说明（示例：已付清主行程、后加机票 $1600）**：打开邮件里的 Pay now → 确认 Total 只有附加项金额 → 选 US bank account → Place Order。若银行要验证，页面会跳到 Stripe 或邮件里有验证链接；到银行流水找 Stripe 小额/验证码（常 1–2 个工作日）完成验证后，付款进入 Processing，几个工作日到账；到账后会再收到确认。期间不要重复提交，也不要用旧的错误金额链接。
+**给客户口头说明（示例：已付清主行程、后加机票 $1600）**：打开邮件里的 Pay now → 确认 Total 只有附加项金额 → 选 US bank account → Place Order。若银行要验证，页面会提示查邮箱（系统另发验证邮件），也可点 Open verification page；到银行流水找 Stripe 小额/验证码（常 1–2 个工作日）完成验证后，付款进入 Processing，几个工作日到账；到账后会再收到确认。期间不要重复提交，也不要用旧的错误金额链接。
 
 ---
 

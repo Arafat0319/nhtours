@@ -29,8 +29,7 @@
                             <p style="margin:0;font-size:14px;color:#6b7280;line-height:1.55;">
                                 You started a US bank account (ACH) payment for
                                 <strong style="color:#374151;">{{ trip_title }}</strong>{% if order_ref %} ({{ order_ref }}){% endif %}.
-                                Your bank authorization was received, but <strong style="color:#374151;">your payment is not finished yet</strong>
-                                — and your trip registration is not confirmed until this payment completes.
+                                {{ pending_outcome_html|safe }}
                             </p>
                         </td>
                     </tr>

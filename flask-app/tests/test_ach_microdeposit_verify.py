@@ -279,6 +279,76 @@ def test_handler_existing_booking_path(app_ctx):
     db.session.commit()
 
 
+def test_handler_resolves_booking_from_payment_without_metadata_booking_id(app_ctx):
+    """metadata 缺 booking_id 时仍能按 PI 找到 Payment/Booking 并发信。"""
+    trip = Trip(
+        title=_uniq("title"),
+        slug=_uniq("slug"),
+        status="published",
+        is_published=True,
+        start_date=date(2027, 1, 1),
+        end_date=date(2027, 1, 10),
+        trip_abbr="MT",
+    )
+    db.session.add(trip)
+    db.session.flush()
+    client = Client(email=_uniq("c") + "@example.com", first_name="Joe", last_name="Z")
+    db.session.add(client)
+    db.session.flush()
+    booking = Booking(
+        client_id=client.id,
+        trip_id=trip.id,
+        buyer_email=None,
+        buyer_first_name="Joe",
+        status="fully_paid",
+        amount_paid=2190,
+        order_number=_uniq("ORD"),
+    )
+    db.session.add(booking)
+    db.session.flush()
+    pi_id = f"pi_{_uniq('nometabook')}"
+    pay = Payment(
+        booking_id=booking.id,
+        client_id=client.id,
+        trip_id=trip.id,
+        amount=1600,
+        status="pending",
+        stripe_payment_intent_id=pi_id,
+        currency="USD",
+        payment_metadata={
+            "payment_type": "addon_purchase",
+            "payment_step": "addon",
+            "booking_addon_id": "33",
+        },
+    )
+    db.session.add(pay)
+    db.session.commit()
+
+    with patch("app.routes.send_email_via_ses", return_value=(True, "ok")) as send:
+        handle_payment_intent_requires_action(
+            _microdeposit_pi(
+                pi_id,
+                amount=160000,
+                metadata={
+                    "payment_type": "addon_purchase",
+                    "payment_step": "addon",
+                    "booking_addon_id": "33",
+                },
+            )
+        )
+        assert send.call_count == 1
+        html = send.call_args[0][3]
+        text = send.call_args[0][4]
+        assert "add-on" in html.lower() or "add-on" in text.lower()
+        assert client.email in str(send.call_args)
+
+    db.session.delete(pay)
+    db.session.delete(booking)
+    db.session.delete(client)
+    db.session.delete(trip)
+    db.session.commit()
+
+
 def test_cleanup_keeps_microdeposit_pending(app_ctx):
     trip = Trip(
         title=_uniq("title"),

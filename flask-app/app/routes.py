@@ -5040,6 +5040,12 @@ def handle_payment_intent_requires_action(payment_intent):
                 metadata = {}
         amount_cents = getattr(payment_intent, 'amount', 0) or 0
 
+    if not isinstance(metadata, dict):
+        try:
+            metadata = dict(metadata or {})
+        except Exception:
+            metadata = {}
+
     verify_url = _payment_intent_microdeposit_verify_url(payment_intent)
     if not verify_url or not payment_intent_id:
         current_app.logger.info(
@@ -5049,6 +5055,7 @@ def handle_payment_intent_requires_action(payment_intent):
         return
 
     pending = PendingBooking.query.filter_by(payment_intent_id=payment_intent_id).first()
+    payment = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
     booking = None
     booking_id = metadata.get('booking_id')
     if booking_id:
@@ -5056,6 +5063,24 @@ def handle_payment_intent_requires_action(payment_intent):
             booking = Booking.query.get(int(booking_id))
         except (TypeError, ValueError):
             booking = None
+    if booking is None and payment and payment.booking_id:
+        booking = payment.booking or Booking.query.get(payment.booking_id)
+    if booking is None:
+        raw_ba = metadata.get('booking_addon_id')
+        if raw_ba:
+            try:
+                from app.models import BookingAddOn
+                ba_row = BookingAddOn.query.get(int(raw_ba))
+                if ba_row:
+                    booking = ba_row.booking
+            except (TypeError, ValueError):
+                pass
+
+    is_addon = (
+        str(metadata.get('payment_type') or '').strip().lower() == 'addon_purchase'
+        or str(metadata.get('payment_step') or '').strip().lower() == 'addon'
+        or bool(metadata.get('booking_addon_id'))
+    )
 
     # 延期 pending 至硬上限（created_at+12d，对齐 Stripe ~10d），避免 24h 误杀
     if pending and pending.status == 'pending':
@@ -5093,6 +5118,7 @@ def handle_payment_intent_requires_action(payment_intent):
             order_ref=order_ref,
             amount=amount,
             verify_url=verify_url,
+            is_addon=False,
         )
         if sent:
             data['ach_verify_email_sent'] = '1'
@@ -5102,28 +5128,46 @@ def handle_payment_intent_requires_action(payment_intent):
         db.session.commit()
         return
 
-    # 已有 Booking 的分期/后续 ACH（少见微存款路径）
-    if booking and booking.buyer_email:
-        payment = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
+    # 已有 Booking：分期 / Payoff / Manage 后加 addon
+    if booking:
         meta = dict((payment.payment_metadata if payment else None) or {})
         if str(meta.get('ach_verify_email_sent') or '') == '1':
+            return
+        email = (booking.buyer_email or '').strip()
+        if not email and booking.client:
+            email = (booking.client.email or '').strip()
+        if not email:
+            email = (metadata.get('buyer_email') or '').strip()
+        if not email:
+            current_app.logger.warning(
+                "ACH microdeposit verify for PI %s: booking %s has no email",
+                payment_intent_id,
+                booking.id,
+            )
             return
         trip_title = booking.trip.title if booking.trip else 'Trip Booking'
         from app.addon_admin import ach_verify_display_amount_dollars
         amount = ach_verify_display_amount_dollars(payment_intent, metadata)
         if amount is None and amount_cents:
             amount = amount_cents / 100.0
+        if is_addon:
+            order_ref = f"add-on on order {booking.order_number or booking.id}"
+        else:
+            order_ref = f"order {booking.order_number or booking.id}"
         sent = send_ach_microdeposit_verify_email(
-            recipient_email=booking.buyer_email,
+            recipient_email=email,
             customer_name=(booking.buyer_first_name or '').strip() or 'Customer',
             trip_title=trip_title,
-            order_ref=f"order {booking.order_number or booking.id}",
+            order_ref=order_ref,
             amount=amount,
             verify_url=verify_url,
+            is_addon=is_addon,
         )
-        if sent and payment is not None:
-            meta['ach_verify_email_sent'] = '1'
-            payment.payment_metadata = meta
+        if sent:
+            if payment is not None:
+                meta['ach_verify_email_sent'] = '1'
+                meta['ach_verify_email_sent_at'] = datetime.utcnow().isoformat() + 'Z'
+                payment.payment_metadata = meta
             db.session.commit()
         return
 
@@ -6204,6 +6248,7 @@ def send_ach_microdeposit_verify_email(
     order_ref,
     amount,
     verify_url,
+    is_addon=False,
 ):
     """
     ACH 微存款验证说明邮件：解释发生了什么 + 下一步（含 Stripe 验证链接）。
@@ -6218,6 +6263,34 @@ def send_ach_microdeposit_verify_email(
         return False
 
     subject = f"Action needed: verify your bank payment - {trip_title}"
+    if is_addon:
+        pending_outcome_html = (
+            'Your bank authorization was received, but <strong style="color:#374151;">'
+            'this add-on payment is not finished yet</strong> — the add-on stays unpaid '
+            'until verification succeeds and the bank transfer clears.'
+        )
+        pending_outcome_text = (
+            'Your bank authorization was received, but this add-on payment is not finished yet '
+            '— the add-on stays unpaid until verification succeeds and the bank transfer clears.'
+        )
+        footer_note = (
+            'This email is not a payment confirmation or receipt. '
+            'The add-on is marked paid only after the bank transfer succeeds.'
+        )
+    else:
+        pending_outcome_html = (
+            'Your bank authorization was received, but <strong style="color:#374151;">'
+            'your payment is not finished yet</strong> — and your trip registration is '
+            'not confirmed until this payment completes.'
+        )
+        pending_outcome_text = (
+            'Your bank authorization was received, but your payment is not finished yet '
+            '— and your trip registration is not confirmed until this payment completes.'
+        )
+        footer_note = (
+            'This email is not a payment confirmation or receipt. '
+            'Your registration is confirmed only after the bank transfer succeeds.'
+        )
     context = {
         'subject_line': subject,
         'customer_name': (customer_name or '').strip() or 'Customer',
@@ -6226,10 +6299,9 @@ def send_ach_microdeposit_verify_email(
         'amount': amount,
         'verify_url': url,
         'email_logo_url': _email_brand_logo_url(),
-        'footer_note': (
-            'This email is not a payment confirmation or receipt. '
-            'Your registration is confirmed only after the bank transfer succeeds.'
-        ),
+        'pending_outcome_html': pending_outcome_html,
+        'pending_outcome_text': pending_outcome_text,
+        'footer_note': footer_note,
     }
     html_body = render_template('emails/ach_microdeposit_verify.html', **context)
     text_body = render_template('emails/ach_microdeposit_verify.txt', **context)

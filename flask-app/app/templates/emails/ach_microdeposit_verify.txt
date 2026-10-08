@@ -3,7 +3,7 @@
 Hi{% if customer_name and customer_name != 'Customer' %} {{ customer_name }}{% endif %},
 
 You started a US bank account (ACH) payment for {{ trip_title }}{% if order_ref %} ({{ order_ref }}){% endif %}.
-Your bank authorization was received, but your payment is not finished yet — and your trip registration is not confirmed until this payment completes.
+{{ pending_outcome_text }}
 
 ACTION NEEDED: Verify your bank account
 Closing the checkout page is fine. Use the verification link below when your code appears.

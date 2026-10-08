@@ -3052,17 +3052,22 @@
             } else {
                 const pi = embeddedPaymentSession.payment_intent_id
                     || (paymentIntent && paymentIntent.id);
-                // ACH 微存款：if_required 不会自动跳转，须打开 Stripe hosted verify
+                // ACH 微存款：原设计 — 停在结果页说明会发验证邮件（可选打开 Stripe 页）
                 if (paymentIntent && paymentIntent.status === 'requires_action') {
                     var na = paymentIntent.next_action || {};
                     var md = na.verify_with_microdeposits || {};
-                    if (na.type === 'verify_with_microdeposits' && md.hosted_verification_url) {
-                        window.location.href = md.hosted_verification_url;
-                        return;
-                    }
-                    showBookingModalResult('failure', {
-                        message: 'Your bank needs a quick verification. Check your email for a link from us, or watch for small deposits from Stripe and complete verification.'
+                    var verifyUrl = (na.type === 'verify_with_microdeposits')
+                        ? (md.hosted_verification_url || null)
+                        : null;
+                    showBookingModalResult('verify', {
+                        payment_intent_id: pi,
+                        verify_url: verifyUrl
                     });
+                    // 兜底触发验证邮件（不依赖 webhook 是否立刻到达）
+                    if (pi) {
+                        fetch('/api/payment/status?payment_intent_id=' + encodeURIComponent(pi))
+                            .catch(function () {});
+                    }
                     return;
                 }
                 if (paymentIntent && paymentIntent.status === 'processing') {
@@ -3317,8 +3322,27 @@
 
         if (state === 'loading') {
             if (loadingEl) loadingEl.classList.remove('hidden');
-        } else if (state === 'processing') {
+        } else if (state === 'processing' || state === 'verify') {
             if (processingEl) processingEl.classList.remove('hidden');
+            var processingCopy = document.getElementById('booking-result-processing-copy');
+            var processingClose = document.getElementById('booking-result-processing-close-btn');
+            if (state === 'verify' && processingCopy) {
+                processingCopy.textContent =
+                    'Your bank needs a quick verification before this ACH payment can continue. ' +
+                    'We emailed you a verification link — please open that email and complete verification there. ' +
+                    'You may also see a small deposit or code from Stripe in your bank activity (often within 1–2 business days). ' +
+                    'Do not submit payment again.';
+            }
+            if (processingClose) {
+                if (state === 'verify' && data && data.verify_url) {
+                    processingClose.textContent = 'Open verification page';
+                    processingClose.onclick = function () {
+                        window.location.href = data.verify_url;
+                    };
+                } else if (state === 'verify') {
+                    processingClose.textContent = 'Close';
+                }
+            }
         } else if (state === 'success') {
             if (successEl) successEl.classList.remove('hidden');
             const bid = data && data.booking_id;
@@ -3443,12 +3467,9 @@
                         return;
                     }
                     if (data.status === 'requires_action') {
-                        if (data.verify_url) {
-                            window.location.href = data.verify_url;
-                            return;
-                        }
-                        showBookingModalResult('failure', {
-                            message: 'Your bank needs a quick verification. Check your email for a link from us to complete ACH verification.'
+                        showBookingModalResult('verify', {
+                            payment_intent_id: paymentIntentId || data.payment_intent_id,
+                            verify_url: data.verify_url || null
                         });
                         var btnV = submitButton || nextButton;
                         if (btnV) { btnV.disabled = false; btnV.textContent = 'Confirm Booking'; }
