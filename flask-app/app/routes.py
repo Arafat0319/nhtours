@@ -59,6 +59,10 @@ from app.payments import (
     catch_up_metadata_fields,
     parse_catch_up_ids,
     void_stale_pending_payments,
+    abandon_pending_booking,
+    cancel_sibling_empty_pending_bookings,
+    void_empty_shell_pending_payments,
+    EMPTY_PENDING_HOLD_MINUTES,
     booking_has_processing_ach_payment,
     find_processing_ach_covering_installment,
     iter_processing_payments_for_booking,
@@ -1010,7 +1014,7 @@ def handle_booking_submission(request, trip):
                 db.session.rollback()
                 return jsonify({'success': False, 'error': cap_err}), 400
 
-            expires_at = datetime.utcnow() + timedelta(hours=24)
+            expires_at = datetime.utcnow() + timedelta(minutes=EMPTY_PENDING_HOLD_MINUTES)
             hold_pi = f"pending_{uuid_mod.uuid4().hex}"
             pending_booking = PendingBooking(
                 trip_id=trip.id,
@@ -1021,6 +1025,19 @@ def handle_booking_submission(request, trip):
             )
             db.session.add(pending_booking)
             db.session.commit()
+
+            # 再提交报名：作废同行程同邮箱空壳，避免双占名额
+            try:
+                cancel_sibling_empty_pending_bookings(
+                    trip.id,
+                    (buyer_info.get('email') or ''),
+                    except_pending_id=pending_booking.id,
+                    commit=True,
+                )
+            except Exception as sib_err:
+                current_app.logger.warning(
+                    'Sibling pending cancel failed trip=%s: %s', trip.id, sib_err
+                )
 
             payment_intent = None
             payment_intent_id = hold_pi
@@ -2692,6 +2709,30 @@ def payment_pending():
     )
 
 
+@bp.route('/api/payment/abandon-pending', methods=['POST'])
+def api_payment_abandon_pending():
+    """
+    客人离开报名付款页：作废仍为空壳的 PendingBooking + PI。
+    微验证 / processing / 已完成 → 跳过（不误杀）。
+    支持 JSON 或 form（sendBeacon）。
+    """
+    data = request.get_json(silent=True) or {}
+    payment_intent_id = (
+        data.get('payment_intent_id')
+        or request.form.get('payment_intent_id')
+        or request.args.get('payment_intent_id')
+    )
+    reason = (
+        data.get('reason')
+        or request.form.get('reason')
+        or 'client_abandon'
+    )
+    if not payment_intent_id:
+        return jsonify({'success': False, 'error': 'missing_payment_intent_id'}), 400
+    result = abandon_pending_booking(payment_intent_id, reason=str(reason)[:200])
+    return jsonify({'success': True, **result}), 200
+
+
 @bp.route('/api/payment/status')
 def api_payment_status():
     booking_id = request.args.get('booking_id', type=int)
@@ -3509,6 +3550,20 @@ def pay_installment(installment_id):
         if payment_intent:
             installment.payment_intent_id = getattr(payment_intent, 'id', None)
             installment.payment_link = getattr(payment_intent, 'client_secret', None)
+            # 新建 PI：顺带清掉本单其它空壳 pending（其它期 catch-up 留下的）
+            try:
+                void_empty_shell_pending_payments(
+                    booking,
+                    except_payment_intent_id=getattr(payment_intent, 'id', None),
+                    min_age_minutes=None,
+                    commit=False,
+                )
+            except Exception as void_err:
+                current_app.logger.warning(
+                    'void empty shells on installment PI create booking=%s: %s',
+                    booking.id,
+                    void_err,
+                )
             db.session.commit()
             current_app.logger.info(
                 "Payment intent created installment_id=%s pi=%s catch_up_base=%s ids=%s",
@@ -3522,6 +3577,23 @@ def pay_installment(installment_id):
         abort(500)
 
     pi_id = getattr(payment_intent, 'id', None)
+    # 进入付款页：清掉本单其它空壳 pending（含复用旧 PI 的路径）
+    try:
+        void_empty_shell_pending_payments(
+            booking,
+            except_payment_intent_id=pi_id,
+            min_age_minutes=None,
+            commit=False,
+        )
+        db.session.commit()
+    except Exception as void_err:
+        db.session.rollback()
+        current_app.logger.warning(
+            'void empty shells on installment page booking=%s: %s',
+            booking.id,
+            void_err,
+        )
+
     payment = Payment.query.filter_by(
         installment_payment_id=installment.id,
         stripe_payment_intent_id=pi_id,

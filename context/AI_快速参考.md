@@ -71,11 +71,12 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 
 - PI：`payment_method_types=['card','us_bank_account']`；Element 同序；ACH 无卡费
 - ACH：`processing` 时建 Booking（防 PendingBooking 24h 过期）+ **受理邮件**；确认信+收据仅 `succeeded`
-- ACH 微存款：`requires_action` → 验证邮件；Pending 硬上限 **created_at+12d**；`payment_failed`/超时立刻 expire 放名额；凌晨清理兜底
+- ACH 微存款：`requires_action` → 验证邮件；Pending 硬上限 **created_at+12d**；`payment_failed`/超时立刻 expire 放名额；每小时 cleanup 延期/兜底
 - ACH 清算中：整单锁定（提醒跳过、分期页/API 不可再付）；规则见 `手册/ACH付款规则.md`
 - `PendingBooking.payment_intent_id`（可以是 `pi_…` 或 `free_…`）
 - 折扣抵「现在应付」；`$0` 勿建 Stripe PI
-- 未支付草稿：`expires_at=+24h`；03:00 cleanup → `expired` + `safe_cancel_payment_intent`（**跳过** PI 已 processing/succeeded）
+- 未支付空壳草稿：`expires_at=+60min`；关付款页/`pagehide` → `POST /api/payment/abandon-pending`；再提交同行程同邮箱作废旧空壳；**每小时** cleanup → `expired`（**跳过** processing/succeeded；微验证延期至 +12d）
+- 成单后 History 空壳 Payment：打开分期页或 >60min Incomplete → `void_empty_shell_pending_payments`
 - 报名在 `/trips/<slug>` **弹窗内** 5 步；正式页 `use_experimental_modal=True` → `_modal_steps_experimental.html`（产品套餐 + Travelers；有分期时产品内选 Pay in full / Deposit+installments）
 - **Book Now → Parental Waiver**：滚到底 → 5s 倒计时 → 勾选（`app/parental_waiver.py`）→ 报名弹窗；订单存 `parental_waiver_accepted_at` / `version`；滚动提示黑色加粗
 - File Upload：`POST /api/booking/upload`（UI：自定义 dropzone，见 `05` / `booking-modal.css`）
@@ -85,7 +86,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 - 静态 CSS/JS 部署后若样式「没变」：先 **Ctrl+F5**（无版本号时易缓存）
 - `_create_booking_from_metadata`：**勿**在函数内再 `from datetime import datetime`（会 UnboundLocalError）
 - 入账：仅 Payment **非 succeeded → succeeded** 时累加 `amount_paid`（防 webhook+status 双加）；已扣款勿因售罄 abort 建单
-- 报名库存口径：`app/package_capacity.py` — **已确认订单**（含 `processing`）+ **有效 PendingBooking 占位**；提交时 **行锁** 先占位再调 Stripe；24h 过期释放
+- 报名库存口径：`app/package_capacity.py` — **已确认订单**（含 `processing`）+ **有效 PendingBooking 占位**；提交时 **行锁** 先占位再调 Stripe；`expires_at` 过期即不占名额
 - **Auto Pay**：`app/auto_pay.py`；报名勾选 → 首笔成功 attach PM；到期日 Card 扣 catch-up；ACH processing 跳过；Manage 开/关 + 链接；Stripe 已成功的卡死 pending 只 settle、作废 PI 可重建、`open_payment_in_progress` 不发失败信
 - **Catch-up 多期**：一笔 PI 只挂锚定期（`installment_payments.payment_intent_id` 唯一）；sibling 只标 paid + `catch_up_ids` 记覆盖；勿给多行写同一 PI；Payment 已 succeeded 可续结 sibling
 - **Payment plan 展示**：多套餐同 due date 在 Manage / 报名预览 / 收据 / 催款邮件 / 付款页摘要合并金额；库内仍可双轨行；期数徽章与催款按 due_date 去重（同日一封）

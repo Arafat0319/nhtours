@@ -62,7 +62,7 @@
 0. 若银行需微存款验证：先停在 Pending + 验证邮件；客户填码后才进入 processing
 1. 客户 Confirm → Stripe 接受 ACH → `processing`
 2. 系统会立刻建 **Booking**（有订单号），状态 Processing，`amount_paid` 仍为 0  
-   - 原因：临时单 `PendingBooking` 默认约 24h 过期；微存款/清算中会按规则延期或立刻释放（见上表）
+   - 原因：临时单 `PendingBooking` 空壳默认约 **60 分钟**过期（关付款页会立刻作废空壳）；微存款/清算中会按规则延期或立刻释放（见上表）
 3. 发 Processing 通知邮件
 4. **到账成功后**才：
    - 记已付金额

@@ -329,19 +329,21 @@ def send_payment_failed_email(installment, *, failure_reason=None, days_overdue=
 
 def cleanup_expired_pending_bookings():
     """
-    清理过期未支付的 PendingBooking（创建时 expires_at = now+24h）。
+    清理过期未支付的 PendingBooking（空壳创建时 expires_at ≈ now+60min）。
     - status=pending 且已过期 → 标为 expired
-    - PI 已 processing/succeeded：不 expire（ACH 清算可能超过 24h），并延长 expires_at
+    - PI 已 processing/succeeded：不 expire（ACH 清算可超过短 TTL），并延长 expires_at
     - PI 为 requires_action + 微存款验证：延期至 created_at+12d 硬上限（对齐 Stripe ~10d）；
       超过硬上限则 expire（即使 Stripe 仍显示 requires_action）
     - 尽量取消对应 Stripe PaymentIntent（已成功/已取消则忽略）
-    每天由 APScheduler 调用。
+    由 APScheduler 每小时调用（名额在 expires_at 到期后即不计入，见 package_capacity）。
     """
     import stripe
 
     try:
+        from app.payments import EMPTY_PENDING_HOLD_MINUTES
+
         now = datetime.utcnow()
-        cutoff = now - timedelta(hours=24)
+        cutoff = now - timedelta(minutes=EMPTY_PENDING_HOLD_MINUTES)
         expired = (
             PendingBooking.query.filter(
                 PendingBooking.status == 'pending',
@@ -421,6 +423,55 @@ def cleanup_expired_pending_bookings():
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"PendingBooking cleanup failed: {e}", exc_info=True)
+        return 0
+
+
+def cleanup_empty_shell_pending_payments():
+    """
+    成单后 History 空壳：Payment.status=pending 且 Stripe 仍为 Incomplete
+    （requires_payment_method / 已 canceled），超过 EMPTY_PAYMENT_SHELL_MAX_AGE_MINUTES → failed。
+    跳过 processing / requires_action（微验证）。每小时由 APScheduler 调用。
+    """
+    try:
+        from app.models import Booking, Payment
+        from app.payments import (
+            EMPTY_PAYMENT_SHELL_MAX_AGE_MINUTES,
+            void_empty_shell_pending_payments,
+        )
+
+        cutoff = datetime.utcnow() - timedelta(minutes=EMPTY_PAYMENT_SHELL_MAX_AGE_MINUTES)
+        booking_ids = (
+            db.session.query(Payment.booking_id)
+            .filter(
+                Payment.status == 'pending',
+                Payment.created_at <= cutoff,
+            )
+            .distinct()
+            .all()
+        )
+        total = 0
+        for (bid,) in booking_ids:
+            booking = Booking.query.get(bid)
+            if not booking:
+                continue
+            total += void_empty_shell_pending_payments(
+                booking,
+                min_age_minutes=EMPTY_PAYMENT_SHELL_MAX_AGE_MINUTES,
+                commit=False,
+            )
+        if total:
+            db.session.commit()
+        current_app.logger.info(
+            'Empty-shell Payment cleanup: voided=%s bookings_scanned=%s',
+            total,
+            len(booking_ids),
+        )
+        return total
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(
+            'Empty-shell Payment cleanup failed: %s', e, exc_info=True
+        )
         return 0
 
 

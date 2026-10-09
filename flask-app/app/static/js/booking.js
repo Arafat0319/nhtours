@@ -3107,6 +3107,49 @@
         hint.classList.toggle('hidden', type !== 'us_bank_account');
     }
 
+    /**
+     * 离开付款页：作废仍为空壳的 PendingBooking（微验证/清算中服务端会跳过）。
+     * @param {{ keepalive?: boolean, reason?: string }} opts
+     */
+    function abandonEmbeddedPendingIfSafe(opts) {
+        opts = opts || {};
+        var pi = embeddedPaymentSession && embeddedPaymentSession.payment_intent_id;
+        if (!pi || String(pi).indexOf('free_') === 0) return;
+        // 结果态：支付已在进行或完成 — 勿 abandon
+        var resultWrap = document.getElementById('booking-modal-result');
+        if (resultWrap && !resultWrap.classList.contains('hidden')) {
+            var loadingEl = document.getElementById('booking-result-loading');
+            var successEl = document.getElementById('booking-result-success');
+            var processingEl = document.getElementById('booking-result-processing');
+            var verifyEl = document.getElementById('booking-result-verify');
+            if (
+                (loadingEl && !loadingEl.classList.contains('hidden'))
+                || (successEl && !successEl.classList.contains('hidden'))
+                || (processingEl && !processingEl.classList.contains('hidden'))
+                || (verifyEl && !verifyEl.classList.contains('hidden'))
+            ) {
+                return;
+            }
+        }
+        var reason = opts.reason || 'client_abandon';
+        var body = JSON.stringify({ payment_intent_id: pi, reason: reason });
+        try {
+            if (opts.keepalive && navigator.sendBeacon) {
+                var blob = new Blob([body], { type: 'application/json' });
+                navigator.sendBeacon('/api/payment/abandon-pending', blob);
+                return;
+            }
+        } catch (e) {}
+        try {
+            fetch('/api/payment/abandon-pending', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: body,
+                keepalive: !!opts.keepalive,
+            }).catch(function () {});
+        } catch (e2) {}
+    }
+
     function resetEmbeddedPaymentSession() {
         if (paymentElementInstance) {
             try {
@@ -3143,6 +3186,8 @@
         var keepFormData = !!opts.keepFormData;
         var goToPayment = !!opts.goToPayment;
 
+        // 清会话前先放弃当前空壳 pending（失败重试 / 关结果页）
+        abandonEmbeddedPendingIfSafe({ reason: 'prepare_new_booking' });
         showBookingModalResult(null);
         resetEmbeddedPaymentSession();
 
@@ -3582,6 +3627,11 @@
     }
 
     // 导出到全局（如果需要）
+    // 关标签 / 刷新：尽力作废空壳（微验证等服务端会跳过）
+    window.addEventListener('pagehide', function() {
+        abandonEmbeddedPendingIfSafe({ keepalive: true, reason: 'pagehide' });
+    });
+
     window.BookingWizard = {
         getBookingData: () => bookingData,
         goToStep: (step) => showStep(step),
@@ -3590,6 +3640,7 @@
         prepareNewBooking: prepareNewBooking,
         resetEmbeddedPaymentSession: resetEmbeddedPaymentSession,
         showBookingModalResult: showBookingModalResult,
+        abandonEmbeddedPendingIfSafe: abandonEmbeddedPendingIfSafe,
         setParentalWaiver: function(payload) {
             bookingData.parental_waiver = payload || null;
             if (payload) {

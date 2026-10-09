@@ -3111,6 +3111,7 @@
                     });
                     const pool = active.length ? active : norms;
                     if (pool.some(function(s) { return s === 'overdue'; })) return 'overdue';
+                    if (pool.some(function(s) { return s === 'processing'; })) return 'processing';
                     if (pool.some(function(s) { return s === 'pending'; })) return 'pending';
                     if (pool.every(function(s) { return s === 'paid'; })) return 'paid';
                     if (norms.every(function(s) { return String(s).indexOf('cancelled') === 0; })) {
@@ -3184,13 +3185,19 @@
                                 let label = row.isDeposit ? 'Deposit' : (
                                     row.due_date ? formatManagePlanDate(row.due_date) : ('Installment #' + row.installment_number)
                                 );
-                                const status = row.status || 'pending';
+                                // Display only: plan "pending" → Unpaid (avoid confusion with History pending)
+                                let status = row.status || 'pending';
+                                if (status === 'pending' && row.due_date && manageDaysPastDue(row.due_date) > 0) {
+                                    status = 'overdue';
+                                }
                                 const statusLabel = status === 'paid' ? 'Paid'
-                                    : status === 'pending' ? 'Pending'
+                                    : status === 'pending' ? 'Unpaid'
                                     : status === 'overdue' ? 'Overdue'
+                                    : status === 'processing' ? 'Processing'
                                     : status;
                                 const statusClass = status === 'paid' ? 'bg-green-100 text-green-800' :
                                     status === 'overdue' ? 'bg-red-100 text-red-800' :
+                                    status === 'processing' ? 'bg-amber-100 text-amber-800' :
                                     (String(status).indexOf('cancelled') === 0) ? 'bg-gray-100 text-gray-600' :
                                     'bg-yellow-100 text-yellow-800';
                                 const unpaid = status === 'pending' || status === 'overdue';

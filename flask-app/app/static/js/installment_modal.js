@@ -599,4 +599,30 @@
         }
         tryInitStripe();
     }
+
+    // 离开分期付款页：作废空壳 Payment（微验证/清算中服务端跳过）
+    window.addEventListener('pagehide', function() {
+        if (!paymentIntentId || achProcessingLocked) return;
+        if (resultWrap && !resultWrap.classList.contains('hidden')) {
+            if (
+                (loadingEl && !loadingEl.classList.contains('hidden'))
+                || (successEl && !successEl.classList.contains('hidden'))
+                || (processingEl && !processingEl.classList.contains('hidden'))
+            ) {
+                return;
+            }
+        }
+        try {
+            var body = JSON.stringify({
+                payment_intent_id: paymentIntentId,
+                reason: 'installment_pagehide',
+            });
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon(
+                    '/api/payment/abandon-pending',
+                    new Blob([body], { type: 'application/json' })
+                );
+            }
+        } catch (e) {}
+    });
 })();

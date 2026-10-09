@@ -269,6 +269,15 @@
             if (scrollEl) scrollEl.style.minHeight = '';
             var resultWrap = document.getElementById('booking-modal-result');
             var onResult = resultWrap && !resultWrap.classList.contains('hidden');
+            // 付款步关闭：立刻作废空壳 Pending，并清支付会话（避免再开复用已 cancel 的 PI）
+            if (!onResult && window.BookingWizard) {
+                if (typeof window.BookingWizard.abandonEmbeddedPendingIfSafe === 'function') {
+                    window.BookingWizard.abandonEmbeddedPendingIfSafe({ reason: 'modal_close' });
+                }
+                if (typeof window.BookingWizard.resetEmbeddedPaymentSession === 'function') {
+                    window.BookingWizard.resetEmbeddedPaymentSession();
+                }
+            }
             if (onResult && window.BookingWizard && typeof window.BookingWizard.prepareNewBooking === 'function') {
                 // 成功/失败结果页关闭：清结果态 + 支付会话，下次可重新下单
                 window.BookingWizard.prepareNewBooking({ keepFormData: false });

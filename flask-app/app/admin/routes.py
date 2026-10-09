@@ -3984,10 +3984,15 @@ def manage_booking(trip_id, booking_id):
                 payment_hidden_from_admin_history,
             )
             settled_via_payoff = False
+            # 按「实际付款时间，否则创建时间」升序：Initial 等已付在上；
+            # 勿用 paid_at 裸排序（pending 的 paid_at=NULL 在 SQLite 会浮到最前）。
             for payment in (
                 Payment.query.options(joinedload(Payment.installment_payment))
                 .filter_by(booking_id=booking.id)
-                .order_by(Payment.paid_at.asc(), Payment.created_at.asc(), Payment.id.asc())
+                .order_by(
+                    func.coalesce(Payment.paid_at, Payment.created_at).asc(),
+                    Payment.id.asc(),
+                )
                 .all()
             ):
                 if payment_hidden_from_admin_history(payment):
@@ -4064,7 +4069,10 @@ def manage_booking(trip_id, booking_id):
             deposit_reserved = booking_deposit_reserved(booking, deposit_hint=deposit_hint)
 
             # 获取分期付款记录
-            from app.payments import installment_display_label
+            from app.payments import (
+                installment_display_label,
+                installment_has_processing_ach,
+            )
             inst_rows = (
                 InstallmentPayment.query.filter_by(booking_id=booking.id)
                 .order_by(InstallmentPayment.installment_number)
@@ -4073,6 +4081,10 @@ def manage_booking(trip_id, booking_id):
             post_deposit_count = sum(1 for i in inst_rows if (i.installment_number or 0) > 0)
             installments = []
             for inst in inst_rows:
+                # Manage Payment plan 展示：与 History 的 pending 区分；ACH 清算中显示 Processing
+                disp_status = (inst.status or 'pending').strip() or 'pending'
+                if disp_status in ('pending', 'overdue') and installment_has_processing_ach(inst):
+                    disp_status = 'processing'
                 installments.append({
                     'id': inst.id,
                     'installment_number': inst.installment_number,
@@ -4081,7 +4093,7 @@ def manage_booking(trip_id, booking_id):
                     ),
                     'amount': float(inst.amount) if inst.amount else 0.0,
                     'due_date': inst.due_date.strftime('%Y-%m-%d') if inst.due_date else None,
-                    'status': inst.status,
+                    'status': disp_status,
                     'paid_at': inst.paid_at.strftime('%Y-%m-%d %H:%M') if inst.paid_at else None
                 })
             

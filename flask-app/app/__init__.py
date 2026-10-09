@@ -169,6 +169,7 @@ def create_app(config_name=None):
                 from app.tasks import (
                     send_installment_reminders,
                     cleanup_expired_pending_bookings,
+                    cleanup_empty_shell_pending_payments,
                     cleanup_old_rejected_testimonials,
                     send_scheduled_messages,
                     scan_ledger_anomalies,
@@ -188,6 +189,10 @@ def create_app(config_name=None):
                 def _run_pending_booking_cleanup():
                     with app.app_context():
                         cleanup_expired_pending_bookings()
+
+                def _run_empty_shell_payment_cleanup():
+                    with app.app_context():
+                        cleanup_empty_shell_pending_payments()
 
                 def _run_rejected_testimonial_cleanup():
                     with app.app_context():
@@ -221,14 +226,21 @@ def create_app(config_name=None):
                     id='process_auto_pay_charges',
                     replace_existing=True,
                 )
-                # 每天美西凌晨 3 点：过期 PendingBooking → expired + 取消 Stripe PI
+                # 每小时：过期空壳 PendingBooking → expired + 取消 Stripe PI
+                # （微验证/processing 会延期，不误杀）
                 scheduler.add_job(
                     _run_pending_booking_cleanup,
-                    'cron',
-                    hour=3,
-                    minute=0,
-                    timezone='America/Los_Angeles',
+                    'interval',
+                    hours=1,
                     id='cleanup_expired_pending_bookings',
+                    replace_existing=True,
+                )
+                # 每小时：成单后 Incomplete Payment 空壳 → failed
+                scheduler.add_job(
+                    _run_empty_shell_payment_cleanup,
+                    'interval',
+                    hours=1,
+                    id='cleanup_empty_shell_pending_payments',
                     replace_existing=True,
                 )
                 # 每天美西凌晨 3:30：删除超过 90 天的 rejected Testimonials

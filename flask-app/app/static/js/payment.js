@@ -511,3 +511,22 @@ if (placeOrderButton) {
         }
     });
 }
+
+// 离开付款页：作废空壳（微验证等待中不调用）
+window.addEventListener("pagehide", function () {
+    if (!paymentIntentId || achVerifyWaiting) return;
+    try {
+        var body = JSON.stringify({
+            payment_intent_id: paymentIntentId,
+            reason: "checkout_pagehide",
+        });
+        if (navigator.sendBeacon) {
+            navigator.sendBeacon(
+                "/api/payment/abandon-pending",
+                new Blob([body], { type: "application/json" })
+            );
+        }
+    } catch (e) {
+        /* ignore */
+    }
+});

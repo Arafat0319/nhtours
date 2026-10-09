@@ -288,6 +288,10 @@ def safe_cancel_payment_intent(payment_intent_id, reason=''):
 ACH_MICRODEPOSIT_HOLD_DAYS = 12
 # ACH processing（已提交清算）可超过微存款窗口，仍按滚动延期。
 ACH_PROCESSING_HOLD_DAYS = 14
+# 报名空壳（未绑支付方式 / 未进入 3DS·微验证）：占位 TTL。微验证/processing 仍按上面延期。
+EMPTY_PENDING_HOLD_MINUTES = 60
+# 成单后 History 空壳 Payment：超过此时长且仍 Incomplete 则定时作废。
+EMPTY_PAYMENT_SHELL_MAX_AGE_MINUTES = 60
 
 
 def pending_microdeposit_hard_cap(pending, now=None):
@@ -358,6 +362,273 @@ def expire_pending_booking_for_pi(payment_intent_id, reason='', *, cancel_pi=Tru
         reason or 'payment_failed',
     )
     return True
+
+
+def _intent_status(intent):
+    if not intent:
+        return None
+    if isinstance(intent, dict):
+        return intent.get('status')
+    return getattr(intent, 'status', None)
+
+
+def payment_intent_is_empty_shell(intent):
+    """
+    可安全作废的空壳 PI：尚未进入 3DS / 微验证 / 清算 / 成功。
+    - requires_payment_method / canceled / 无 intent → True
+    - requires_action / processing / succeeded / requires_confirmation / requires_capture → False
+    """
+    if intent is None:
+        return True
+    st = _intent_status(intent)
+    if st in (None, 'canceled', 'requires_payment_method'):
+        return True
+    return False
+
+
+def safe_cancel_empty_shell_payment_intent(payment_intent_id, reason=''):
+    """
+    仅取消空壳 PI。微验证 / 3DS / processing 等一律跳过（与 safe_cancel_payment_intent 不同）。
+    """
+    if not payment_intent_id:
+        return False
+    pi_s = str(payment_intent_id)
+    if pi_s.startswith('free_') or pi_s.startswith('pending_'):
+        return True
+
+    stripe.api_key = current_app.config.get('STRIPE_SECRET_KEY')
+    if not stripe.api_key:
+        current_app.logger.warning(
+            'safe_cancel_empty_shell: no STRIPE_SECRET_KEY (%s)', reason
+        )
+        return False
+    try:
+        pi = stripe.PaymentIntent.retrieve(payment_intent_id)
+        if not payment_intent_is_empty_shell(pi):
+            current_app.logger.info(
+                'Skip cancel non-shell PI %s status=%s (%s)',
+                payment_intent_id,
+                _intent_status(pi),
+                reason,
+            )
+            return False
+        st = _intent_status(pi)
+        if st == 'canceled':
+            return True
+        stripe.PaymentIntent.cancel(payment_intent_id)
+        current_app.logger.info(
+            'Cancelled empty-shell PaymentIntent %s (%s)', payment_intent_id, reason
+        )
+        return True
+    except Exception as e:
+        err = str(e).lower()
+        if 'already been canceled' in err or 'already canceled' in err:
+            return True
+        current_app.logger.warning(
+            'safe_cancel_empty_shell failed for %s (%s): %s',
+            payment_intent_id,
+            reason,
+            e,
+        )
+        return False
+
+
+def abandon_pending_booking(payment_intent_id, reason='client_abandon', *, commit=True):
+    """
+    客人离开付款页：
+    1) PendingBooking 仍 pending 且 PI 为空壳 → cancelled + 取消 PI
+    2) 否则若有 Payment.status=pending 且 PI 为空壳 → failed + 取消 PI
+    微验证 / processing / 已完成 → 不改动。
+    返回 {'abandoned': bool, 'skipped_reason': str|None, 'kind': str|None}
+    """
+    from app import db
+    from app.models import Payment, PendingBooking
+
+    if not payment_intent_id:
+        return {'abandoned': False, 'skipped_reason': 'missing_pi', 'kind': None}
+
+    pending = PendingBooking.query.filter_by(
+        payment_intent_id=payment_intent_id,
+        status='pending',
+    ).first()
+
+    pi_s = str(payment_intent_id)
+    intent = None
+    if not pi_s.startswith('free_') and not pi_s.startswith('pending_'):
+        intent = retrieve_payment_intent(payment_intent_id)
+        if intent is not None and not payment_intent_is_empty_shell(intent):
+            return {
+                'abandoned': False,
+                'skipped_reason': f'pi_status={_intent_status(intent)}',
+                'kind': None,
+            }
+
+    if pending:
+        data = dict(pending.booking_data or {})
+        data['cancelled_reason'] = (reason or 'client_abandon')[:200]
+        data['cancelled_at'] = datetime.utcnow().isoformat() + 'Z'
+        pending.booking_data = data
+        pending.status = 'cancelled'
+        pending.expires_at = datetime.utcnow()
+
+        if not pi_s.startswith('free_') and not pi_s.startswith('pending_'):
+            safe_cancel_empty_shell_payment_intent(
+                payment_intent_id,
+                reason=reason or f'abandon pending id={pending.id}',
+            )
+
+        if commit:
+            db.session.commit()
+        current_app.logger.info(
+            'Abandoned PendingBooking id=%s PI=%s (%s)',
+            pending.id,
+            payment_intent_id,
+            reason,
+        )
+        return {'abandoned': True, 'skipped_reason': None, 'kind': 'pending_booking'}
+
+    payment = Payment.query.filter_by(
+        stripe_payment_intent_id=payment_intent_id,
+        status='pending',
+    ).first()
+    if not payment:
+        return {'abandoned': False, 'skipped_reason': 'not_found', 'kind': None}
+
+    if not pi_s.startswith('free_') and not pi_s.startswith('pending_'):
+        safe_cancel_empty_shell_payment_intent(
+            payment_intent_id,
+            reason=reason or f'abandon payment id={payment.id}',
+        )
+    payment.status = 'failed'
+    meta = dict(payment.payment_metadata or {})
+    meta['voided_reason'] = reason or 'client_abandon'
+    meta['voided_at'] = datetime.utcnow().isoformat() + 'Z'
+    payment.payment_metadata = meta
+    if commit:
+        db.session.commit()
+    current_app.logger.info(
+        'Abandoned empty-shell Payment id=%s PI=%s (%s)',
+        payment.id,
+        payment_intent_id,
+        reason,
+    )
+    return {'abandoned': True, 'skipped_reason': None, 'kind': 'payment'}
+
+
+def cancel_sibling_empty_pending_bookings(
+    trip_id,
+    buyer_email,
+    *,
+    except_pending_id=None,
+    commit=False,
+):
+    """
+    同一行程 + 同一买家邮箱上其它空壳 PendingBooking → cancelled。
+    用于再次提交报名时避免双占名额。
+    """
+    from app import db
+    from app.models import PendingBooking
+
+    email = (buyer_email or '').strip().lower()
+    if not trip_id or not email:
+        return 0
+
+    rows = PendingBooking.query.filter(
+        PendingBooking.trip_id == trip_id,
+        PendingBooking.status == 'pending',
+    ).all()
+    n = 0
+    for pb in rows:
+        if except_pending_id and pb.id == except_pending_id:
+            continue
+        data = pb.booking_data or {}
+        buyer = data.get('buyer_info') or {}
+        other = (buyer.get('email') or '').strip().lower()
+        if other != email:
+            continue
+        pi = pb.payment_intent_id
+        pi_s = str(pi or '')
+        intent = None
+        if pi_s and not pi_s.startswith('free_') and not pi_s.startswith('pending_'):
+            intent = retrieve_payment_intent(pi)
+            if not payment_intent_is_empty_shell(intent):
+                continue
+        data = dict(data)
+        data['cancelled_reason'] = 'superseded_by_new_signup'
+        data['cancelled_at'] = datetime.utcnow().isoformat() + 'Z'
+        pb.booking_data = data
+        pb.status = 'cancelled'
+        pb.expires_at = datetime.utcnow()
+        if pi_s and not pi_s.startswith('free_') and not pi_s.startswith('pending_'):
+            safe_cancel_empty_shell_payment_intent(
+                pi,
+                reason=f'superseded sibling pending id={pb.id}',
+            )
+        n += 1
+    if n and commit:
+        db.session.commit()
+    if n:
+        current_app.logger.info(
+            'Cancelled %s sibling empty PendingBooking(s) trip=%s email=%s',
+            n,
+            trip_id,
+            email,
+        )
+    return n
+
+
+def void_empty_shell_pending_payments(
+    booking,
+    *,
+    except_payment_intent_id=None,
+    min_age_minutes=None,
+    commit=False,
+):
+    """
+    作废订单上可安全取消的 Payment pending 空壳（Incomplete / requires_payment_method）。
+    不碰 processing / requires_action（微验证）/ 已成功。
+    min_age_minutes: 仅清理创建超过该分钟数的（定时任务）；None=全部空壳（新建 intent 时）。
+    """
+    from app import db
+    from app.models import Payment
+
+    if not booking or not getattr(booking, 'id', None):
+        return 0
+
+    now = datetime.utcnow()
+    rows = Payment.query.filter_by(booking_id=booking.id, status='pending').all()
+    n = 0
+    for payment in rows:
+        pi = payment.stripe_payment_intent_id
+        if except_payment_intent_id and pi == except_payment_intent_id:
+            continue
+        if min_age_minutes is not None:
+            created = payment.created_at or now
+            if created > now - timedelta(minutes=int(min_age_minutes)):
+                continue
+        if pi:
+            intent = retrieve_payment_intent(pi)
+            if not payment_intent_is_empty_shell(intent):
+                continue
+            safe_cancel_empty_shell_payment_intent(
+                pi,
+                reason=f'void empty shell payment {payment.id} booking {booking.id}',
+            )
+        payment.status = 'failed'
+        meta = dict(payment.payment_metadata or {})
+        meta['voided_reason'] = 'empty_shell_cleanup'
+        meta['voided_at'] = now.isoformat() + 'Z'
+        payment.payment_metadata = meta
+        n += 1
+    if n and commit:
+        db.session.commit()
+    if n:
+        current_app.logger.info(
+            'Voided %s empty-shell pending Payment(s) booking=%s',
+            n,
+            booking.id,
+        )
+    return n
 
 
 def retrieve_payment_method_card_details(payment_method_id):
