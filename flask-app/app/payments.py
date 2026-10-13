@@ -1312,6 +1312,16 @@ def booking_payment_display_status(booking, today=None):
     if booking_has_overdue_amount(booking, today=today):
         return 'overdue'
 
+    # 免费结账标 fully_paid 后又加未付 Manual：库内 status 仍可能是 fully_paid，
+    # 展示上勿假装已结清（与 amount_due / unpaid_manual 对齐）。
+    if stored == 'fully_paid':
+        try:
+            amount_due = float(calculate_booking_total(booking).get('amount_due') or 0)
+        except Exception:
+            amount_due = 0.0
+        if amount_due > 0.001 and unpaid_manual_addons_total(booking) > 0.001:
+            return 'deposit_paid'
+
     # 混单（全款产品 + 分期产品）：已付一部分且仍有尾款时，勿显示 Deposit Paid
     if stored not in ('fully_paid',):
         try:
@@ -2219,58 +2229,92 @@ def booking_addon_unit_price(ba):
     return 0.0
 
 
-def calculate_booking_total(booking):
+def booking_addon_is_manual(ba):
+    """Manage 后加附加项（独立付款链接，不吃报名折扣码）。"""
+    return (getattr(ba, 'source', None) or 'booking').strip() == 'admin_manual'
+
+
+def booking_signup_subtotal(booking):
     """
-    计算 Booking 的总金额（包括套餐、附加项、折扣）
-    
-    Args:
-        booking: Booking 对象
-        
-    Returns:
-        dict: {
-            'subtotal': 小计（套餐 + 附加项）,
-            'discount': 折扣金额,
-            'total': 总计（净金额，不含 Stripe 手续费），
-            'amount_paid': 已支付金额（不含 Stripe 手续费）,
-            'amount_due': 待支付金额
-        }
-    
-    注意：
-    - total 是客户应付的净金额，不包含 Stripe 手续费
-    - amount_paid 来自 Booking.amount_paid，也是不含手续费的基础金额
-    - Stripe 手续费是在支付时额外收取的，由客户承担，但不进入我们的收入
-    - 套餐/附加项单价优先用下单快照（unit_price / price_at_booking）
+    报名结构小计：套餐 + 非 admin_manual 附加项。
+    折扣码只作用于这一块（与「后加不加 promo」一致）。
     """
     subtotal = 0.0
-    
-    # 计算套餐金额
-    for bp in booking.booking_packages.all():
+    try:
+        packages = booking.booking_packages.all()
+    except Exception:
+        packages = list(getattr(booking, 'booking_packages', []) or [])
+    for bp in packages:
         package_price = booking_package_unit_price(bp)
         quantity = int(bp.quantity) if bp.quantity else 1
         subtotal += package_price * quantity
-    
-    # 计算附加项金额
-    for addon in booking.addons.all():
+
+    try:
+        addons = booking.addons.all()
+    except Exception:
+        addons = list(getattr(booking, 'addons', []) or [])
+    for addon in addons:
+        if booking_addon_is_manual(addon):
+            continue
         addon_price = booking_addon_unit_price(addon)
         quantity = int(addon.quantity) if addon.quantity else 1
         subtotal += addon_price * quantity
-    
-    # 应用折扣码（从 Booking.discount_amount 获取）
+    return round(subtotal, 2)
+
+
+def booking_manual_addons_subtotal(booking):
+    """全部 admin_manual 行价合计（含已付 / 未付；结构口径）。"""
+    total = 0.0
+    try:
+        addons = booking.addons.all()
+    except Exception:
+        addons = list(getattr(booking, 'addons', []) or [])
+    for addon in addons:
+        if not booking_addon_is_manual(addon):
+            continue
+        addon_price = booking_addon_unit_price(addon)
+        quantity = int(addon.quantity) if addon.quantity else 1
+        total += addon_price * quantity
+    return round(total, 2)
+
+
+def calculate_booking_total(booking):
+    """
+    计算 Booking 的总金额（包括套餐、附加项、折扣）
+
+    口径：
+    - 折扣码只扣「报名结构」= 套餐 + source!=admin_manual 的附加项
+    - Manage 后加（admin_manual）永远叠在折扣之后，不参与 promo
+    - total = max(0, signup_subtotal - discount) + manual_subtotal
+
+    Returns:
+        dict: subtotal / signup_subtotal / manual_subtotal / discount /
+              discount_applied / total / amount_paid / amount_refunded / amount_due
+    """
+    signup_subtotal = booking_signup_subtotal(booking)
+    manual_subtotal = booking_manual_addons_subtotal(booking)
+    subtotal = round(signup_subtotal + manual_subtotal, 2)
+
     discount = float(booking.discount_amount) if booking.discount_amount else 0.0
-    
-    total = max(0.0, subtotal - discount)
+    discount_applied = min(max(0.0, discount), signup_subtotal)
+    trip_total = max(0.0, signup_subtotal - discount)
+    total = round(trip_total + manual_subtotal, 2)
+
     amount_paid = float(booking.amount_paid) if booking.amount_paid else 0.0
     amount_refunded = booking_refunded_total(booking)
     # 已退部分曾计入收款，不能因退款再变成「欠款」
     amount_due = max(0.0, total - amount_paid - amount_refunded)
-    
+
     return {
         'subtotal': subtotal,
+        'signup_subtotal': signup_subtotal,
+        'manual_subtotal': manual_subtotal,
         'discount': discount,
+        'discount_applied': round(discount_applied, 2),
         'total': total,
         'amount_paid': amount_paid,
         'amount_refunded': amount_refunded,
-        'amount_due': amount_due
+        'amount_due': amount_due,
     }
 
 

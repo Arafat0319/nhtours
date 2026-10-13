@@ -41,33 +41,17 @@ def forced_reply_to_email():
 
 
 def booking_expected_amount(booking):
-    """应付金额：套餐+附加−折扣（与 Manage / Excel 一致）。"""
-    booking_gross = 0.0
+    """应付金额：与 calculate_booking_total 同源（后加 Manual 不吃报名折扣）。"""
+    from app.payments import calculate_booking_total
+
     has_packages = False
-    seen_addon_ids = set()
     for bp in booking.booking_packages:
         if bp.package:
-            package_price = booking_package_unit_price(bp)
-            quantity = int(bp.quantity) if bp.quantity is not None else 1
-            booking_gross += package_price * quantity
             has_packages = True
-    for participant in booking.participants:
-        for booking_addon in participant.addons:
-            if booking_addon.addon and booking_addon.id not in seen_addon_ids:
-                addon_price = booking_addon_unit_price(booking_addon)
-                quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 0
-                booking_gross += addon_price * quantity
-                seen_addon_ids.add(booking_addon.id)
-    for booking_addon in booking.addons:
-        if booking_addon.addon and booking_addon.id not in seen_addon_ids:
-            addon_price = booking_addon_unit_price(booking_addon)
-            quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 0
-            booking_gross += addon_price * quantity
-            seen_addon_ids.add(booking_addon.id)
-    discount = float(booking.discount_amount) if booking.discount_amount else 0.0
+            break
     if not has_packages:
         return round(float(booking.amount_paid) if booking.amount_paid is not None else 0.0, 2)
-    return round(max(0.0, booking_gross - discount), 2)
+    return round(float(calculate_booking_total(booking).get('total') or 0.0), 2)
 
 
 def booking_balance_due(booking):

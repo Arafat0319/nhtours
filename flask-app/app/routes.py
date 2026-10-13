@@ -2352,7 +2352,8 @@ def _booking_receipt_context(booking, payment_id=None):
 
     discount_amount = float(booking.discount_amount) if booking.discount_amount else 0.0
     trip_total_before_discount = packages_subtotal + addons_total
-    expected_amount = max(0.0, trip_total_before_discount - discount_amount)
+    # 与 calculate_booking_total 同源：折扣只扣报名结构，admin_manual 不吃 promo
+    expected_amount = float(calculate_booking_total(booking).get('total') or 0.0)
     if not has_packages:
         expected_amount = float(booking.amount_paid) if booking.amount_paid is not None else 0.0
 

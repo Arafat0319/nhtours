@@ -13,7 +13,12 @@ from app import db
 from app.admin import bp
 from app.admin.forms import LoginForm, TripForm, CityForm, ClientForm, TripBasicsForm, TripDescriptionForm, TripPackagesForm, TripAddonsForm, TripParticipantForm, TripCouponForm, EditBookingForm, TestimonialForm
 from app.models import User, Trip, City, Client, Lead, Testimonial, TripPackage, TripAddOn, CustomQuestion, DiscountCode, Booking, BookingParticipant, BookingAddOn, BookingPackage, Payment, Message, InstallmentPayment, PendingBooking
-from app.payments import create_checkout_session, booking_package_unit_price, booking_addon_unit_price
+from app.payments import (
+    create_checkout_session,
+    booking_package_unit_price,
+    booking_addon_unit_price,
+    calculate_booking_total,
+)
 from app.utils import (
     save_image,
     send_email_via_ses,
@@ -146,7 +151,7 @@ def calculate_trip_stats(trip):
     - amount_paid: 来自 Booking.amount_paid，是客户实际支付的基础金额（不含 Stripe 手续费）
     - amount_gross: 原价总额（套餐 + 附加项）
     - amount_discount: 折扣总额
-    - amount_expected: 净应收金额（gross - discount）
+    - amount_expected: 净应收（报名结构−折扣 + admin_manual；后加不加 promo）
     - amount_refunded: Σ 已退基础额（与 Manage Refunded 同口径）
     - amount_available: Σ balance due（待收；已退款不计入欠款）
     """
@@ -203,9 +208,9 @@ def calculate_trip_stats(trip):
                 booking_gross += addon_price * quantity
                 seen_addon_ids.add(booking_addon.id)
         
-        # 折扣金额
+        # 折扣金额（展示用）；Expected 与 calculate_booking_total 同源
         discount = float(b.discount_amount) if b.discount_amount else 0.0
-        booking_expected = max(0.0, booking_gross - discount)
+        booking_expected = float(calculate_booking_total(b).get('total') or 0.0)
         
         # Fallback for legacy bookings without BookingPackages
         if not has_packages:
@@ -444,9 +449,9 @@ def manage_trip(id):
                 booking_gross += addon_price * quantity
                 seen_addon_ids.add(booking_addon.id)
         
-        # 折扣金额
+        # 折扣金额（展示用）；Expected 与 calculate_booking_total 同源
         discount = float(b.discount_amount) if b.discount_amount else 0.0
-        booking_expected = max(0.0, booking_gross - discount)
+        booking_expected = float(calculate_booking_total(b).get('total') or 0.0)
         
         # Fallback for legacy bookings without BookingPackages
         if not has_packages:
@@ -3946,10 +3951,11 @@ def manage_booking(trip_id, booking_id):
                         'payment_plan_config': payment_plan_config
                     })
             
-            # 计算应付金额（扣除折扣）
+            # 应付金额：与 calculate_booking_total 同源
+            # （折扣只扣报名结构；admin_manual 叠在折扣之后，不参与 promo）
             discount_amount = float(booking.discount_amount) if booking.discount_amount else 0.0
-            expected_amount = max(0.0, packages_total + addons_total - discount_amount)
-            
+            expected_amount = float(calculate_booking_total(booking).get('total') or 0.0)
+
             # Fallback for legacy bookings
             if not has_packages:
                 expected_amount = float(booking.amount_paid) if booking.amount_paid is not None else 0.0
@@ -3959,7 +3965,7 @@ def manage_booking(trip_id, booking_id):
             # - Payment.amount = 客户该笔实扣（美元，含卡手续费）
             # - Payment.fee_cents = 该笔卡手续费（分）；若无则用 base_amount_cents 反推或 0
             # - Booking.amount_paid = 已付基础金额合计（不含手续费），支付成功时在 routes 中累加
-            # - expected_amount = 订单应付（套餐+附加-折扣），与 Payment 无关
+            # - expected_amount = 报名结构−折扣 + admin_manual（后加不加 promo），与 Payment 无关
             # - payment_summary = 从 Payment 表汇总；amount_paid_display = 有支付时用汇总实收，否则用 booking.amount_paid
             # -------------------------------------------------------------------------
             payments = []
@@ -4433,9 +4439,9 @@ def get_trip_financials(id):
                 booking_gross += addon_price * quantity
                 seen_addon_ids.add(booking_addon.id)
         
-        # 折扣金额
+        # 折扣金额（展示用）；Expected 与 calculate_booking_total 同源
         discount = float(b.discount_amount) if b.discount_amount else 0.0
-        booking_expected = max(0.0, booking_gross - discount)
+        booking_expected = float(calculate_booking_total(b).get('total') or 0.0)
         
         # Fallback for legacy bookings without BookingPackages
         if not has_packages:
