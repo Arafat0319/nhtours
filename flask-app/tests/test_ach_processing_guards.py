@@ -104,6 +104,10 @@ def test_processing_helpers_with_db(app):
         assert found is not None
         assert found.id == pay.id
 
+        from app.payments import booking_payment_display_status
+
+        assert booking_payment_display_status(booking) == 'processing'
+
         db.session.delete(pay)
         db.session.delete(inst)
         db.session.delete(booking)

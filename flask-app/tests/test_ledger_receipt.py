@@ -143,11 +143,17 @@ def test_booking_payment_display_status_priority():
 
     booking = SimpleNamespace(id=9, status="deposit_paid")
 
-    # 优先级：cancelled > fully/partially_refunded > overdue > 库内 status
+    # 优先级：cancelled > refund > processing(ACH) > overdue > 库内 status
     with patch.object(payments_mod, "booking_refund_display_kind", return_value=None), patch.object(
-        payments_mod, "booking_has_overdue_amount", return_value=True
-    ):
+        payments_mod, "booking_has_processing_ach_payment", return_value=False
+    ), patch.object(payments_mod, "booking_has_overdue_amount", return_value=True):
         assert payments_mod.booking_payment_display_status(booking) == "overdue"
+
+    # ACH 在途时即使日历逾期也显示 Processing（筛选 Processing 才能命中）
+    with patch.object(payments_mod, "booking_refund_display_kind", return_value=None), patch.object(
+        payments_mod, "booking_has_processing_ach_payment", return_value=True
+    ), patch.object(payments_mod, "booking_has_overdue_amount", return_value=True):
+        assert payments_mod.booking_payment_display_status(booking) == "processing"
 
     with patch.object(
         payments_mod, "booking_refund_display_kind", return_value="partially_refunded"
@@ -164,6 +170,6 @@ def test_booking_payment_display_status_priority():
     ) == "cancelled"
 
     with patch.object(payments_mod, "booking_refund_display_kind", return_value=None), patch.object(
-        payments_mod, "booking_has_overdue_amount", return_value=False
-    ):
+        payments_mod, "booking_has_processing_ach_payment", return_value=False
+    ), patch.object(payments_mod, "booking_has_overdue_amount", return_value=False):
         assert payments_mod.booking_payment_display_status(booking) == "deposit_paid"

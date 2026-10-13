@@ -1300,8 +1300,15 @@ def booking_has_overdue_amount(booking, today=None):
 def booking_payment_display_status(booking, today=None):
     """
     后台 Payment Status 展示态（不改库内 booking.status）。
-    优先级：cancelled > fully_refunded / partially_refunded > overdue
-           > mixed+仍有欠款 → partially_paid > 库内 status
+    优先级：cancelled > fully_refunded / partially_refunded
+           > processing（有在途 ACH/异步付款）
+           > overdue
+           > fully_paid+未付 Manual → deposit_paid
+           > mixed+仍有欠款 → partially_paid
+           > 库内 status
+
+    列表筛选 data-status 与徽章同源；ACH 清算中不得仍标 Overdue/Deposit Paid，
+    否则选 Processing 会漏单。
     """
     stored = (getattr(booking, 'status', None) or 'pending').strip() or 'pending'
     if stored == 'cancelled':
@@ -1309,6 +1316,15 @@ def booking_payment_display_status(booking, today=None):
     kind = booking_refund_display_kind(booking)
     if kind:
         return kind
+
+    # ACH / 异步清算中：优先于 overdue（分期已过 due 但钱在路上）
+    try:
+        bid = getattr(booking, 'id', None)
+        if bid and booking_has_processing_ach_payment(bid):
+            return 'processing'
+    except Exception:
+        pass
+
     if booking_has_overdue_amount(booking, today=today):
         return 'overdue'
 
