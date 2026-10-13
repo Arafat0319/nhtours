@@ -2892,15 +2892,19 @@ def api_payment_status():
                 return jsonify(payload), 200
         return jsonify({'status': 'pending', 'payment_intent_id': payment_intent_id}), 200
 
-    # 如果Payment状态是pending，再次检查Stripe状态（Stripe SDK 返回对象用 getattr 取 status）
-    if payment.status in ('pending', 'processing') and payment.stripe_payment_intent_id:
+    # 本地未终态成功时，以 Stripe 为准纠偏（含误标 failed 但 Stripe 已 succeeded）
+    if payment.status in ('pending', 'processing', 'failed') and payment.stripe_payment_intent_id:
         intent = retrieve_payment_intent(payment.stripe_payment_intent_id)
         intent_status = getattr(intent, 'status', None) if intent else None
         if intent and intent_status == 'succeeded':
             try:
                 pi_dict = _stripe_intent_as_dict(intent, payment.stripe_payment_intent_id)
                 step = ((pi_dict.get('metadata') or {}).get('payment_step') or '').strip().lower()
-                if step == 'payoff':
+                ptype = ((pi_dict.get('metadata') or {}).get('payment_type') or '').strip().lower()
+                if step == 'addon' or ptype == 'addon_purchase':
+                    from app.addon_payment import handle_addon_payment_succeeded
+                    handle_addon_payment_succeeded(pi_dict)
+                elif step == 'payoff':
                     handle_booking_payment_intent_succeeded(pi_dict)
                 elif _payment_intent_is_installment_flow(pi_dict):
                     handle_payment_intent_succeeded(pi_dict)
@@ -2911,22 +2915,24 @@ def api_payment_status():
                 db.session.rollback()
                 current_app.logger.warning(f"Error handling payment (may already be processed): {str(e)}")
         elif intent and intent_status == 'processing' and payment.status != 'processing':
-            try:
-                handle_payment_intent_processing(
-                    intent if isinstance(intent, dict) else (
-                        intent.to_dict() if hasattr(intent, 'to_dict') else {
-                            'id': getattr(intent, 'id', payment.stripe_payment_intent_id),
-                            'amount': getattr(intent, 'amount', 0),
-                            'currency': getattr(intent, 'currency', 'usd'),
-                            'metadata': dict(getattr(intent, 'metadata', None) or {}),
-                            'payment_method_types': list(getattr(intent, 'payment_method_types', None) or []),
-                        }
+            # 勿把已失败空壳「升」成 processing；仅 pending→processing
+            if payment.status == 'pending':
+                try:
+                    handle_payment_intent_processing(
+                        intent if isinstance(intent, dict) else (
+                            intent.to_dict() if hasattr(intent, 'to_dict') else {
+                                'id': getattr(intent, 'id', payment.stripe_payment_intent_id),
+                                'amount': getattr(intent, 'amount', 0),
+                                'currency': getattr(intent, 'currency', 'usd'),
+                                'metadata': dict(getattr(intent, 'metadata', None) or {}),
+                                'payment_method_types': list(getattr(intent, 'payment_method_types', None) or []),
+                            }
+                        )
                     )
-                )
-            except Exception as e:
-                db.session.rollback()
-                current_app.logger.warning(f"ACH processing sync failed: {e}")
-        elif intent and intent_status == 'requires_action':
+                except Exception as e:
+                    db.session.rollback()
+                    current_app.logger.warning(f"ACH processing sync failed: {e}")
+        elif intent and intent_status == 'requires_action' and payment.status != 'failed':
             # 已有 Payment（addon/分期）时 webhook 丢失的兜底：补发微验证邮件并返回 verify_url
             try:
                 handle_payment_intent_requires_action(
@@ -2946,7 +2952,12 @@ def api_payment_status():
                 'payment_intent_id': payment.stripe_payment_intent_id,
                 'verify_url': verify_url,
             }), 200
-        elif intent and intent_status in {'requires_payment_method', 'canceled'}:
+        elif (
+            intent
+            and intent_status in {'requires_payment_method', 'canceled'}
+            and payment.status in ('pending', 'processing')
+        ):
+            # 仅未成功的本地行可标 failed；勿动已 succeeded
             payment.status = 'failed'
             booking = Booking.query.get(payment.booking_id) if payment.booking_id else None
             if booking and booking.status == 'processing':
@@ -3497,8 +3508,25 @@ def pay_installment(installment_id):
                     pi_id=getattr(payment_intent, 'id', None),
                     proc=proc,
                 )
+            # Stripe 已成功：入账后跳已付，禁止 cancel/重建
+            if status == 'succeeded':
+                try:
+                    handle_payment_intent_succeeded(
+                        _stripe_intent_as_dict(
+                            payment_intent, getattr(payment_intent, 'id', None)
+                        )
+                    )
+                except Exception as e:
+                    db.session.rollback()
+                    current_app.logger.warning(
+                        'installment page settle succeeded PI failed inst=%s: %s',
+                        installment.id,
+                        e,
+                    )
+                return _redirect_already_paid(booking)
+
             pi_meta = dict(getattr(payment_intent, 'metadata', None) or {})
-            need_rebuild = status in ('succeeded', 'canceled')
+            need_rebuild = status in ('canceled',)
             if not need_rebuild:
                 stored_base = pi_meta.get('base_amount')
                 stored_ids = (pi_meta.get('catch_up_ids') or '').strip()
@@ -4141,8 +4169,26 @@ def pay_booking_addon(booking_addon_id):
                     ach_locked=True,
                     token=token,
                 )
+            # Stripe 已成功：以 Stripe 为准入账，绝不能 cancel/重建（2612MT-027 根因）
+            if pi_status == 'succeeded':
+                try:
+                    from app.addon_payment import handle_addon_payment_succeeded
+                    handle_addon_payment_succeeded(
+                        _stripe_intent_as_dict(
+                            payment_intent, getattr(payment_intent, 'id', None)
+                        )
+                    )
+                except Exception as e:
+                    db.session.rollback()
+                    current_app.logger.warning(
+                        'addon page settle succeeded PI failed ba=%s: %s', ba.id, e
+                    )
+                db.session.expire_all()
+                ba = BookingAddOn.query.get(ba.id) or ba
+                return _redirect_already_paid(booking, payment_id=ba.payment_id)
+
             need_rebuild = pi_status in (
-                'succeeded', 'canceled', 'requires_payment_method'
+                'canceled', 'requires_payment_method'
             )
             if not need_rebuild:
                 pi_meta = dict(getattr(payment_intent, 'metadata', None) or {})
@@ -4200,6 +4246,7 @@ def pay_booking_addon(booking_addon_id):
                 )
             if need_rebuild:
                 old_pi = getattr(payment_intent, 'id', None)
+                # 仅作废未成功的 PI；succeeded 已在上方短路
                 safe_cancel_payment_intent(
                     old_pi,
                     reason=f'addon amount mismatch ba={ba.id}',

@@ -1409,6 +1409,9 @@ def reconcile_booking_ledger(booking, *, check_stripe=False):
             if stripe_issue:
                 anomalies.append(stripe_issue)
 
+    if check_stripe:
+        anomalies.extend(find_stripe_succeeded_local_mismatch(booking))
+
     return {
         'booking_id': booking.id,
         'order_number': getattr(booking, 'order_number', None),
@@ -1419,6 +1422,110 @@ def reconcile_booking_ledger(booking, *, check_stripe=False):
         'anomalies': anomalies,
         'checked_stripe': bool(check_stripe),
     }
+
+
+def find_stripe_succeeded_local_mismatch(booking):
+    """
+    本地 pending/processing/failed 但 Stripe PI 已 succeeded → 硬异常（2612MT-027 类）。
+    """
+    from app.models import Payment
+
+    out = []
+    rows = Payment.query.filter(
+        Payment.booking_id == booking.id,
+        Payment.status.in_(('pending', 'processing', 'failed')),
+        Payment.stripe_payment_intent_id.isnot(None),
+    ).all()
+    for payment in rows:
+        pi_id = payment.stripe_payment_intent_id
+        if not pi_id or not str(pi_id).startswith('pi_'):
+            continue
+        intent = retrieve_payment_intent(pi_id)
+        st = None
+        if intent:
+            st = intent.get('status') if isinstance(intent, dict) else getattr(intent, 'status', None)
+        if st == 'succeeded':
+            out.append({
+                'payment_id': payment.id,
+                'issue': 'stripe_succeeded_local_not',
+                'local_status': payment.status,
+                'stripe_status': st,
+                'pi': pi_id,
+            })
+    return out
+
+
+def heal_payment_from_stripe_succeeded(payment_id):
+    """
+    本地未 succeeded、Stripe 已 succeeded → 走对应入账 handler（幂等、防双加）。
+    返回 True 表示已尝试 heal。
+    """
+    from app.models import Payment
+
+    if not payment_id:
+        return False
+    payment = Payment.query.get(payment_id)
+    if not payment or not payment.stripe_payment_intent_id:
+        return False
+    if (payment.status or '') == 'succeeded':
+        return False
+    intent = retrieve_payment_intent(payment.stripe_payment_intent_id)
+    if not intent:
+        return False
+    st = intent.get('status') if isinstance(intent, dict) else getattr(intent, 'status', None)
+    if st != 'succeeded':
+        return False
+
+    if isinstance(intent, dict):
+        pi_dict = intent
+    else:
+        pi_dict = {
+            'id': getattr(intent, 'id', payment.stripe_payment_intent_id),
+            'amount': getattr(intent, 'amount', 0),
+            'currency': getattr(intent, 'currency', 'usd'),
+            'metadata': dict(getattr(intent, 'metadata', None) or {}),
+            'payment_method_types': list(
+                getattr(intent, 'payment_method_types', None) or []
+            ),
+            'latest_charge': getattr(intent, 'latest_charge', None),
+        }
+    meta = pi_dict.get('metadata') or {}
+    step = (meta.get('payment_step') or '').strip().lower()
+    ptype = (meta.get('payment_type') or '').strip().lower()
+    try:
+        if step == 'addon' or ptype == 'addon_purchase':
+            from app.addon_payment import handle_addon_payment_succeeded
+            handle_addon_payment_succeeded(pi_dict)
+        else:
+            # 延迟导入避免循环
+            from app.routes import (
+                handle_booking_payment_intent_succeeded,
+                handle_payment_intent_succeeded,
+                _payment_intent_is_installment_flow,
+            )
+            if step == 'payoff':
+                handle_booking_payment_intent_succeeded(pi_dict)
+            elif _payment_intent_is_installment_flow(pi_dict):
+                handle_payment_intent_succeeded(pi_dict)
+            else:
+                handle_booking_payment_intent_succeeded(pi_dict)
+                handle_payment_intent_succeeded(pi_dict)
+        current_app.logger.info(
+            'healed payment_id=%s from Stripe succeeded (was local %s)',
+            payment_id,
+            payment.status,
+        )
+        return True
+    except Exception as e:
+        current_app.logger.warning(
+            'heal_payment_from_stripe_succeeded failed pay=%s: %s', payment_id, e
+        )
+        try:
+            from app import db
+            db.session.rollback()
+        except Exception:
+            pass
+        return False
 
 
 def compare_payment_refund_to_stripe(payment):

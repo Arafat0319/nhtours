@@ -1122,7 +1122,9 @@ def scan_ledger_anomalies():
     pay_q = (
         db.session.query(Payment.booking_id)
         .filter(
-            Payment.status.in_(('succeeded', 'partially_refunded', 'refunded')),
+            Payment.status.in_(
+                ('succeeded', 'partially_refunded', 'refunded', 'pending', 'processing', 'failed')
+            ),
             or_(
                 Payment.paid_at >= since,
                 Payment.created_at >= since,
@@ -1140,6 +1142,7 @@ def scan_ledger_anomalies():
     scanned = 0
     mismatches = 0
     alerted = 0
+    healed = 0
     for bid in booking_ids:
         booking = Booking.query.get(bid)
         if not booking:
@@ -1147,6 +1150,17 @@ def scan_ledger_anomalies():
         try:
             result = reconcile_booking_ledger(booking, check_stripe=check_stripe)
             scanned += 1
+            # Stripe 已成功、本地未 succeeded：尝试自动纠偏后再扫一次
+            hard = [
+                a for a in (result.get('anomalies') or [])
+                if a.get('issue') == 'stripe_succeeded_local_not'
+            ]
+            if hard:
+                from app.payments import heal_payment_from_stripe_succeeded
+                for a in hard:
+                    if heal_payment_from_stripe_succeeded(a.get('payment_id')):
+                        healed += 1
+                result = reconcile_booking_ledger(booking, check_stripe=check_stripe)
             if result.get('ok'):
                 continue
             mismatches += 1
@@ -1159,10 +1173,16 @@ def scan_ledger_anomalies():
             )
 
     current_app.logger.info(
-        'scan_ledger_anomalies done scanned=%s mismatches=%s alerted=%s stripe=%s',
+        'scan_ledger_anomalies done scanned=%s mismatches=%s alerted=%s healed=%s stripe=%s',
         scanned,
         mismatches,
         alerted,
+        healed,
         check_stripe,
     )
-    return {'scanned': scanned, 'mismatches': mismatches, 'alerted': alerted}
+    return {
+        'scanned': scanned,
+        'mismatches': mismatches,
+        'alerted': alerted,
+        'healed': healed,
+    }

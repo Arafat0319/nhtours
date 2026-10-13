@@ -143,6 +143,7 @@ def notify_ledger_mismatch(booking, result, *, source='scan'):
             'refunded_amount', 'base', 'clamped',
             'local_refunded', 'stripe_refunded_base', 'stripe_refunded_charged',
             'severity', 'error',
+            'local_status', 'stripe_status', 'pi',
         ):
             if a.get(k) is not None and a.get(k) != '':
                 extra.append(f'{k}={a.get(k)}')
@@ -151,6 +152,10 @@ def notify_ledger_mismatch(booking, result, *, source='scan'):
     lines.append('')
     lines.append('Do not auto-fix local_ahead vs Stripe without checking Dashboard.')
     lines.append('local_behind can usually be synced from Stripe / charge.refunded webhook.')
+    lines.append(
+        'stripe_succeeded_local_not: Stripe charged OK but local row not succeeded — '
+        'heal via status poll / addon settle; do not re-charge customer.'
+    )
 
     manage_url = None
     try:

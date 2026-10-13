@@ -219,6 +219,78 @@ def test_cancel_manual_addon_unpaid_ok_processing_blocked(app):
         db.session.commit()
 
 
+def test_addon_succeed_heal_failed_does_not_double_amount_paid(app):
+    """本地误标 failed 但 addon 已 paid：再 settle 只纠状态，不双加 amount_paid。"""
+    from app.addon_payment import handle_addon_payment_succeeded
+
+    with app.app_context():
+        booking = Booking.query.filter(Booking.status != 'cancelled').first()
+        if not booking or not booking.trip_id:
+            return
+        ta = TripAddOn.query.filter_by(trip_id=booking.trip_id).first()
+        if not ta:
+            return
+        ba, err = create_manual_booking_addon(booking, ta.id, quantity=1)
+        assert err is None
+        line = booking_addon_line_total(ba)
+        cents = int(round(line * 100))
+        pi = f'pi_test_heal_{ba.id}'
+        pay = Payment(
+            booking_id=booking.id,
+            client_id=booking.client_id,
+            trip_id=booking.trip_id,
+            amount=line,
+            status='failed',
+            currency='usd',
+            stripe_payment_intent_id=pi,
+            base_amount_cents=cents,
+            final_amount_cents=cents,
+            payment_metadata={
+                'booking_addon_id': str(ba.id),
+                'payment_type': 'addon_purchase',
+                'payment_step': 'addon',
+                'base_amount': str(cents),
+                'fee': '0',
+                'final_amount': str(cents),
+            },
+        )
+        db.session.add(pay)
+        db.session.flush()
+        ba.payment_status = 'paid'
+        ba.payment_id = pay.id
+        ba.stripe_payment_intent_id = 'pi_wrong_shell'
+        before_paid = float(booking.amount_paid or 0)
+        # 模拟此前已累加过
+        booking.amount_paid = before_paid + line
+        db.session.commit()
+        paid_snapshot = float(booking.amount_paid)
+
+        handle_addon_payment_succeeded({
+            'id': pi,
+            'amount': cents,
+            'currency': 'usd',
+            'metadata': {
+                'booking_addon_id': str(ba.id),
+                'payment_type': 'addon_purchase',
+                'payment_step': 'addon',
+                'base_amount': str(cents),
+                'fee': '0',
+                'final_amount': str(cents),
+            },
+        })
+        db.session.refresh(pay)
+        db.session.refresh(ba)
+        db.session.refresh(booking)
+        assert pay.status == 'succeeded'
+        assert ba.payment_status == 'paid'
+        assert ba.stripe_payment_intent_id == pi
+        assert abs(float(booking.amount_paid) - paid_snapshot) < 0.01
+        db.session.delete(ba)
+        db.session.delete(pay)
+        booking.amount_paid = before_paid
+        db.session.commit()
+
+
 def test_full_refund_reopens_manual_addon(app):
     """全额退回 addon Payment 后，行应回 unpaid 并可再计入 unpaid_manual。"""
     from app.payments import apply_refund_to_ledger, unpaid_manual_addons_total

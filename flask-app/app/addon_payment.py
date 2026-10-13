@@ -172,6 +172,11 @@ def handle_addon_payment_succeeded(payment_intent):
             ba.payment_status = 'paid'
             ba.payment_id = payment.id
             db.session.commit()
+        elif ba.stripe_payment_intent_id != payment_intent_id:
+            # 纠偏：addon 误指空壳 PI
+            ba.payment_id = payment.id
+            ba.stripe_payment_intent_id = payment_intent_id
+            db.session.commit()
         return True
 
     total_amount_cents = payment_intent.get('amount', 0) or 0
@@ -196,6 +201,12 @@ def handle_addon_payment_succeeded(payment_intent):
     total_amount = total_amount_cents / 100.0
 
     prior_status = payment.status if payment else None
+    already_credited = (
+        (ba.payment_status or '').lower() == 'paid'
+        and ba.payment_id
+        and payment
+        and ba.payment_id == payment.id
+    )
     if not payment:
         payment = Payment(
             booking_id=booking.id,
@@ -211,10 +222,13 @@ def handle_addon_payment_succeeded(payment_intent):
         db.session.add(payment)
     else:
         payment.status = 'succeeded'
-        payment.paid_at = datetime.utcnow()
+        payment.paid_at = payment.paid_at or datetime.utcnow()
         payment.amount = total_amount
         payment.currency = (payment_intent.get('currency') or 'usd').upper()
-        payment.payment_metadata = metadata
+        # 保留已有 metadata 键（如 voided），合并 Stripe metadata
+        merged = dict(payment.payment_metadata or {})
+        merged.update(metadata or {})
+        payment.payment_metadata = merged
         payment.booking_id = booking.id
 
     if base_amount_cents is not None:
@@ -239,12 +253,14 @@ def handle_addon_payment_succeeded(payment_intent):
 
     db.session.flush()
 
-    # Only bump amount_paid when transitioning into succeeded
-    if prior_status != 'succeeded':
+    # Only bump amount_paid when first transitioning into succeeded
+    # （本地曾误标 failed 但 addon 已 paid / 已累加过 → 只纠状态，不双加）
+    if prior_status != 'succeeded' and not already_credited:
         mark_addon_paid(ba, payment, base_amount=base_amount)
     else:
         ba.payment_status = 'paid'
         ba.payment_id = payment.id
+        ba.stripe_payment_intent_id = payment_intent_id
 
     db.session.commit()
 
