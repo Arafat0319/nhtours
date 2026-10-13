@@ -92,6 +92,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 - **Catch-up 多期**：一笔 PI 只挂锚定期（`installment_payments.payment_intent_id` 唯一）；sibling 只标 paid + `catch_up_ids` 记覆盖；勿给多行写同一 PI；Payment 已 succeeded 可续结 sibling
 - **Payment plan 展示**：多套餐同 due date 在 Manage / 报名预览 / 收据 / 催款邮件 / 付款页摘要合并金额；库内仍可双轨行；期数徽章与催款按 due_date 去重（同日一封）
 - **Manage 后加 Add-on**：`addon_admin.py` / `addon_payment.py`；`/pay-addon/<id>?token=`；`source=admin_manual`；不进 Payoff；**不吃报名折扣**（`total = signup−discount + manual`）；全额退回 unpaid
+- **后台状态 Tag**：统一 `.admin-status-tag` / `adminStatusTagHtml()`（`base_wetravel.html`）；Processing 定稿色见 `context/05`
 - 收据 Trip Total：加粗 **Due this time** + **Amount Paid**（Expected/Remaining 常规）
 
 ## 业务单号 Order number

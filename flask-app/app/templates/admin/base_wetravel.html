@@ -164,7 +164,68 @@
                 width: 100% !important;
             }
         }
+
+        /*
+         * Admin status tags（Payment Status / History / Schedule 统一）
+         * 规范见 context/05_UI设计系统.md「后台状态标签」
+         */
+        .admin-status-tag {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.125rem 0.5rem;
+            font-size: 0.75rem;
+            line-height: 1.25rem;
+            font-weight: 600;
+            border-radius: 9999px;
+            white-space: nowrap;
+            font-family: inherit;
+        }
+        .admin-status-tag--pending { background: #FEF9C3; color: #854D0E; }       /* yellow-100 / yellow-800 */
+        .admin-status-tag--processing { background: #FEF3C7; color: #92400E; }   /* amber-100 / amber-800 — Processing 定稿 */
+        .admin-status-tag--deposit_paid,
+        .admin-status-tag--partially_paid { background: #DBEAFE; color: #1E40AF; } /* blue-100 / blue-800 */
+        .admin-status-tag--fully_paid,
+        .admin-status-tag--paid,
+        .admin-status-tag--succeeded { background: #DCFCE7; color: #166534; }    /* green-100 / green-800 */
+        .admin-status-tag--overdue { background: #FFEDD5; color: #9A3412; }      /* orange-100 / orange-800 */
+        .admin-status-tag--partially_refunded { background: #FFEDD5; color: #9A3412; }
+        .admin-status-tag--fully_refunded,
+        .admin-status-tag--refunded { background: #F3E8FF; color: #6B21A8; }     /* purple-100 / purple-800 */
+        .admin-status-tag--cancelled,
+        .admin-status-tag--failed { background: #FEE2E2; color: #991B1B; }       /* red-100 / red-800 */
+        .admin-status-tag--default { background: #F3F4F6; color: #1F2937; }       /* gray-100 / gray-800 */
     </style>
+    <script>
+        /** 后台状态标签：统一 class + 文案（与 context/05 一致） */
+        window.adminStatusTagClass = function (status) {
+            const s = String(status || 'pending').trim().toLowerCase().replace(/\s+/g, '_');
+            const known = [
+                'pending', 'processing', 'deposit_paid', 'partially_paid', 'fully_paid',
+                'paid', 'succeeded', 'overdue', 'partially_refunded', 'fully_refunded',
+                'refunded', 'cancelled', 'failed',
+            ];
+            const key = known.includes(s) ? s : 'default';
+            return 'admin-status-tag admin-status-tag--' + key;
+        };
+        window.adminStatusTagLabel = function (status) {
+            const s = String(status || 'pending').trim().toLowerCase();
+            if (s === 'partially_refunded' || s === 'partially refunded') return 'Partially Refunded';
+            if (s === 'fully_refunded' || s === 'refunded' || s === 'fully refunded') return 'Fully Refunded';
+            if (s === 'processing') return 'Processing';
+            if (s === 'partially_paid' || s === 'partially paid') return 'Partially Paid';
+            if (s === 'deposit_paid' || s === 'deposit paid') return 'Deposit Paid';
+            if (s === 'fully_paid' || s === 'fully paid') return 'Fully Paid';
+            if (s === 'succeeded') return 'Paid';
+            if (s === 'paid') return 'Paid';
+            return String(status || 'Pending').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+        };
+        window.adminStatusTagHtml = function (status) {
+            const s = String(status || 'pending').trim().toLowerCase().replace(/\s+/g, '_');
+            return '<span class="' + window.adminStatusTagClass(s) + '">' +
+                window.adminStatusTagLabel(s) + '</span>';
+        };
+    </script>
     {% block head_extra %}{% endblock %}
 </head>
 

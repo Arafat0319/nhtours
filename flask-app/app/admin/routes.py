@@ -3060,32 +3060,13 @@ def export_bookings(id):
             cell.border = thin
 
     def _booking_expected(booking):
-        booking_gross = 0.0
-        has_packages = False
-        seen_addon_ids = set()
-        for bp in booking.booking_packages:
-            if bp.package:
-                package_price = booking_package_unit_price(bp)
-                quantity = int(bp.quantity) if bp.quantity is not None else 1
-                booking_gross += package_price * quantity
-                has_packages = True
-        for participant in booking.participants:
-            for booking_addon in participant.addons:
-                if booking_addon.addon and booking_addon.id not in seen_addon_ids:
-                    addon_price = booking_addon_unit_price(booking_addon)
-                    quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 0
-                    booking_gross += addon_price * quantity
-                    seen_addon_ids.add(booking_addon.id)
-        for booking_addon in booking.addons:
-            if booking_addon.addon and booking_addon.id not in seen_addon_ids:
-                addon_price = booking_addon_unit_price(booking_addon)
-                quantity = int(booking_addon.quantity) if booking_addon.quantity is not None else 0
-                booking_gross += addon_price * quantity
-                seen_addon_ids.add(booking_addon.id)
-        discount = float(booking.discount_amount) if booking.discount_amount else 0.0
+        """与 Manage / calculate_booking_total 同源（后加 Manual 不吃报名折扣）。"""
+        from app.payments import calculate_booking_total
+
+        has_packages = any(bool(getattr(bp, 'package', None)) for bp in booking.booking_packages)
         if not has_packages:
             return round(float(booking.amount_paid) if booking.amount_paid is not None else 0.0, 2)
-        return round(max(0.0, booking_gross - discount), 2)
+        return round(float(calculate_booking_total(booking).get('total') or 0.0), 2)
 
     def _booking_payment_totals(booking):
         """返回 (payments_received 实扣合计, card_fees 卡费合计, refunds 已退合计)。"""
@@ -3229,9 +3210,15 @@ def export_bookings(id):
             [f"{name} x{qty}" if qty > 1 else name for name, qty in addons_map.items()]
         ) if addons_map else dash
 
+        from app.payments import computed_booking_amount_paid, booking_balance_due
+
         expected = _booking_expected(booking)
         payments_received, card_fees, refunds = _booking_payment_totals(booking)
-        net_paid = round(float(booking.amount_paid) if booking.amount_paid is not None else 0.0, 2)
+        # Net Paid：与 Manage 列表同源（有账本则 Σ base−refunded）
+        if Payment.query.filter_by(booking_id=booking.id).first():
+            net_paid = round(float(computed_booking_amount_paid(booking)), 2)
+        else:
+            net_paid = round(float(booking.amount_paid) if booking.amount_paid is not None else 0.0, 2)
         is_cancelled = booking.status == 'cancelled'
         all_pax = list(booking.participants)
         active_pax = sum(
@@ -3261,8 +3248,9 @@ def export_bookings(id):
             total_refunds += refunds
         else:
             expected_cell = expected
-            # 退款不计入欠款：expected − net_paid − refunds
-            balance_cell = round(max(0.0, expected - net_paid - refunds), 2)
+            # 与 Manage Balance due 同源
+            due = booking_balance_due(booking, expected=expected)
+            balance_cell = round(float(due if due is not None else 0.0), 2)
             if withdrawn_pax:
                 participants_cell = f'{active_pax} (+{withdrawn_pax} withdrawn)'
             else:
@@ -3376,8 +3364,13 @@ def export_bookings(id):
     for booking in bookings:
         if booking.status != 'cancelled':
             continue
+        from app.payments import computed_booking_amount_paid as _computed_paid
+
         payments_received, card_fees, refunds = _booking_payment_totals(booking)
-        net_paid = round(float(booking.amount_paid) if booking.amount_paid is not None else 0.0, 2)
+        if Payment.query.filter_by(booking_id=booking.id).first():
+            net_paid = round(float(_computed_paid(booking)), 2)
+        else:
+            net_paid = round(float(booking.amount_paid) if booking.amount_paid is not None else 0.0, 2)
         buyer_first = booking.buyer_first_name or ''
         buyer_last = booking.buyer_last_name or ''
         if not buyer_first and not buyer_last and booking.client:
@@ -3500,13 +3493,18 @@ def _get_participants_export_data(trip, include_cancelled=True):
             if ba.addon:
                 addons_map[ba.addon.name] = addons_map.get(ba.addon.name, 0) + ba.quantity
         addons_str = ', '.join([f"{n} x{q}" if q > 1 else n for n, q in addons_map.items()]) if addons_map else '-'
+        from app.payments import computed_booking_amount_paid
+
         status_display = booking_payment_display_status(booking).replace('_', ' ').title()
         refunds_total = 0.0
         for payment in Payment.query.filter_by(booking_id=booking.id).all():
             if payment.status in ('succeeded', 'partially_refunded', 'refunded'):
                 refunds_total += float(payment.refunded_amount or 0.0)
         refunds_total = round(refunds_total, 2)
-        net_paid = round(float(booking.amount_paid) if booking.amount_paid is not None else 0.0, 2)
+        if Payment.query.filter_by(booking_id=booking.id).first():
+            net_paid = round(float(computed_booking_amount_paid(booking)), 2)
+        else:
+            net_paid = round(float(booking.amount_paid) if booking.amount_paid is not None else 0.0, 2)
         booking_date_str = booking.created_at.strftime('%d %b %Y').upper() if booking.created_at else '-'
         buyer_name = (
             f"{booking.buyer_first_name or ''} {booking.buyer_last_name or ''}".strip()

@@ -21,12 +21,8 @@
             </div>
             {% if group.plan_kind == 'one_time' %}
             {% set st = (payment.status if payment else 'pending') or 'pending' %}
-            <span class="shrink-0 px-2 py-1 text-xs font-medium rounded-full
-                {% if st == 'succeeded' %}bg-green-100 text-green-800
-                {% elif st == 'pending' %}bg-yellow-100 text-yellow-800
-                {% elif st == 'failed' %}bg-red-100 text-red-800
-                {% else %}bg-gray-100 text-gray-800{% endif %}">
-                {% if st == 'succeeded' %}paid{% else %}{{ st }}{% endif %}
+            <span class="admin-status-tag admin-status-tag--{% if st == 'succeeded' %}succeeded{% elif st == 'pending' %}pending{% elif st == 'processing' %}processing{% elif st == 'failed' %}failed{% else %}default{% endif %}">
+                {% if st == 'succeeded' %}Paid{% elif st == 'processing' %}Processing{% else %}{{ st }}{% endif %}
             </span>
             {% else %}
             {% set row_status = group.deposit_display_status or deposit.status or 'pending' %}

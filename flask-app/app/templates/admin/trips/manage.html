@@ -288,15 +288,7 @@
                             {% elif ptype.key == 'deposit_final' %}bg-indigo-100 text-indigo-800
                             {% elif ptype.key == 'mixed' %}bg-amber-100 text-amber-900
                             {% else %}bg-gray-100 text-gray-800{% endif %}">{{ ptype.label }}</span>
-                        <span id="status-badge-m-{{ booking.id }}" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
-                            {% if pay_status == 'fully_paid' %}bg-green-100 text-green-800
-                            {% elif pay_status == 'deposit_paid' or pay_status == 'partially_paid' %}bg-blue-100 text-blue-800
-                            {% elif pay_status == 'processing' %}bg-amber-100 text-amber-800
-                            {% elif pay_status == 'overdue' %}bg-orange-100 text-orange-800
-                            {% elif pay_status == 'partially_refunded' %}bg-orange-100 text-orange-800
-                            {% elif pay_status == 'fully_refunded' or pay_status == 'refunded' %}bg-purple-100 text-purple-800
-                            {% elif pay_status == 'cancelled' %}bg-red-100 text-red-800
-                            {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                        <span id="status-badge-m-{{ booking.id }}" class="admin-status-tag admin-status-tag--{% if pay_status in ['pending','processing','deposit_paid','partially_paid','fully_paid','overdue','partially_refunded','fully_refunded','refunded','cancelled'] %}{{ pay_status }}{% else %}default{% endif %}">
                             {% if pay_status == 'partially_refunded' %}Partially Refunded
                             {% elif pay_status == 'fully_refunded' or pay_status == 'refunded' %}Fully Refunded
                             {% elif pay_status == 'processing' %}Processing
@@ -396,15 +388,7 @@
                             <td class="px-6 py-4 whitespace-nowrap">
                                 {# 内联 flex：后台 CSS 未必含 Tailwind flex 工具类，避免 Fully Paid / Payoff 竖排 #}
                                 <div style="display:inline-flex;flex-direction:row;align-items:center;flex-wrap:nowrap;gap:0.25rem;white-space:nowrap;">
-                                <span id="status-badge-{{ booking.id }}" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
-                                    {% if pay_status == 'fully_paid' %}bg-green-100 text-green-800
-                                    {% elif pay_status == 'deposit_paid' or pay_status == 'partially_paid' %}bg-blue-100 text-blue-800
-                                    {% elif pay_status == 'processing' %}bg-amber-100 text-amber-800
-                                    {% elif pay_status == 'overdue' %}bg-orange-100 text-orange-800
-                                    {% elif pay_status == 'partially_refunded' %}bg-orange-100 text-orange-800
-                                    {% elif pay_status == 'fully_refunded' or pay_status == 'refunded' %}bg-purple-100 text-purple-800
-                                    {% elif pay_status == 'cancelled' %}bg-red-100 text-red-800
-                                    {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                                <span id="status-badge-{{ booking.id }}" class="admin-status-tag admin-status-tag--{% if pay_status in ['pending','processing','deposit_paid','partially_paid','fully_paid','overdue','partially_refunded','fully_refunded','refunded','cancelled'] %}{{ pay_status }}{% else %}default{% endif %}">
                                     {% if pay_status == 'partially_refunded' %}Partially Refunded
                                     {% elif pay_status == 'fully_refunded' or pay_status == 'refunded' %}Fully Refunded
                                     {% elif pay_status == 'processing' %}Processing
@@ -2933,15 +2917,21 @@
                     const statusBadge = (() => {
                         if (!isManual) return '';
                         if (payStatus === 'paid') {
-                            return '<span class="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-800">Paid</span>';
+                            return window.adminStatusTagHtml
+                                ? window.adminStatusTagHtml('paid')
+                                : '<span class="admin-status-tag admin-status-tag--paid">Paid</span>';
                         }
                         if (payStatus === 'processing') {
-                            return '<span class="px-1.5 py-0.5 text-xs rounded bg-amber-100 text-amber-800">Processing</span>';
+                            return window.adminStatusTagHtml
+                                ? window.adminStatusTagHtml('processing')
+                                : '<span class="admin-status-tag admin-status-tag--processing">Processing</span>';
                         }
                         if (payStatus === 'failed') {
-                            return '<span class="px-1.5 py-0.5 text-xs rounded bg-red-100 text-red-800">Failed</span>';
+                            return window.adminStatusTagHtml
+                                ? window.adminStatusTagHtml('failed')
+                                : '<span class="admin-status-tag admin-status-tag--failed">Failed</span>';
                         }
-                        return '<span class="px-1.5 py-0.5 text-xs rounded bg-yellow-100 text-yellow-800">Unpaid</span>';
+                        return '<span class="admin-status-tag admin-status-tag--pending">Unpaid</span>';
                     })();
                     const manualBadge = isManual
                         ? '<span class="ml-1 px-1.5 py-0.5 text-xs rounded bg-slate-100 text-slate-700">Manual</span>'
@@ -3013,10 +3003,12 @@
             const settledViaPayoff = !!booking.settled_via_payoff;
             if (booking.payments && booking.payments.length > 0) {
                 paymentsHtml = booking.payments.map(payment => {
-                    const statusClass = payment.status === 'succeeded' ? 'bg-green-100 text-green-800' : 
-                                        payment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
-                                        payment.status === 'partially_refunded' ? 'bg-orange-100 text-orange-800' :
-                                        'bg-red-100 text-red-800';
+                    const statusClass = window.adminStatusTagClass
+                        ? window.adminStatusTagClass(payment.status)
+                        : 'admin-status-tag admin-status-tag--default';
+                    const statusLabel = window.adminStatusTagLabel
+                        ? window.adminStatusTagLabel(payment.status)
+                        : (payment.status || '');
                     const feeText = payment.fee_cents ? ` (Fee: $${(payment.fee_cents / 100).toFixed(2)})` : '';
                     const cardInfo = payment.brand ? `${payment.brand.toUpperCase()}` : '';
                     const typeLabel = payment.type_label || '';
@@ -3035,7 +3027,7 @@
                             ${typeBadge}
                             <span class="text-sm text-gray-900">$${Number(payment.amount || 0).toFixed(2)}${feeText}</span>
                             ${cardInfo ? `<span class="ml-2 text-xs text-gray-500">${cardInfo}</span>` : ''}
-                            <span class="ml-2 px-1.5 py-0.5 text-xs rounded ${statusClass}">${payment.status}</span>
+                            <span class="ml-2 ${statusClass}">${statusLabel}</span>
                         </div>
                         <div class="flex items-center shrink-0">
                             <span class="text-xs text-gray-500">${payment.paid_at || '-'}</span>
@@ -3195,11 +3187,12 @@
                                     : status === 'overdue' ? 'Overdue'
                                     : status === 'processing' ? 'Processing'
                                     : status;
-                                const statusClass = status === 'paid' ? 'bg-green-100 text-green-800' :
-                                    status === 'overdue' ? 'bg-red-100 text-red-800' :
-                                    status === 'processing' ? 'bg-amber-100 text-amber-800' :
-                                    (String(status).indexOf('cancelled') === 0) ? 'bg-gray-100 text-gray-600' :
-                                    'bg-yellow-100 text-yellow-800';
+                                const statusClass = (window.adminStatusTagClass
+                                    ? window.adminStatusTagClass(
+                                        status === 'pending' ? 'pending'
+                                            : (String(status).indexOf('cancelled') === 0 ? 'cancelled' : status)
+                                    )
+                                    : 'admin-status-tag admin-status-tag--default');
                                 const unpaid = status === 'pending' || status === 'overdue';
                                 const dueHint = manageDueHintHtml(row.due_date, unpaid);
                                 const ddId = 'manage-inst-dd-' + (row.anchorId || row.key);
@@ -3232,7 +3225,7 @@
                                     </div>
                                     <div class="flex items-center space-x-2 flex-shrink-0">
                                         <span class="text-sm font-medium text-gray-900">$${row.amount.toFixed(2)}</span>
-                                        <span class="px-1.5 py-0.5 text-xs rounded ${statusClass}">${statusLabel}</span>
+                                        <span class="${statusClass}">${statusLabel}</span>
                                         ${actions}
                                     </div>
                                 </div>`;
@@ -3944,21 +3937,12 @@
                     const applyStatusBadge = (el) => {
                         if (!el) return;
                         const payStatus = booking.payment_status || booking.status || 'pending';
-                        const statusText = payStatus.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-                        let statusClass = 'bg-yellow-100 text-yellow-800';
-                        if (payStatus === 'fully_paid') statusClass = 'bg-green-100 text-green-800';
-                        else if (payStatus === 'deposit_paid' || payStatus === 'partially_paid') statusClass = 'bg-blue-100 text-blue-800';
-                        else if (payStatus === 'processing') statusClass = 'bg-amber-100 text-amber-800';
-                        else if (payStatus === 'overdue') statusClass = 'bg-orange-100 text-orange-800';
-                        else if (payStatus === 'partially_refunded') statusClass = 'bg-orange-100 text-orange-800';
-                        else if (payStatus === 'fully_refunded' || payStatus === 'refunded') statusClass = 'bg-purple-100 text-purple-800';
-                        else if (payStatus === 'cancelled') statusClass = 'bg-red-100 text-red-800';
-                        el.className = `px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass}`;
-                        if (payStatus === 'partially_refunded') el.textContent = 'Partially Refunded';
-                        else if (payStatus === 'fully_refunded' || payStatus === 'refunded') el.textContent = 'Fully Refunded';
-                        else if (payStatus === 'processing') el.textContent = 'Processing';
-                        else if (payStatus === 'partially_paid') el.textContent = 'Partially Paid';
-                        else el.textContent = statusText;
+                        el.className = (window.adminStatusTagClass
+                            ? window.adminStatusTagClass(payStatus)
+                            : 'admin-status-tag admin-status-tag--default');
+                        el.textContent = window.adminStatusTagLabel
+                            ? window.adminStatusTagLabel(payStatus)
+                            : payStatus;
                     };
                     applyStatusBadge(statusBadge);
                     applyStatusBadge(statusBadgeM);
