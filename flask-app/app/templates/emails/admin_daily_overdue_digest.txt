@@ -1,0 +1,18 @@
+Daily overdue digest — as of {{ as_of_label }} (Pacific)
+
+{{ overdue_count }} booking(s) with Manage Payment Status = Overdue.
+Customer reminder counts = installment reminder emails already sent.
+
+{% for row in rows %}
+---
+Order: {{ row.order_number }}
+Parent: {{ row.customer_name }}{% if row.customer_email %} <{{ row.customer_email }}>{% endif %}
+Trip: {{ row.trip_title }}
+Balance due: {% if row.balance_due is not none %}${{ '%.2f'|format(row.balance_due) }}{% else %}—{% endif %}
+Oldest due: {{ row.oldest_due_label }} ({{ row.days_overdue }} day(s) overdue)
+Reminders sent: {{ row.reminders_sent }}{% if row.last_reminder_label %} (last {{ row.last_reminder_label }} PT){% endif %}
+{% if row.manage_url %}Manage: {{ row.manage_url }}
+{% endif %}
+{% endfor %}
+---
+Sent after the 4:00 PT ledger scan. ACH Processing bookings are excluded.

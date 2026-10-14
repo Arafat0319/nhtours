@@ -253,7 +253,7 @@ def create_app(config_name=None):
                     id='cleanup_old_rejected_testimonials',
                     replace_existing=True,
                 )
-                # 每天美西凌晨 4 点：账本/Stripe 对账扫描 → 异常邮件提醒管理员
+                # 每天美西凌晨 4 点：账本/Stripe 对账扫描 → 异常邮件；结束后有 Overdue 则发每日 digest
                 scheduler.add_job(
                     _run_ledger_scan,
                     'cron',

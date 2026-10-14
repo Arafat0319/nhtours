@@ -182,6 +182,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 个人退出 | `BookingParticipant.status`=`withdrawn`；Manage Mark withdrawn / Restore；名单灰行+徽章；不计 Going；不自动退款 |
 | 分期催款 | 美西日历；每天美西 9:00；**仅 1 个 Gunicorn worker 跑 APScheduler**（文件锁防重复发） |
 | 账本告警 | 每天美西 4:00 扫近期订单；本地+可选 Stripe 退款对比；异常邮件 `RECIPIENT_EMAIL`；24h 去重 |
+| Overdue digest | 同上 4:00 扫描结束后；**仅有** Manage 展示态=Overdue 时发管理员汇总（明细+客户 `reminder_count`）；无逾期不发 |
 | Payments 标签 | 以 order 分类：Full=全款或定金+单笔尾款；Installment=定金后>1期 |
 | 报名校验 | 前端 `booking.js` + 后端 `booking_validation.py`（email/phone/name/dob/zip）；Promo 未选套餐 → `#discount-message` 琥珀提示 |
 | 安全审计 | `/var/log/nhtours/audit.log`；`nh-audit` / `nh-audit --all` / `nh-audit -f` |
@@ -211,7 +212,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 |----|-----|
 | 后台 | `/admin/customers/leads`；折叠 Show more；**批量删除** `POST .../bulk-delete`（admin） |
 | 新线索邮件 | `emails/contact_lead_notify.html` → `RECIPIENT_EMAIL`；主题 `New contact lead — …`；Reply-To=提交者 |
-| 管理员通知邮件 | 统一 `emails/admin_notify_base.html`：Contact / Newsletter / Testimonial pending / Feedback pending / Security alert / **Ledger alert** / Auto Pay 失败等 |
+| 管理员通知邮件 | 统一 `emails/admin_notify_base.html`：Contact / Newsletter / Testimonial pending / Feedback pending / Security alert / **Ledger alert** / **Daily overdue digest** / Auto Pay 失败等 |
 | 客户系统/事务邮件 | **必须**品牌 HTML（页眉深蓝 + 白卡片 + CTA + 页脚 logo）；准则 `.cursor/rules/customer-email-brand-template.mdc`；范例：收据 / 催款 / 退款 / `payment_failed` / Auto Pay invite / `order_processing` |
 | 客户人工邮件 | `emails/branded_customer_message.html`：Booking 单发 + Messages 群发外壳 |
 

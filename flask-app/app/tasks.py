@@ -1099,9 +1099,160 @@ def send_scheduled_messages():
         return 0
 
 
+def collect_overdue_bookings_for_digest(today=None):
+    """
+    与 Manage Payment Status「Overdue」一致的订单清单（供每日管理员 digest）。
+    每行含 balance_due、最旧逾期 due、天数、客户催款 reminder_count 合计等。
+    """
+    from app.payments import (
+        booking_balance_due,
+        booking_payment_display_status,
+    )
+    from app.utils import format_pacific_date
+
+    today = today or pacific_today()
+    candidate_ids = [
+        row[0]
+        for row in (
+            db.session.query(InstallmentPayment.booking_id)
+            .filter(
+                InstallmentPayment.status.in_(_UNPAID_INSTALLMENT_STATUSES),
+                InstallmentPayment.due_date.isnot(None),
+                InstallmentPayment.due_date < today,
+            )
+            .distinct()
+            .all()
+        )
+        if row[0]
+    ]
+    rows = []
+    for bid in candidate_ids:
+        booking = Booking.query.get(bid)
+        if not booking or (booking.status or '') == 'cancelled':
+            continue
+        try:
+            if booking_payment_display_status(booking, today=today) != 'overdue':
+                continue
+        except Exception:
+            current_app.logger.exception(
+                'daily_overdue_digest display_status failed booking_id=%s', bid
+            )
+            continue
+
+        overdue_insts = (
+            InstallmentPayment.query.filter(
+                InstallmentPayment.booking_id == booking.id,
+                InstallmentPayment.status.in_(_UNPAID_INSTALLMENT_STATUSES),
+                InstallmentPayment.due_date.isnot(None),
+                InstallmentPayment.due_date < today,
+            )
+            .order_by(InstallmentPayment.due_date.asc(), InstallmentPayment.id.asc())
+            .all()
+        )
+        if not overdue_insts:
+            continue
+
+        oldest = overdue_insts[0]
+        days_overdue = (today - oldest.due_date).days
+        reminders_sent = sum(int(getattr(i, 'reminder_count', None) or 0) for i in overdue_insts)
+        last_sent_at = None
+        for i in overdue_insts:
+            ts = getattr(i, 'reminder_sent_at', None)
+            if ts and (last_sent_at is None or ts > last_sent_at):
+                last_sent_at = ts
+
+        try:
+            balance = booking_balance_due(booking)
+        except Exception:
+            balance = None
+
+        customer_name = (
+            f"{(booking.buyer_first_name or '').strip()} {(booking.buyer_last_name or '').strip()}".strip()
+            or booking.buyer_name
+            or 'Customer'
+        )
+        manage_url = None
+        if booking.trip_id:
+            try:
+                manage_url = url_for('admin.manage_trip', id=booking.trip_id, _external=True)
+            except Exception:
+                base = (current_app.config.get('BASE_URL') or 'https://nhtours.com').rstrip('/')
+                manage_url = f'{base}/admin/trips/{booking.trip_id}/manage'
+
+        rows.append({
+            'order_number': booking.order_number or booking.id,
+            'customer_name': customer_name,
+            'customer_email': booking.buyer_email or '',
+            'trip_title': booking.trip.title if booking.trip else 'Trip Booking',
+            'balance_due': float(balance) if balance is not None else None,
+            'oldest_due_date': oldest.due_date,
+            'oldest_due_label': oldest.due_date.strftime('%B %d, %Y'),
+            'days_overdue': days_overdue,
+            'reminders_sent': reminders_sent,
+            'last_reminder_label': (
+                format_pacific_date(last_sent_at, '%b %d, %Y') if last_sent_at else None
+            ),
+            'manage_url': manage_url,
+            'booking_id': booking.id,
+        })
+
+    rows.sort(key=lambda r: (-int(r.get('days_overdue') or 0), str(r.get('order_number') or '')))
+    return rows
+
+
+def send_admin_daily_overdue_digest(today=None):
+    """
+    有 Overdue 订单时给管理员发每日汇总；无逾期只记日志、不发邮件。
+    返回 dict: {count, sent, skipped_reason?}
+    """
+    today = today or pacific_today()
+    rows = collect_overdue_bookings_for_digest(today=today)
+    count = len(rows)
+    if count == 0:
+        current_app.logger.info(
+            'daily_overdue_digest: none pacific_today=%s', today.isoformat()
+        )
+        return {'count': 0, 'sent': False, 'skipped_reason': 'none'}
+
+    as_of = today.strftime('%B %d, %Y')
+    subject = f"[NH Tours] Daily overdue digest — {count} booking(s)"
+    context = {
+        'subject_line': subject,
+        'brand_subtitle': 'Daily overdue digest',
+        'as_of_label': as_of,
+        'overdue_count': count,
+        'rows': rows,
+        'email_logo_url': _email_brand_logo_url(),
+    }
+    html_body = render_template('emails/admin_daily_overdue_digest.html', **context)
+    text_body = render_template('emails/admin_daily_overdue_digest.txt', **context)
+
+    recipient = (
+        current_app.config.get('LEDGER_ALERT_EMAIL')
+        or current_app.config.get('RECIPIENT_EMAIL')
+        or 'info@nhtours.com'
+    )
+    sender = (
+        current_app.config.get('SENDER_EMAIL')
+        or current_app.config.get('RECIPIENT_EMAIL')
+        or 'nhtours-noreply@nhtours.com'
+    )
+    ok, detail = send_email_via_ses(sender, recipient, subject, html_body, text_body)
+    if ok:
+        current_app.logger.info(
+            'daily_overdue_digest sent count=%s recipient=%s', count, recipient
+        )
+    else:
+        current_app.logger.error(
+            'daily_overdue_digest send failed count=%s: %s', count, detail
+        )
+    return {'count': count, 'sent': bool(ok), 'detail': detail}
+
+
 def scan_ledger_anomalies():
     """
     每日账本扫描：本地 reconcile + 抽样/近期单 Stripe 退款对比；发现异常则邮件提醒管理员。
+    结束后无论扫描结果如何，尝试发送每日 Overdue digest（有逾期才发）。
     美西凌晨由 APScheduler 调用。
     """
     from datetime import datetime, timedelta
@@ -1110,79 +1261,91 @@ def scan_ledger_anomalies():
     from app.payments import reconcile_booking_ledger
     from app.ledger_alerts import notify_ledger_mismatch
 
-    if not current_app.config.get('LEDGER_ALERTS_ENABLED', True):
-        current_app.logger.info('scan_ledger_anomalies skipped (LEDGER_ALERTS_ENABLED=false)')
-        return {'scanned': 0, 'mismatches': 0, 'alerted': 0}
+    out = {'scanned': 0, 'mismatches': 0, 'alerted': 0, 'healed': 0}
+    try:
+        if not current_app.config.get('LEDGER_ALERTS_ENABLED', True):
+            current_app.logger.info('scan_ledger_anomalies skipped (LEDGER_ALERTS_ENABLED=false)')
+            return out
 
-    days = int(current_app.config.get('LEDGER_SCAN_DAYS', 120))
-    max_bookings = int(current_app.config.get('LEDGER_SCAN_MAX_BOOKINGS', 300))
-    check_stripe = bool(current_app.config.get('LEDGER_SCAN_CHECK_STRIPE', True))
-    since = datetime.utcnow() - timedelta(days=days)
+        days = int(current_app.config.get('LEDGER_SCAN_DAYS', 120))
+        max_bookings = int(current_app.config.get('LEDGER_SCAN_MAX_BOOKINGS', 300))
+        check_stripe = bool(current_app.config.get('LEDGER_SCAN_CHECK_STRIPE', True))
+        since = datetime.utcnow() - timedelta(days=days)
 
-    pay_q = (
-        db.session.query(Payment.booking_id)
-        .filter(
-            Payment.status.in_(
-                ('succeeded', 'partially_refunded', 'refunded', 'pending', 'processing', 'failed')
-            ),
-            or_(
-                Payment.paid_at >= since,
-                Payment.created_at >= since,
-                Payment.refunded_at >= since,
-            ),
+        pay_q = (
+            db.session.query(Payment.booking_id)
+            .filter(
+                Payment.status.in_(
+                    ('succeeded', 'partially_refunded', 'refunded', 'pending', 'processing', 'failed')
+                ),
+                or_(
+                    Payment.paid_at >= since,
+                    Payment.created_at >= since,
+                    Payment.refunded_at >= since,
+                ),
+            )
+            .distinct()
+            .limit(max_bookings)
         )
-        .distinct()
-        .limit(max_bookings)
-    )
-    booking_ids = [row[0] for row in pay_q.all() if row[0]]
-    if not booking_ids:
-        current_app.logger.info('scan_ledger_anomalies: no candidate bookings')
-        return {'scanned': 0, 'mismatches': 0, 'alerted': 0}
+        booking_ids = [row[0] for row in pay_q.all() if row[0]]
+        if not booking_ids:
+            current_app.logger.info('scan_ledger_anomalies: no candidate bookings')
+            return out
 
-    scanned = 0
-    mismatches = 0
-    alerted = 0
-    healed = 0
-    for bid in booking_ids:
-        booking = Booking.query.get(bid)
-        if not booking:
-            continue
-        try:
-            result = reconcile_booking_ledger(booking, check_stripe=check_stripe)
-            scanned += 1
-            # Stripe 已成功、本地未 succeeded：尝试自动纠偏后再扫一次
-            hard = [
-                a for a in (result.get('anomalies') or [])
-                if a.get('issue') == 'stripe_succeeded_local_not'
-            ]
-            if hard:
-                from app.payments import heal_payment_from_stripe_succeeded
-                for a in hard:
-                    if heal_payment_from_stripe_succeeded(a.get('payment_id')):
-                        healed += 1
-                result = reconcile_booking_ledger(booking, check_stripe=check_stripe)
-            if result.get('ok'):
+        scanned = 0
+        mismatches = 0
+        alerted = 0
+        healed = 0
+        for bid in booking_ids:
+            booking = Booking.query.get(bid)
+            if not booking:
                 continue
-            mismatches += 1
-            ok, status = notify_ledger_mismatch(booking, result, source='daily_scan')
-            if ok or status == 'deduped':
-                alerted += 1
+            try:
+                result = reconcile_booking_ledger(booking, check_stripe=check_stripe)
+                scanned += 1
+                # Stripe 已成功、本地未 succeeded：尝试自动纠偏后再扫一次
+                hard = [
+                    a for a in (result.get('anomalies') or [])
+                    if a.get('issue') == 'stripe_succeeded_local_not'
+                ]
+                if hard:
+                    from app.payments import heal_payment_from_stripe_succeeded
+                    for a in hard:
+                        if heal_payment_from_stripe_succeeded(a.get('payment_id')):
+                            healed += 1
+                    result = reconcile_booking_ledger(booking, check_stripe=check_stripe)
+                if result.get('ok'):
+                    continue
+                mismatches += 1
+                ok, status = notify_ledger_mismatch(booking, result, source='daily_scan')
+                if ok or status == 'deduped':
+                    alerted += 1
+            except Exception as e:
+                current_app.logger.exception(
+                    'scan_ledger_anomalies failed booking_id=%s: %s', bid, e
+                )
+
+        current_app.logger.info(
+            'scan_ledger_anomalies done scanned=%s mismatches=%s alerted=%s healed=%s stripe=%s',
+            scanned,
+            mismatches,
+            alerted,
+            healed,
+            check_stripe,
+        )
+        out = {
+            'scanned': scanned,
+            'mismatches': mismatches,
+            'alerted': alerted,
+            'healed': healed,
+        }
+        return out
+    finally:
+        try:
+            digest = send_admin_daily_overdue_digest()
+            out['overdue_digest'] = digest
         except Exception as e:
             current_app.logger.exception(
-                'scan_ledger_anomalies failed booking_id=%s: %s', bid, e
+                'daily_overdue_digest after scan failed: %s', e
             )
-
-    current_app.logger.info(
-        'scan_ledger_anomalies done scanned=%s mismatches=%s alerted=%s healed=%s stripe=%s',
-        scanned,
-        mismatches,
-        alerted,
-        healed,
-        check_stripe,
-    )
-    return {
-        'scanned': scanned,
-        'mismatches': mismatches,
-        'alerted': alerted,
-        'healed': healed,
-    }
+            out['overdue_digest'] = {'count': 0, 'sent': False, 'error': str(e)}
