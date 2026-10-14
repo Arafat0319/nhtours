@@ -99,7 +99,7 @@
     <section class="relative w-full booking-step-2-section booking-step-section" style="padding: 0 30px 12px 30px;">
         {# Buyer information - 与 package card 风格一致：圆角卡片、同款边框 #}
         <div class="buyer-info-card mb-8">
-            <h4 class="booking-step-2-section-title text-base font-semibold text-gray-900 mb-4">Buyer information</h4>
+            <h4 class="booking-step-2-section-title text-base font-semibold text-gray-900 mb-4">Parent information</h4>
             <div class="buyer-fields-grid">
         {% for field in buyer_info_fields|sort(attribute='display_order') %}
         {% if field.field_type == 'address' %}
