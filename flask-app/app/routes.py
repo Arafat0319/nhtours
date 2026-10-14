@@ -433,20 +433,63 @@ def north_america_canada():
     gallery_nums.sort()
     return render_template('north-america/canada.html', gallery_images=gallery_nums)
 
+def _teacher_roster_page_context(trip, slug):
+    """Teacher roster 模板上下文（含按订单分组的 participants）。"""
+    from app.trip_roster import build_teacher_roster_context
+
+    ctx = build_teacher_roster_context(trip)
+    by_booking = {}
+    for p in ctx.get('all_participants') or []:
+        by_booking.setdefault(p.get('booking_id'), []).append(p)
+    ctx['participants_by_booking'] = by_booking
+    ctx['canonical_roster_url'] = url_for(
+        'main.teacher_trip_roster', teacher_view_slug=slug
+    )
+    ctx['classic_roster_url'] = url_for(
+        'main.teacher_trip_roster_classic', teacher_view_slug=slug
+    )
+    return ctx
+
+
 @bp.route('/teacher/trips/<teacher_view_slug>')
 def teacher_trip_roster(teacher_view_slug):
     """
     老师只读报名名单：凭 Trip.teacher_view_slug 访问，无需登录。
-    无效 slug → 404（不区分「行程不存在」与「码错误」）。
+    默认：按订单展开 Participants；旧双 Tab 版见 /classic。
     """
     slug = (teacher_view_slug or '').strip()
     if not slug:
         abort(404)
     trip = Trip.query.filter_by(teacher_view_slug=slug).first_or_404()
-    from app.trip_roster import build_teacher_roster_context
+    return render_template(
+        'teacher/trip_roster.html',
+        **_teacher_roster_page_context(trip, slug),
+    )
 
-    ctx = build_teacher_roster_context(trip)
-    return render_template('teacher/trip_roster.html', **ctx)
+
+@bp.route('/teacher/trips/<teacher_view_slug>/classic')
+def teacher_trip_roster_classic(teacher_view_slug):
+    """旧版双 Tab Teacher view 备份（Bookings / Participants）。"""
+    slug = (teacher_view_slug or '').strip()
+    if not slug:
+        abort(404)
+    trip = Trip.query.filter_by(teacher_view_slug=slug).first_or_404()
+    return render_template(
+        'teacher/trip_roster_classic.html',
+        **_teacher_roster_page_context(trip, slug),
+    )
+
+
+@bp.route('/teacher/trips/<teacher_view_slug>/experimental')
+def teacher_trip_roster_experimental(teacher_view_slug):
+    """实验版 URL 已升为默认；重定向到主 Teacher view。"""
+    slug = (teacher_view_slug or '').strip()
+    if not slug:
+        abort(404)
+    return redirect(
+        url_for('main.teacher_trip_roster', teacher_view_slug=slug),
+        code=302,
+    )
 
 
 @bp.route('/trips/<slug>', methods=['GET', 'POST'])

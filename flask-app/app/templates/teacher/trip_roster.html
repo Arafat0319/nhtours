@@ -20,7 +20,8 @@
     </script>
     <style>
         body { font-family: "Segoe UI", Helvetica, Arial, sans-serif; }
-        tr.participant-row--withdrawn td {
+        tr.participant-row--withdrawn td,
+        .participant-card--withdrawn {
             color: #9ca3af !important;
             background-color: #f9fafb;
         }
@@ -31,6 +32,10 @@
         tr.participant-row--withdrawn td .font-medium {
             color: #9ca3af !important;
         }
+        .order-row { cursor: pointer; }
+        .order-row:hover { background-color: #f9fafb; }
+        .chevron-icon { transition: transform 0.15s ease; }
+        .order-group.is-open .chevron-icon { transform: rotate(90deg); }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -55,180 +60,89 @@
 
     <main class="max-w-6xl mx-auto px-4 py-6 space-y-4">
         <div class="bg-white rounded-lg shadow-sm">
-            <div class="border-b border-gray-200 px-4">
-                <nav class="-mb-px flex space-x-8">
-                    <button type="button" data-tab="bookings" class="tab-link border-wetravel-cyan text-wetravel-cyan whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
-                        Bookings <span class="bg-wetravel-cyan text-white rounded-full px-2 py-0.5 text-xs ml-1">{{ bookings|length }}</span>
-                    </button>
-                    <button type="button" data-tab="participants" class="tab-link border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
-                        Participants <span class="bg-gray-100 text-gray-600 rounded-full px-2 py-0.5 text-xs ml-1">{{ total_participants_count }}</span>
-                    </button>
-                </nav>
-            </div>
-
             <div class="p-4 sm:p-6">
-                <!-- Bookings -->
-                <div id="tab-content-bookings" class="tab-content">
-                    <div class="mb-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-                        <h2 class="text-lg text-gray-600 font-normal">Bookings</h2>
-                        <input type="text" id="searchInput" placeholder="Search name, email, or order number"
-                            class="pl-3 pr-3 py-2 border border-gray-300 rounded text-sm w-full sm:w-72 focus:outline-none focus:border-wetravel-cyan">
+                <div class="mb-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+                    <div>
+                        <h2 class="text-lg text-gray-700 font-medium">Roster</h2>
+                        <p class="text-sm text-gray-500 mt-0.5">
+                            {{ bookings|length }} booking{% if bookings|length != 1 %}s{% endif %}
+                            · {{ total_participants_count }} participant{% if total_participants_count != 1 %}s{% endif %}
+                            · click a row to expand
+                        </p>
                     </div>
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full">
-                            <thead>
-                                <tr class="border-b border-gray-100 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">
-                                    <th class="px-4 py-3 whitespace-nowrap">Order number</th>
-                                    <th class="px-4 py-3 whitespace-nowrap">Parent</th>
-                                    <th class="px-4 py-3 whitespace-nowrap">Phone</th>
-                                    <th class="px-4 py-3 whitespace-nowrap">Participants</th>
-                                    <th class="px-4 py-3 whitespace-nowrap">Add-ons</th>
-                                    <th class="px-4 py-3 whitespace-nowrap">Payment Type</th>
-                                    <th class="px-4 py-3 whitespace-nowrap">Payment Status</th>
-                                    <th class="px-4 py-3 whitespace-nowrap">Booking Date</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-100" id="bookingsTableBody">
-                                {% if bookings %}
-                                {% for booking in bookings %}
-                                {% set pay_status = booking_payment_statuses.get(booking.id, booking.status) %}
-                                {% set buyer_name = booking.buyer_name or (booking.client.name if booking.client else '') or '—' %}
-                                {% set buyer_email = booking.get_buyer_email() or '' %}
-                                {% set buyer_phone = booking.get_buyer_phone() or '-' %}
-                                <tr class="booking-row"
-                                    data-name="{{ buyer_name|lower }}"
-                                    data-email="{{ buyer_email|lower }}"
-                                    data-order-number="{{ (booking.order_number or '')|lower }}"
-                                    data-status="{{ pay_status }}">
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                                        {{ booking.order_number or ('#' ~ booking.id) }}
-                                    </td>
-                                    <td class="px-4 py-3 whitespace-nowrap">
-                                        <div class="text-sm font-medium text-gray-900">{{ buyer_name }}</div>
-                                        <div class="text-sm text-gray-500">{{ buyer_email or '—' }}</div>
-                                    </td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ buyer_phone }}</td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ booking.passenger_count }}</td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                        {% set addons_map = booking_addons_summary.get(booking.id, {}) %}
-                                        {% if addons_map %}
-                                            {% for addon_name, total_qty in addons_map.items() %}
-                                            <span class="inline-block text-xs bg-gray-100 px-2 py-0.5 rounded mr-1 mb-1">{{ addon_name }}{% if total_qty > 1 %} x{{ total_qty }}{% endif %}</span>
-                                            {% endfor %}
-                                        {% else %}—{% endif %}
-                                    </td>
-                                    <td class="px-4 py-3 whitespace-nowrap">
-                                        {% set ptype = booking_payment_types.get(booking.id, {'key': 'full', 'label': 'Full'}) %}
-                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
-                                            {% if ptype.key == 'installment' %}bg-purple-100 text-purple-800
-                                            {% elif ptype.key == 'deposit_final' %}bg-indigo-100 text-indigo-800
-                                            {% elif ptype.key == 'mixed' %}bg-amber-100 text-amber-900
-                                            {% else %}bg-gray-100 text-gray-800{% endif %}">
-                                            {{ ptype.label }}
-                                        </span>
-                                    </td>
-                                    <td class="px-4 py-3 whitespace-nowrap">
-                                        <div style="display:inline-flex;flex-direction:row;align-items:center;flex-wrap:nowrap;gap:0.25rem;white-space:nowrap;">
-                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
-                                            {% if pay_status == 'fully_paid' %}bg-green-100 text-green-800
-                                            {% elif pay_status == 'deposit_paid' or pay_status == 'partially_paid' %}bg-blue-100 text-blue-800
-                                            {% elif pay_status == 'processing' %}bg-amber-100 text-amber-800
-                                            {% elif pay_status == 'overdue' %}bg-orange-100 text-orange-800
-                                            {% elif pay_status == 'partially_refunded' %}bg-orange-100 text-orange-800
-                                            {% elif pay_status == 'fully_refunded' or pay_status == 'refunded' %}bg-purple-100 text-purple-800
-                                            {% elif pay_status == 'cancelled' %}bg-red-100 text-red-800
-                                            {% else %}bg-yellow-100 text-yellow-800{% endif %}">
-                                            {% if pay_status == 'partially_refunded' %}Partially Refunded
-                                            {% elif pay_status == 'fully_refunded' or pay_status == 'refunded' %}Fully Refunded
-                                            {% elif pay_status == 'processing' %}Processing
-                                            {% elif pay_status == 'partially_paid' %}Partially Paid
-                                            {% else %}{{ pay_status|replace('_', ' ')|title }}{% endif %}
-                                        </span>
-                                        {% if booking.id in booking_payoff_ids %}
-                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">Payoff</span>
-                                        {% endif %}
-                                        </div>
-                                    </td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                        {{ booking.created_at.strftime('%Y-%m-%d') if booking.created_at else '—' }}
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                                {% else %}
-                                <tr>
-                                    <td colspan="8" class="px-4 py-10 text-center text-sm text-gray-500">No bookings yet</td>
-                                </tr>
-                                {% endif %}
-                            </tbody>
-                        </table>
-                    </div>
+                    <input type="text" id="rosterSearchInput" placeholder="Search name, email, or order number"
+                        class="pl-3 pr-3 py-2 border border-gray-300 rounded text-sm w-full sm:w-80 focus:outline-none focus:border-wetravel-cyan">
                 </div>
 
-                <!-- Participants -->
-                <div id="tab-content-participants" class="tab-content hidden">
-                    <div class="mb-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-                        <h2 class="text-lg text-gray-600 font-normal">Participants</h2>
-                        <input type="text" id="participantSearchInput" placeholder="Search name, email, or order number"
-                            class="pl-3 pr-3 py-2 border border-gray-300 rounded text-sm w-full sm:w-80 focus:outline-none focus:border-wetravel-cyan">
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full">
-                            <thead>
-                                <tr class="border-b border-gray-100 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">
-                                    <th class="px-4 py-3 whitespace-nowrap">First Name</th>
-                                    <th class="px-4 py-3 whitespace-nowrap">Last Name</th>
-                                    <th class="px-4 py-3 whitespace-nowrap">Parent</th>
-                                    <th class="px-4 py-3 whitespace-nowrap">Email</th>
-                                    <th class="px-4 py-3 whitespace-nowrap">Phone</th>
-                                    <th class="px-4 py-3 whitespace-nowrap">Gender</th>
-                                    <th class="px-4 py-3 whitespace-nowrap">Date of Birth</th>
-                                    <th class="px-4 py-3 whitespace-nowrap">Registration Type</th>
-                                    {% for question in custom_questions %}
-                                    <th class="px-4 py-3 whitespace-nowrap">{{ question.label }}</th>
-                                    {% endfor %}
-                                    <th class="px-4 py-3 whitespace-nowrap">Add-Ons</th>
-                                    <th class="px-4 py-3 whitespace-nowrap">Order number</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-100" id="participantsTableBody">
-                                {% if all_participants %}
-                                {% for participant in all_participants %}
-                                <tr class="participant-row {% if participant.is_withdrawn %}participant-row--withdrawn{% endif %}"
-                                    data-name="{{ (participant.name or '')|lower }}"
-                                    data-first-name="{{ (participant.first_name or '')|lower }}"
-                                    data-last-name="{{ (participant.last_name or '')|lower }}"
-                                    data-email="{{ (participant.email or '')|lower }}"
-                                    data-buyer="{{ (participant.buyer_name or '')|lower }}"
-                                    data-order-number="{{ (participant.order_number or '')|lower }}">
-                                    <td class="px-4 py-3 whitespace-nowrap">
-                                        <div class="flex items-center gap-1.5 text-sm font-semibold {% if participant.is_withdrawn %}text-gray-400{% else %}text-gray-800{% endif %}">
-                                            <span>{{ participant.first_name or '—' }}</span>
-                                            {% if participant.is_withdrawn %}
-                                            <span class="inline-flex items-center gap-0.5 flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-gray-200 text-gray-500" title="Withdrawn">
-                                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
-                                                </svg>
-                                                Withdrawn
-                                            </span>
-                                            {% endif %}
-                                        </div>
-                                    </td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ participant.last_name or '—' }}</td>
-                                    <td class="px-4 py-3 whitespace-nowrap">
-                                        <div class="text-sm font-medium text-gray-900">{{ participant.buyer_name or '—' }}</div>
-                                        {% if participant.buyer_email %}
-                                        <div class="text-sm text-gray-500">{{ participant.buyer_email }}</div>
-                                        {% endif %}
-                                    </td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ participant.email or '—' }}</td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ participant.phone or '—' }}</td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ participant.gender or '—' }}</td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ participant.dob or '—' }}</td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ participant.registration_type or '—' }}</td>
+                {# —— Mobile cards —— #}
+                <div class="lg:hidden space-y-3" id="rosterMobileList">
+                    {% if bookings %}
+                    {% for booking in bookings %}
+                    {% set pay_status = booking_payment_statuses.get(booking.id, booking.status) %}
+                    {% set buyer_name = booking.buyer_name or (booking.client.name if booking.client else '') or '—' %}
+                    {% set buyer_email = booking.get_buyer_email() or '' %}
+                    {% set buyer_phone = booking.get_buyer_phone() or '-' %}
+                    {% set parts = participants_by_booking.get(booking.id, []) %}
+                    {% set ptype = booking_payment_types.get(booking.id, {'key': 'full', 'label': 'Full'}) %}
+                    <div class="order-group border border-gray-200 rounded-lg bg-white overflow-hidden"
+                        data-name="{{ buyer_name|lower }}"
+                        data-email="{{ buyer_email|lower }}"
+                        data-order-number="{{ (booking.order_number or '')|lower }}"
+                        data-participants="{{ parts|map(attribute='name')|join(' ')|lower }} {{ parts|map(attribute='first_name')|join(' ')|lower }} {{ parts|map(attribute='last_name')|join(' ')|lower }} {{ parts|map(attribute='email')|join(' ')|lower }}">
+                        <button type="button" class="order-toggle w-full text-left p-4 flex gap-3 items-start"
+                            data-booking-id="{{ booking.id }}" aria-expanded="false">
+                            <svg class="chevron-icon w-4 h-4 mt-1 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                            </svg>
+                            <div class="min-w-0 flex-1">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="text-sm font-semibold text-gray-900">{{ booking.order_number or ('#' ~ booking.id) }}</span>
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                                        {% if pay_status == 'fully_paid' %}bg-green-100 text-green-800
+                                        {% elif pay_status == 'deposit_paid' or pay_status == 'partially_paid' %}bg-blue-100 text-blue-800
+                                        {% elif pay_status == 'processing' %}bg-amber-100 text-amber-800
+                                        {% elif pay_status == 'overdue' %}bg-orange-100 text-orange-800
+                                        {% elif pay_status == 'partially_refunded' %}bg-orange-100 text-orange-800
+                                        {% elif pay_status == 'fully_refunded' or pay_status == 'refunded' %}bg-purple-100 text-purple-800
+                                        {% elif pay_status == 'cancelled' %}bg-red-100 text-red-800
+                                        {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                                        {% if pay_status == 'partially_refunded' %}Partially Refunded
+                                        {% elif pay_status == 'fully_refunded' or pay_status == 'refunded' %}Fully Refunded
+                                        {% elif pay_status == 'processing' %}Processing
+                                        {% elif pay_status == 'partially_paid' %}Partially Paid
+                                        {% else %}{{ pay_status|replace('_', ' ')|title }}{% endif %}
+                                    </span>
+                                    {% if booking.id in booking_payoff_ids %}
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">Payoff</span>
+                                    {% endif %}
+                                </div>
+                                <div class="text-sm text-gray-900 mt-1">{{ buyer_name }}</div>
+                                <div class="text-xs text-gray-500 truncate">{{ buyer_email or '—' }} · {{ buyer_phone }}</div>
+                                <div class="text-xs text-gray-500 mt-1">
+                                    {{ parts|length }} participant{% if parts|length != 1 %}s{% endif %}
+                                    · {{ ptype.label }}
+                                </div>
+                            </div>
+                        </button>
+                        <div class="order-detail hidden border-t border-gray-100 bg-gray-50 px-4 py-3 space-y-3"
+                            id="mobile-detail-{{ booking.id }}">
+                            {% if parts %}
+                            {% for participant in parts %}
+                            <div class="pl-3 border-l-4 {% if participant.is_withdrawn %}border-gray-300 participant-card--withdrawn{% else %}border-indigo-400{% endif %} rounded-r">
+                                <div class="flex flex-wrap items-center gap-1.5 text-sm font-semibold {% if participant.is_withdrawn %}text-gray-400{% else %}text-gray-800{% endif %}">
+                                    <span>{{ participant.first_name or '—' }} {{ participant.last_name or '' }}</span>
+                                    {% if participant.is_withdrawn %}
+                                    <span class="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-gray-200 text-gray-500">Withdrawn</span>
+                                    {% endif %}
+                                </div>
+                                <div class="mt-1 text-xs text-gray-600 space-y-0.5">
+                                    <div>{{ participant.email or '—' }} · {{ participant.phone or '—' }}</div>
+                                    <div>Gender: {{ participant.gender or '—' }} · DOB: {{ participant.dob or '—' }}</div>
+                                    <div>Registration: {{ participant.registration_type or '—' }}</div>
                                     {% for question in custom_questions %}
                                     {% set qa = participant.question_answers or {} %}
                                     {% set ans = qa.get(question.id) if qa.get(question.id) is not none else qa.get(question.id|string) %}
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                    <div><span class="text-gray-500">{{ question.label }}:</span>
                                         {% if ans is mapping %}
                                             {% if ans.get('type') == 'file' or (ans.get('original_filename') and ans.get('details') is none) %}
                                                 {% if ans.get('value') %}
@@ -242,89 +156,268 @@
                                         {% else %}
                                             {{ ans or '—' }}
                                         {% endif %}
-                                    </td>
+                                    </div>
                                     {% endfor %}
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                    <div>Add-ons:
                                         {% if participant.addons %}
                                             {% for addon in participant.addons %}
-                                            <span class="inline-block text-xs bg-gray-100 px-2 py-0.5 rounded mr-1 mb-1">{{ addon.name }}{% if addon.quantity > 1 %} x{{ addon.quantity }}{% endif %}</span>
+                                            <span class="inline-block text-xs bg-white border border-gray-200 px-2 py-0.5 rounded mr-1">{{ addon.name }}{% if addon.quantity > 1 %} x{{ addon.quantity }}{% endif %}</span>
                                             {% endfor %}
                                         {% else %}—{% endif %}
-                                    </td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700 font-medium">{{ participant.order_number }}</td>
-                                </tr>
-                                {% endfor %}
-                                {% else %}
-                                <tr>
-                                    <td colspan="{{ 9 + (custom_questions|length) }}" class="px-4 py-10 text-center text-sm text-gray-500">No participants yet</td>
-                                </tr>
-                                {% endif %}
-                            </tbody>
-                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                            {% else %}
+                            <p class="text-sm text-gray-500">No participants on this booking.</p>
+                            {% endif %}
+                        </div>
                     </div>
+                    {% endfor %}
+                    {% else %}
+                    <p class="text-sm text-gray-500 text-center py-10">No bookings yet</p>
+                    {% endif %}
+                </div>
+
+                {# —— Desktop table —— #}
+                <div class="hidden lg:block overflow-x-auto">
+                    <table class="min-w-full">
+                        <thead>
+                            <tr class="border-b border-gray-100 text-left text-xs font-medium text-wetravel-cyan uppercase tracking-wider">
+                                <th class="px-2 py-3 w-8"></th>
+                                <th class="px-4 py-3 whitespace-nowrap">Order number</th>
+                                <th class="px-4 py-3 whitespace-nowrap">Parent</th>
+                                <th class="px-4 py-3 whitespace-nowrap">Phone</th>
+                                <th class="px-4 py-3 whitespace-nowrap">Participants</th>
+                                <th class="px-4 py-3 whitespace-nowrap">Add-ons</th>
+                                <th class="px-4 py-3 whitespace-nowrap">Payment Type</th>
+                                <th class="px-4 py-3 whitespace-nowrap">Payment Status</th>
+                                <th class="px-4 py-3 whitespace-nowrap">Booking Date</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white" id="rosterTableBody">
+                            {% if bookings %}
+                            {% for booking in bookings %}
+                            {% set pay_status = booking_payment_statuses.get(booking.id, booking.status) %}
+                            {% set buyer_name = booking.buyer_name or (booking.client.name if booking.client else '') or '—' %}
+                            {% set buyer_email = booking.get_buyer_email() or '' %}
+                            {% set buyer_phone = booking.get_buyer_phone() or '-' %}
+                            {% set parts = participants_by_booking.get(booking.id, []) %}
+                            {% set ptype = booking_payment_types.get(booking.id, {'key': 'full', 'label': 'Full'}) %}
+                            <tr class="order-group order-row border-b border-gray-100"
+                                data-booking-id="{{ booking.id }}"
+                                data-name="{{ buyer_name|lower }}"
+                                data-email="{{ buyer_email|lower }}"
+                                data-order-number="{{ (booking.order_number or '')|lower }}"
+                                data-participants="{{ parts|map(attribute='name')|join(' ')|lower }} {{ parts|map(attribute='first_name')|join(' ')|lower }} {{ parts|map(attribute='last_name')|join(' ')|lower }} {{ parts|map(attribute='email')|join(' ')|lower }}">
+                                <td class="px-2 py-3 text-gray-400">
+                                    <svg class="chevron-icon w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                                    </svg>
+                                </td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                                    {{ booking.order_number or ('#' ~ booking.id) }}
+                                </td>
+                                <td class="px-4 py-3 whitespace-nowrap">
+                                    <div class="text-sm font-medium text-gray-900">{{ buyer_name }}</div>
+                                    <div class="text-sm text-gray-500">{{ buyer_email or '—' }}</div>
+                                </td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ buyer_phone }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ parts|length }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                    {% set addons_map = booking_addons_summary.get(booking.id, {}) %}
+                                    {% if addons_map %}
+                                        {% for addon_name, total_qty in addons_map.items() %}
+                                        <span class="inline-block text-xs bg-gray-100 px-2 py-0.5 rounded mr-1 mb-1">{{ addon_name }}{% if total_qty > 1 %} x{{ total_qty }}{% endif %}</span>
+                                        {% endfor %}
+                                    {% else %}—{% endif %}
+                                </td>
+                                <td class="px-4 py-3 whitespace-nowrap">
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                                        {% if ptype.key == 'installment' %}bg-purple-100 text-purple-800
+                                        {% elif ptype.key == 'deposit_final' %}bg-indigo-100 text-indigo-800
+                                        {% elif ptype.key == 'mixed' %}bg-amber-100 text-amber-900
+                                        {% else %}bg-gray-100 text-gray-800{% endif %}">
+                                        {{ ptype.label }}
+                                    </span>
+                                </td>
+                                <td class="px-4 py-3 whitespace-nowrap">
+                                    <div style="display:inline-flex;flex-direction:row;align-items:center;flex-wrap:nowrap;gap:0.25rem;white-space:nowrap;">
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                                        {% if pay_status == 'fully_paid' %}bg-green-100 text-green-800
+                                        {% elif pay_status == 'deposit_paid' or pay_status == 'partially_paid' %}bg-blue-100 text-blue-800
+                                        {% elif pay_status == 'processing' %}bg-amber-100 text-amber-800
+                                        {% elif pay_status == 'overdue' %}bg-orange-100 text-orange-800
+                                        {% elif pay_status == 'partially_refunded' %}bg-orange-100 text-orange-800
+                                        {% elif pay_status == 'fully_refunded' or pay_status == 'refunded' %}bg-purple-100 text-purple-800
+                                        {% elif pay_status == 'cancelled' %}bg-red-100 text-red-800
+                                        {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                                        {% if pay_status == 'partially_refunded' %}Partially Refunded
+                                        {% elif pay_status == 'fully_refunded' or pay_status == 'refunded' %}Fully Refunded
+                                        {% elif pay_status == 'processing' %}Processing
+                                        {% elif pay_status == 'partially_paid' %}Partially Paid
+                                        {% else %}{{ pay_status|replace('_', ' ')|title }}{% endif %}
+                                    </span>
+                                    {% if booking.id in booking_payoff_ids %}
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">Payoff</span>
+                                    {% endif %}
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                    {{ booking.created_at.strftime('%Y-%m-%d') if booking.created_at else '—' }}
+                                </td>
+                            </tr>
+                            <tr class="order-detail hidden bg-gray-50" id="desktop-detail-{{ booking.id }}" data-parent-booking="{{ booking.id }}">
+                                <td colspan="9" class="px-4 py-3">
+                                    {% if parts %}
+                                    <div class="overflow-x-auto rounded border border-gray-200 bg-white">
+                                        <table class="min-w-full">
+                                            <thead>
+                                                <tr class="border-b border-gray-100 text-left text-xs font-medium text-indigo-700 uppercase tracking-wider">
+                                                    <th class="px-3 py-2 whitespace-nowrap">First Name</th>
+                                                    <th class="px-3 py-2 whitespace-nowrap">Last Name</th>
+                                                    <th class="px-3 py-2 whitespace-nowrap">Email</th>
+                                                    <th class="px-3 py-2 whitespace-nowrap">Phone</th>
+                                                    <th class="px-3 py-2 whitespace-nowrap">Gender</th>
+                                                    <th class="px-3 py-2 whitespace-nowrap">Date of Birth</th>
+                                                    <th class="px-3 py-2 whitespace-nowrap">Registration Type</th>
+                                                    {% for question in custom_questions %}
+                                                    <th class="px-3 py-2 whitespace-nowrap">{{ question.label }}</th>
+                                                    {% endfor %}
+                                                    <th class="px-3 py-2 whitespace-nowrap">Add-Ons</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-gray-100">
+                                                {% for participant in parts %}
+                                                <tr class="participant-row {% if participant.is_withdrawn %}participant-row--withdrawn{% endif %}">
+                                                    <td class="px-3 py-2 whitespace-nowrap">
+                                                        <div class="flex items-center gap-1.5 text-sm font-semibold {% if participant.is_withdrawn %}text-gray-400{% else %}text-gray-800{% endif %}">
+                                                            <span>{{ participant.first_name or '—' }}</span>
+                                                            {% if participant.is_withdrawn %}
+                                                            <span class="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-gray-200 text-gray-500">Withdrawn</span>
+                                                            {% endif %}
+                                                        </div>
+                                                    </td>
+                                                    <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{{ participant.last_name or '—' }}</td>
+                                                    <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{{ participant.email or '—' }}</td>
+                                                    <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{{ participant.phone or '—' }}</td>
+                                                    <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{{ participant.gender or '—' }}</td>
+                                                    <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{{ participant.dob or '—' }}</td>
+                                                    <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{{ participant.registration_type or '—' }}</td>
+                                                    {% for question in custom_questions %}
+                                                    {% set qa = participant.question_answers or {} %}
+                                                    {% set ans = qa.get(question.id) if qa.get(question.id) is not none else qa.get(question.id|string) %}
+                                                    <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
+                                                        {% if ans is mapping %}
+                                                            {% if ans.get('type') == 'file' or (ans.get('original_filename') and ans.get('details') is none) %}
+                                                                {% if ans.get('value') %}
+                                                                <a href="{{ url_for('static', filename=ans.value) }}" target="_blank" rel="noopener" class="text-wetravel-cyan underline">{{ ans.get('original_filename') or 'View file' }}</a>
+                                                                {% else %}—{% endif %}
+                                                            {% elif ans.get('details') is not none %}
+                                                                {% if ans.get('value') == 'yes' and ans.get('details') %}Yes: {{ ans.details }}{% else %}{{ ans.get('value') or '—' }}{% endif %}
+                                                            {% else %}
+                                                                {{ ans.get('value') or '—' }}
+                                                            {% endif %}
+                                                        {% else %}
+                                                            {{ ans or '—' }}
+                                                        {% endif %}
+                                                    </td>
+                                                    {% endfor %}
+                                                    <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
+                                                        {% if participant.addons %}
+                                                            {% for addon in participant.addons %}
+                                                            <span class="inline-block text-xs bg-gray-100 px-2 py-0.5 rounded mr-1 mb-1">{{ addon.name }}{% if addon.quantity > 1 %} x{{ addon.quantity }}{% endif %}</span>
+                                                            {% endfor %}
+                                                        {% else %}—{% endif %}
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    {% else %}
+                                    <p class="text-sm text-gray-500 pl-6">No participants on this booking.</p>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% else %}
+                            <tr>
+                                <td colspan="9" class="px-4 py-10 text-center text-sm text-gray-500">No bookings yet</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
 
         <p class="text-xs text-gray-500 text-center pb-8">
             This page is view-only. Contact Nexus Horizons staff for changes to bookings or payments.
+            {% if classic_roster_url %}
+            <span class="block mt-1"><a href="{{ classic_roster_url }}" class="text-gray-400 underline hover:text-gray-600">Classic tabbed view</a></span>
+            {% endif %}
         </p>
     </main>
 
     <script>
     (function () {
-        function switchTab(target) {
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-            document.querySelectorAll('.tab-link').forEach(el => {
-                el.classList.remove('border-wetravel-cyan', 'text-wetravel-cyan');
-                el.classList.add('border-transparent', 'text-gray-500');
-            });
-            const panel = document.getElementById('tab-content-' + target);
-            if (panel) panel.classList.remove('hidden');
-            const link = document.querySelector('.tab-link[data-tab="' + target + '"]');
-            if (link) {
-                link.classList.add('border-wetravel-cyan', 'text-wetravel-cyan');
-                link.classList.remove('border-transparent', 'text-gray-500');
-            }
-            try { history.replaceState(null, '', '#' + target); } catch (e) {}
+        function setOpen(groupEl, open) {
+            if (!groupEl) return;
+            groupEl.classList.toggle('is-open', open);
+            const bid = groupEl.getAttribute('data-booking-id');
+            const desktopDetail = document.getElementById('desktop-detail-' + bid);
+            const mobileDetail = document.getElementById('mobile-detail-' + bid);
+            if (desktopDetail) desktopDetail.classList.toggle('hidden', !open);
+            if (mobileDetail) mobileDetail.classList.toggle('hidden', !open);
+            const toggle = groupEl.querySelector('.order-toggle');
+            if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
         }
 
-        document.querySelectorAll('.tab-link').forEach(btn => {
-            btn.addEventListener('click', () => switchTab(btn.getAttribute('data-tab')));
+        function toggleGroup(groupEl) {
+            setOpen(groupEl, !groupEl.classList.contains('is-open'));
+        }
+
+        document.querySelectorAll('#rosterTableBody .order-row').forEach(row => {
+            row.addEventListener('click', () => toggleGroup(row));
         });
 
-        const hash = (location.hash || '').replace('#', '');
-        switchTab(hash === 'participants' ? 'participants' : 'bookings');
+        document.querySelectorAll('#rosterMobileList .order-toggle').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const group = btn.closest('.order-group');
+                toggleGroup(group);
+            });
+        });
 
-        const searchInput = document.getElementById('searchInput');
+        const searchInput = document.getElementById('rosterSearchInput');
         if (searchInput) {
             searchInput.addEventListener('input', () => {
                 const q = (searchInput.value || '').toLowerCase().trim();
-                document.querySelectorAll('#bookingsTableBody .booking-row').forEach(row => {
+                document.querySelectorAll('.order-group[data-booking-id]').forEach(group => {
                     const hay = [
-                        row.getAttribute('data-name') || '',
-                        row.getAttribute('data-email') || '',
-                        row.getAttribute('data-order-number') || '',
+                        group.getAttribute('data-name') || '',
+                        group.getAttribute('data-email') || '',
+                        group.getAttribute('data-order-number') || '',
+                        group.getAttribute('data-participants') || '',
                     ].join(' ');
-                    row.style.display = !q || hay.indexOf(q) !== -1 ? '' : 'none';
-                });
-            });
-        }
-
-        const pSearch = document.getElementById('participantSearchInput');
-        if (pSearch) {
-            pSearch.addEventListener('input', () => {
-                const q = (pSearch.value || '').toLowerCase().trim();
-                document.querySelectorAll('#participantsTableBody .participant-row').forEach(row => {
-                    const hay = [
-                        row.getAttribute('data-name') || '',
-                        row.getAttribute('data-first-name') || '',
-                        row.getAttribute('data-last-name') || '',
-                        row.getAttribute('data-email') || '',
-                        row.getAttribute('data-buyer') || '',
-                        row.getAttribute('data-order-number') || '',
-                    ].join(' ');
-                    row.style.display = !q || hay.indexOf(q) !== -1 ? '' : 'none';
+                    const match = !q || hay.indexOf(q) !== -1;
+                    group.style.display = match ? '' : 'none';
+                    const bid = group.getAttribute('data-booking-id');
+                    const desktopDetail = document.getElementById('desktop-detail-' + bid);
+                    if (desktopDetail) {
+                        if (!match) {
+                            desktopDetail.style.display = 'none';
+                        } else {
+                            desktopDetail.style.display = '';
+                            if (!group.classList.contains('is-open')) {
+                                desktopDetail.classList.add('hidden');
+                            }
+                        }
+                    }
+                    if (match && q) {
+                        const partHay = group.getAttribute('data-participants') || '';
+                        if (partHay.indexOf(q) !== -1) setOpen(group, true);
+                    }
                 });
             });
         }
