@@ -26,6 +26,10 @@ def test_teacher_roster_ok_and_reset_invalidates(app, client):
     body = rv.get_data(as_text=True)
     assert 'Bookings' in body
     assert 'Participants' in body
+    assert 'tab-content-bookings' in body
+    assert 'tab-content-participants' in body
+    assert 'click a row to expand' in body
+    assert 'First Name' in body
     assert 'Manual Booking' not in body
     assert 'Download Excel' not in body
     assert 'Gross amount' not in body

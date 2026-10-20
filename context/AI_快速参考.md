@@ -21,7 +21,7 @@
 | 启动 | `cd flask-app && python run.py` |
 | 端口 | **8080**（`PORT` 环境变量可改；不是 5000） |
 | 后台 | `http://localhost:8080/admin/login` |
-| 老师只读名单 | Basics → **Teacher view link** → `/teacher/trips/<slug>`（按单展开 Participants；旧双 Tab 备份 `/classic`；无登录；Reset 吊销） |
+| 老师只读名单 | Basics → **Teacher view link** → `/teacher/trips/<slug>`（Tab：Bookings 按单展开 + Participants 全表；旧扁平 Bookings 备份 `/classic`；无登录；Reset 吊销） |
 | 迁移 | `flask db upgrade`（在 flask-app 目录，激活 venv 后） |
 | 开发 DB | 本机 **MySQL 8**；当前常用库名 **`nhtours`**（可从生产整库复制；见下） |
 | SSH 生产 | 本机 `ssh nhtours`（`~/.ssh/config` → `54.69.40.218`，见 `手册/安全手册.md`） |
