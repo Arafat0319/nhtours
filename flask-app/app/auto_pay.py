@@ -376,6 +376,7 @@ def charge_installment_via_auto_pay(installment, *, card_only=True):
         installment_has_processing_ach,
         payment_covers_installment,
         safe_cancel_payment_intent,
+        succeeded_payment_covers_installment,
         _normalize_metadata,
     )
 
@@ -384,8 +385,23 @@ def charge_installment_via_auto_pay(installment, *, card_only=True):
         return False, 'auto_pay_disabled'
     if not booking.auto_pay_payment_method_id or not booking.stripe_customer_id:
         return False, 'missing_payment_method'
+    inst_status = (getattr(installment, 'status', None) or '')
+    if inst_status in ('paid', 'cancelled'):
+        return False, 'already_settled'
     if installment_has_processing_ach(installment) or booking_has_processing_ach_payment(booking.id):
         return False, 'ach_processing'
+    try:
+        if succeeded_payment_covers_installment(installment):
+            return False, 'already_settled'
+    except Exception as e:
+        try:
+            current_app.logger.warning(
+                'Auto Pay cover check failed installment=%s: %s',
+                getattr(installment, 'id', None),
+                e,
+            )
+        except Exception:
+            pass
 
     def _settle_succeeded_intent(intent_obj, pi_id):
         from app.routes import _stripe_intent_as_dict, handle_payment_intent_succeeded

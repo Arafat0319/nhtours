@@ -36,6 +36,11 @@
         <h1 class="text-4xl font-bold text-gray-900" style="margin-top: calc(var(--spacing) * 38); margin-bottom: calc(var(--spacing) * 8);">Already Paid</h1>
         <p class="text-xl text-gray-600" style="margin-bottom: {% if receipt_url %}calc(var(--spacing) * 12){% else %}calc(var(--spacing) * 38){% endif %};">
             This payment has already been completed. No additional charge was made.
+            {% if remaining_due is not none and remaining_due > 0.001 %}
+            Remaining balance on this order: ${{ '%.2f'|format(remaining_due) }}.
+            {% elif remaining_due is not none %}
+            This order is paid in full.
+            {% endif %}
         </p>
         {% else %}
         <h1 class="text-4xl font-bold text-gray-900" style="margin-top: calc(var(--spacing) * 38); margin-bottom: calc(var(--spacing) * 8);">Booking Confirmed!</h1>

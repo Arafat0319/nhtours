@@ -1,5 +1,6 @@
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 import uuid
 
@@ -82,6 +83,11 @@ def run():
                 ],
                 "discount_code": None,
                 "payment_method": "deposit_installment",
+                "parental_waiver": {
+                    "accepted": True,
+                    "version": "2026-08-parental-v1",
+                    "accepted_at": datetime.utcnow().isoformat() + "Z",
+                },
             }
         }
 
@@ -93,6 +99,7 @@ def run():
         )
         if resp.status_code != 200:
             print(f"[ERROR] Booking API status={resp.status_code}")
+            print(resp.get_json())
             return False
 
         data = resp.get_json() or {}

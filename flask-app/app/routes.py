@@ -58,6 +58,8 @@ from app.payments import (
     catch_up_summary_items,
     catch_up_metadata_fields,
     parse_catch_up_ids,
+    link_initial_payment_to_deposit_installment,
+    reopen_installments_for_refunded_payment,
     void_stale_pending_payments,
     abandon_pending_booking,
     cancel_sibling_empty_pending_bookings,
@@ -2711,12 +2713,20 @@ def booking_success():
         intent = retrieve_payment_intent(payment.stripe_payment_intent_id)
         failure_message = payment_intent_error_message(intent)
 
+    remaining_due = None
+    if already_paid and booking and not order_cancelled:
+        try:
+            remaining_due = float(calculate_booking_total(booking).get('amount_due') or 0)
+        except Exception:
+            remaining_due = None
+
     return render_template(
         'booking/success.html',
         booking_id=booking_id,
         booking=booking,
         payment_status=payment_status,
         already_paid=already_paid and not order_cancelled,
+        remaining_due=remaining_due,
         order_cancelled=order_cancelled,
         receipt_url=receipt_url,
         receipt_token=(
@@ -3756,6 +3766,7 @@ def test_booking_success_preview():
             booking=None,
             payment_status='succeeded',
             already_paid=(view == 'already_paid'),
+            remaining_due=(399.0 if view == 'already_paid' else 0.0),
             receipt_url='#',
             receipt_token=None,
             failure_message=None,
@@ -3767,6 +3778,7 @@ def test_booking_success_preview():
             booking=None,
             payment_status='failed',
             already_paid=False,
+            remaining_due=None,
             receipt_url=None,
             receipt_token=None,
             failure_message='Your card has insufficient funds.',
@@ -5760,6 +5772,16 @@ def handle_booking_payment_intent_succeeded(payment_intent):
                 config = bp.package.payment_plan_config
                 if config and config.get('enabled'):
                     create_installment_payments(booking, bp, config)
+        db.session.flush()
+    try:
+        link_initial_payment_to_deposit_installment(booking, payment)
+    except Exception as e:
+        current_app.logger.warning(
+            'link deposit installment failed booking=%s payment=%s: %s',
+            booking.id,
+            getattr(payment, 'id', None),
+            e,
+        )
     
     # Payoff / 全款结清：取消未付分期，并清理打开分期页留下的 pending Payment
     if metadata.get('payment_step') == 'payoff' or is_full_payment:
@@ -5867,10 +5889,23 @@ def handle_payment_intent_succeeded(payment_intent):
             installment = InstallmentPayment.query.get(_early_catch[0])
 
     if not installment:
-        current_app.logger.warning(
-            f"InstallmentPayment not found for payment_intent {payment_intent_id}"
-        )
-        return
+        booking_id = _parse_int(metadata.get('booking_id'))
+        step = (metadata.get('payment_step') or '').strip().lower()
+        if booking_id and step in ('initial', 'deposit'):
+            installment = InstallmentPayment.query.filter_by(
+                booking_id=booking_id, installment_number=0
+            ).first()
+            if installment:
+                current_app.logger.info(
+                    'Resolved deposit installment #0 for pi=%s booking=%s',
+                    payment_intent_id,
+                    booking_id,
+                )
+        if not installment:
+            current_app.logger.warning(
+                f"InstallmentPayment not found for payment_intent {payment_intent_id}"
+            )
+            return
 
     catch_ids = parse_catch_up_ids(metadata)
     meta_had_catch_ids = bool(catch_ids)
@@ -6264,6 +6299,8 @@ def handle_refund(charge_data):
                 cancel_unpaid_installments(booking)
             elif booking.status == 'fully_paid':
                 booking.status = 'deposit_paid'
+        if (payment.status or '') == 'refunded':
+            reopen_installments_for_refunded_payment(payment)
 
         db.session.commit()
         current_app.logger.info(

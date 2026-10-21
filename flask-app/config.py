@@ -71,6 +71,12 @@ class Config:
     TESTIMONIAL_REJECT_RETENTION_DAYS = int(os.environ.get('TESTIMONIAL_REJECT_RETENTION_DAYS', '90'))
     SECURITY_ALERT_EMAIL = os.environ.get('SECURITY_ALERT_EMAIL', '')
     SECURITY_ALERT_DEDUP_SECONDS = int(os.environ.get('SECURITY_ALERT_DEDUP_SECONDS', '3600'))
+    # 客户敏感操作：拦截误催 / 任务崩溃等。TECH_ALERT_EMAIL 给开发者；未设则回落安全/团队邮箱。
+    TECH_ALERT_EMAIL = os.environ.get('TECH_ALERT_EMAIL', '')
+    OPS_ALERTS_ENABLED = os.environ.get('OPS_ALERTS_ENABLED', 'true').lower() in ('1', 'true', 'yes')
+    OPS_ALERT_DEDUP_SECONDS = int(os.environ.get('OPS_ALERT_DEDUP_SECONDS', str(24 * 3600)))
+    OPS_LOG_IN_TESTS = os.environ.get('OPS_LOG_IN_TESTS', '').lower() in ('1', 'true', 'yes')
+    ACH_STALE_ALERT_DAYS = int(os.environ.get('ACH_STALE_ALERT_DAYS', '10'))
     EXPORT_TOKEN_MAX_AGE_SECONDS = int(os.environ.get('EXPORT_TOKEN_MAX_AGE_SECONDS', str(90 * 24 * 3600)))
     BASE_URL = os.environ.get('BASE_URL', '').rstrip('/')
     

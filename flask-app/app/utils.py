@@ -263,6 +263,13 @@ def send_email_via_ses(
     reply_to=None,
     include_list_unsubscribe=False,
     attachments=None,
+    op_action=None,
+    op_category=None,
+    booking_id=None,
+    order_number=None,
+    related_id=None,
+    related_type=None,
+    actor=None,
 ):
     """
     使用AWS SES发送邮件
@@ -414,16 +421,81 @@ def send_email_via_ses(
             f'邮件发送成功，MessageId: {message_id} To={recipient} From={email_addr}'
             + (f' attachments={len(attachments)}' if attachments else '')
         )
+        _record_ses_send(
+            success=True,
+            recipient=recipient,
+            subject=subject,
+            message_id=message_id,
+            op_action=op_action,
+            op_category=op_category,
+            booking_id=booking_id,
+            order_number=order_number,
+            related_id=related_id,
+            related_type=related_type,
+            actor=actor,
+        )
         return True, message_id or '邮件发送成功'
 
     except ClientError as e:
         error_code = e.response['Error']['Code']
         error_message = e.response['Error']['Message']
-        current_app.logger.error(f'AWS SES错误: {error_code} - {error_message}')
-        return False, f'AWS SES错误: {error_code} - {error_message}'
+        err = f'AWS SES错误: {error_code} - {error_message}'
+        current_app.logger.error(err)
+        _record_ses_send(
+            success=False,
+            recipient=recipient,
+            subject=subject,
+            error=err,
+            op_action=op_action,
+            op_category=op_category,
+            booking_id=booking_id,
+            order_number=order_number,
+            related_id=related_id,
+            related_type=related_type,
+            actor=actor,
+        )
+        return False, err
     except Exception as e:
-        current_app.logger.error(f'发送邮件失败: {str(e)}')
-        return False, f'发送邮件失败: {str(e)}'
+        err = f'发送邮件失败: {str(e)}'
+        current_app.logger.error(err)
+        _record_ses_send(
+            success=False,
+            recipient=recipient,
+            subject=subject,
+            error=err,
+            op_action=op_action,
+            op_category=op_category,
+            booking_id=booking_id,
+            order_number=order_number,
+            related_id=related_id,
+            related_type=related_type,
+            actor=actor,
+        )
+        return False, err
+
+
+def _record_ses_send(*, success, recipient, subject, message_id=None, error=None,
+                     op_action=None, op_category=None, booking_id=None,
+                     order_number=None, related_id=None, related_type=None, actor=None):
+    try:
+        from app.ops_log import record_email_send
+
+        record_email_send(
+            success=success,
+            recipient=recipient,
+            subject=subject,
+            message_id=message_id,
+            error=error,
+            action=op_action,
+            category=op_category,
+            booking_id=booking_id,
+            order_number=order_number,
+            related_id=related_id,
+            related_type=related_type,
+            actor=actor,
+        )
+    except Exception:
+        current_app.logger.exception('SES operation_log failed To=%s', recipient)
 
 
 def handle_newsletter_submission(data):

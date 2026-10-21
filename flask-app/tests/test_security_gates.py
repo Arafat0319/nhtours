@@ -65,6 +65,23 @@ def test_staff_blocked_from_export(client, app):
     assert r.status_code == 403
 
 
+def test_unauthenticated_admin_money_routes_redirect(client):
+    assert client.post("/admin/payments/installments/1/mark-paid").status_code in (302, 401)
+    assert client.post("/admin/trips/1/bookings/1/cancel").status_code in (302, 401)
+    assert client.get("/admin/payments/export").status_code in (302, 401)
+
+
+def test_stripe_webhook_rejects_invalid_signature(client, app):
+    with app.app_context():
+        r = client.post(
+            "/webhooks/stripe",
+            data="{}",
+            content_type="application/json",
+            headers={"Stripe-Signature": "bogus"},
+        )
+    assert r.status_code in (400, 403)
+
+
 def test_test_routes_gated(client, app):
     app.debug = False
     assert client.get("/test/installment-modal").status_code == 404

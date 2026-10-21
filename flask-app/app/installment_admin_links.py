@@ -27,7 +27,11 @@ def installment_unpaid_action_error(installment):
     if succeeded_pay:
         return 'This installment already has a successful payment'
 
-    from app.payments import booking_has_processing_ach_payment, installment_has_processing_ach
+    from app.payments import (
+        booking_has_processing_ach_payment,
+        installment_has_processing_ach,
+        succeeded_payment_covers_installment,
+    )
 
     if installment_has_processing_ach(installment) or booking_has_processing_ach_payment(
         installment.booking_id
@@ -36,6 +40,11 @@ def installment_unpaid_action_error(installment):
             'A bank transfer for this order is still processing; '
             'cannot send link until it clears'
         )
+    try:
+        if succeeded_payment_covers_installment(installment):
+            return 'This installment already has a successful payment'
+    except Exception:
+        pass
     return None
 
 

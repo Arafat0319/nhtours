@@ -2684,6 +2684,20 @@ def send_installment_reminder(installment_id):
 
     err = installment_unpaid_action_error(installment)
     if err:
+        from app.ops_log import record_operation
+
+        booking = installment.booking
+        record_operation(
+            category='email_blocked',
+            action='admin_send_reminder',
+            result='blocked',
+            reason=err,
+            booking_id=getattr(booking, 'id', None),
+            order_number=getattr(booking, 'order_number', None),
+            related_id=installment.id,
+            related_type='installment',
+            recipient=getattr(booking, 'buyer_email', None),
+        )
         return jsonify({'success': False, 'error': err}), 400
 
     try:
@@ -2733,25 +2747,27 @@ def send_installment_reminder(installment_id):
 def mark_installment_paid(installment_id):
     """手动标记分期付款为已支付（线下）：写 Payment 账本，并禁止跳期。"""
     installment = InstallmentPayment.query.get_or_404(installment_id)
-    
-    if installment.status == 'paid':
-        return jsonify({
-            'success': False,
-            'error': 'Installment already marked as paid'
-        }), 400
-    if (installment.status or '') == 'cancelled':
-        return jsonify({
-            'success': False,
-            'error': 'This installment is cancelled',
-        }), 400
-    if Payment.query.filter_by(
-        installment_payment_id=installment.id,
-        status='succeeded',
-    ).first():
-        return jsonify({
-            'success': False,
-            'error': 'This installment already has a successful payment',
-        }), 400
+    from app.installment_admin_links import installment_unpaid_action_error
+
+    err = installment_unpaid_action_error(installment)
+    if err:
+        try:
+            from app.ops_log import record_operation
+
+            booking = installment.booking
+            record_operation(
+                category='ledger',
+                action='admin_mark_paid',
+                result='blocked',
+                reason=err,
+                booking_id=getattr(booking, 'id', None),
+                order_number=getattr(booking, 'order_number', None),
+                related_id=installment.id,
+                related_type='installment',
+            )
+        except Exception:
+            pass
+        return jsonify({'success': False, 'error': err}), 400
 
     # 与客户侧 catch-up 一致：须先付清更早未付期
     earlier_unpaid = (
@@ -2832,6 +2848,21 @@ def mark_installment_paid(installment_id):
             booking.status = 'deposit_paid'
         
         db.session.commit()
+        try:
+            from app.ops_log import record_operation
+
+            record_operation(
+                category='ledger',
+                action='admin_mark_paid',
+                result='ok',
+                booking_id=booking.id,
+                order_number=getattr(booking, 'order_number', None),
+                related_id=installment.id,
+                related_type='installment',
+                extra={'payment_id': payment.id, 'amount': amount},
+            )
+        except Exception:
+            pass
         
         return jsonify({
             'success': True,
@@ -4205,13 +4236,24 @@ def manage_booking(trip_id, booking_id):
                     'success': False,
                     'message': 'Invalid payment status.',
                 }), 400
-            booking.status = new_status
             _ap = request.form.get('amount_paid')
+            new_amount_paid = None
             if _ap is not None and _ap != '':
                 try:
-                    booking.amount_paid = float(_ap)
+                    new_amount_paid = float(_ap)
                 except (TypeError, ValueError):
-                    pass
+                    return jsonify({
+                        'success': False,
+                        'message': 'Invalid paid amount.',
+                    }), 400
+            from app.payments import booking_manual_status_edit_error
+
+            ledger_err = booking_manual_status_edit_error(
+                booking, new_status, new_amount_paid
+            )
+            if ledger_err:
+                return jsonify({'success': False, 'message': ledger_err}), 400
+            booking.status = new_status
             booking.special_requests = request.form.get('special_requests', booking.special_requests)
             
             # Update participants (matching builder structure: first_name, last_name, question_answers)
@@ -4262,8 +4304,17 @@ def manage_booking(trip_id, booking_id):
                 return redirect(url_for('admin.manage_trip', id=trip_id))
             if prev_status == 'cancelled':
                 new_status = 'cancelled'
+            from app.payments import booking_manual_status_edit_error
+
+            ledger_err = booking_manual_status_edit_error(
+                booking, new_status, form.amount_paid.data
+            )
+            if ledger_err:
+                if request.is_json or request.headers.get('Content-Type') == 'application/json':
+                    return jsonify({'success': False, 'message': ledger_err}), 400
+                flash(ledger_err, 'error')
+                return redirect(url_for('admin.manage_trip', id=trip_id))
             booking.status = new_status
-            booking.amount_paid = form.amount_paid.data
             booking.special_requests = form.special_requests.data
             db.session.commit()
             
@@ -4380,6 +4431,21 @@ def cancel_booking_order(trip_id, booking_id):
         db.session.rollback()
         current_app.logger.error(f'Error cancelling booking {booking_id}: {e}')
         return jsonify({'success': False, 'message': 'Failed to cancel order'}), 500
+
+    try:
+        from app.ops_log import record_operation
+
+        record_operation(
+            category='ledger',
+            action='admin_cancel_order',
+            result='ok',
+            booking_id=booking.id,
+            order_number=getattr(booking, 'order_number', None),
+            related_id=booking.id,
+            related_type='booking',
+        )
+    except Exception:
+        pass
 
     return jsonify({
         'success': True,
@@ -4832,6 +4898,28 @@ def refund_booking(trip_id, booking_id):
 
         done_total = round(sum(a for _, a in refunded_pairs), 2)
         _notify_customer_refunds(refunded_pairs, done_total)
+
+        try:
+            from app.ops_log import record_operation
+
+            record_operation(
+                category='ledger',
+                action='admin_refund',
+                result='ok',
+                booking_id=booking.id,
+                order_number=getattr(booking, 'order_number', None),
+                related_id=refunded_pairs[0][0].id if refunded_pairs else None,
+                related_type='payment',
+                extra={
+                    'amount': done_total,
+                    'payment_ids': [p.id for p, _ in refunded_pairs],
+                    'full_refund': full_refund,
+                    'manual_only': manual_only,
+                    'cancel_booking': cancel_booking,
+                },
+            )
+        except Exception:
+            pass
 
         return jsonify({
             'success': True,

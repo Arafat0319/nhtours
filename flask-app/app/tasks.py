@@ -66,13 +66,77 @@ def _same_due_unpaid_group(installment):
         return [installment]
     rows = q.order_by(InstallmentPayment.id.asc()).all()
     if not rows:
-        return [installment]
+        st = (getattr(installment, 'status', None) or '').strip().lower()
+        if st in _UNPAID_INSTALLMENT_STATUSES:
+            return [installment]
+        return []
     groups = group_installments_by_due_date(rows)
     for g in groups:
         ids = set(g.get('installment_ids') or [])
         if installment.id in ids:
             return g.get('installments') or [installment]
     return [installment]
+
+
+def customer_installment_notice_block_reason(installment, *, require_overdue_display=False):
+    """
+    已付清 / 已取消 / ACH 清算中 / 成功付款已覆盖该期 → 返回拦截原因。
+    逾期信再要求 Manage 展示态为 overdue。守卫异常时失败关闭（不发）。
+    返回 None 表示可以发。
+    """
+    if not installment:
+        return 'missing'
+    status = (getattr(installment, 'status', None) or '').strip().lower()
+    if status == 'paid':
+        return 'paid'
+    if status == 'cancelled':
+        return 'cancelled'
+    booking = getattr(installment, 'booking', None)
+    if booking and (booking.status or '') == 'cancelled':
+        return 'booking_cancelled'
+    try:
+        from app.models import Payment
+        from app.payments import (
+            booking_has_processing_ach_payment,
+            booking_payment_display_status,
+            installment_has_processing_ach,
+            payment_covers_installment,
+        )
+
+        if installment_has_processing_ach(installment):
+            return 'ach_processing'
+        if booking and booking_has_processing_ach_payment(booking.id):
+            return 'ach_processing'
+        if booking:
+            for payment in Payment.query.filter(
+                Payment.booking_id == booking.id,
+                Payment.status.in_(('succeeded', 'partially_refunded')),
+            ).all():
+                if payment_covers_installment(payment, installment):
+                    return 'payment_covers'
+            if require_overdue_display:
+                display = booking_payment_display_status(booking)
+                if display != 'overdue':
+                    return f'display_not_overdue:{display}'
+    except Exception:
+        current_app.logger.exception(
+            'installment notice guard failed installment_id=%s',
+            getattr(installment, 'id', None),
+        )
+        return 'guard_error'
+    return None
+
+
+def _installment_customer_notice_blocked(installment, *, require_overdue_display=False):
+    """已付清 / ACH / 非 Overdue 展示态 → 禁止发客户催款。"""
+    return customer_installment_notice_block_reason(
+        installment, require_overdue_display=require_overdue_display
+    ) is not None
+
+
+def _should_skip_customer_overdue_notice(installment):
+    """已付清 / ACH 清算中 / Manage 不是 Overdue → 禁止发客户逾期信。"""
+    return _installment_customer_notice_blocked(installment, require_overdue_display=True)
 
 
 def _group_installments_for_notice(installments):
@@ -208,12 +272,22 @@ def _send_installment_notice_email(installment, *, subject, urgency_text, footer
         or current_app.config.get('RECIPIENT_EMAIL')
         or 'nhtours-noreply@nhtours.com'
     )
+    from app.ops_log import current_ops_actor
+
+    op_action = 'overdue_notice' if days_overdue is not None else 'installment_reminder'
     success, detail = send_email_via_ses(
         sender,
         booking.buyer_email,
         subject,
         html_body,
         text_body,
+        op_action=op_action,
+        op_category='email_customer',
+        booking_id=getattr(booking, 'id', None),
+        order_number=getattr(booking, 'order_number', None),
+        related_id=getattr(installment, 'id', None),
+        related_type='installment',
+        actor=current_ops_actor(),
     )
     if not success:
         current_app.logger.error(
@@ -227,11 +301,29 @@ def send_payment_failed_email(installment, *, failure_reason=None, days_overdue=
     Customer email when a payment attempt / Auto Pay charge fails.
     Branded template (emails/payment_failed.*) — not the generic reminder.
     """
-    booking = installment.booking
+    booking = installment.booking if installment else None
     if not booking or not booking.buyer_email:
         current_app.logger.warning(
             'Payment failed email skipped: missing booking/email for installment %s',
             getattr(installment, 'id', '?'),
+        )
+        return False
+
+    block_reason = customer_installment_notice_block_reason(
+        installment, require_overdue_display=False
+    )
+    if block_reason:
+        current_app.logger.info(
+            'Skip payment-failed email installment_id=%s order=%s reason=%s',
+            getattr(installment, 'id', None),
+            getattr(booking, 'order_number', None),
+            block_reason,
+        )
+        from app.ops_log import record_and_alert_blocked_customer_notice
+        record_and_alert_blocked_customer_notice(
+            action='payment_failed_notice',
+            reason=block_reason,
+            installment=installment,
         )
         return False
 
@@ -240,6 +332,19 @@ def send_payment_failed_email(installment, *, failure_reason=None, days_overdue=
         installment.due_date.strftime('%B %d, %Y') if installment.due_date else 'N/A'
     )
     group = _same_due_unpaid_group(installment)
+    if not group:
+        current_app.logger.info(
+            'Skip payment-failed email installment_id=%s order=%s (no unpaid same-due group)',
+            getattr(installment, 'id', None),
+            getattr(booking, 'order_number', None),
+        )
+        from app.ops_log import record_and_alert_blocked_customer_notice
+        record_and_alert_blocked_customer_notice(
+            action='payment_failed_notice',
+            reason='empty_unpaid_group',
+            installment=installment,
+        )
+        return False
     amount = round(sum(float(i.amount or 0) for i in group), 2)
     label = (
         due_date_label if len(group) > 1 and installment.due_date
@@ -311,12 +416,21 @@ def send_payment_failed_email(installment, *, failure_reason=None, days_overdue=
         or current_app.config.get('RECIPIENT_EMAIL')
         or 'nhtours-noreply@nhtours.com'
     )
+    from app.ops_log import current_ops_actor
+
     success, detail = send_email_via_ses(
         sender,
         booking.buyer_email,
         subject,
         html_body,
         text_body,
+        op_action='payment_failed_notice',
+        op_category='email_customer',
+        booking_id=getattr(booking, 'id', None),
+        order_number=getattr(booking, 'order_number', None),
+        related_id=getattr(installment, 'id', None),
+        related_type='installment',
+        actor=current_ops_actor(),
     )
     if not success:
         current_app.logger.error(
@@ -527,6 +641,11 @@ def send_installment_reminders():
     - 逾期后：催款邮件（每 3 天一次；总提醒次数 reminder_count < 6）
     若订单经济上已结清（amount_due <= 0），跳过催款并取消未付分期。
     """
+    from app.ops_log import notify_ops_issue, record_operation
+
+    today = None
+    sent_pre = 0
+    sent_overdue = 0
     try:
         from app.payments import (
             calculate_booking_total,
@@ -536,8 +655,6 @@ def send_installment_reminders():
         )
 
         today = pacific_today()
-        sent_pre = 0
-        sent_overdue = 0
         # booking_id → True if economically settled (skip reminders this run)
         settled_bookings = {}
 
@@ -575,6 +692,14 @@ def send_installment_reminders():
 
         def _auto_pay_on(booking):
             return bool(booking and getattr(booking, 'auto_pay_enabled', False))
+
+        def _commit_reminder_progress():
+            """每封成功发出后立刻落库，避免部署 SIGTERM 把 reminder_sent_at 一并回滚。"""
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+                current_app.logger.exception('installment reminder progress commit failed')
 
         def _mark_group_reminded(group_installments, *, bump_count=True, mark_overdue=False):
             now = datetime.utcnow()
@@ -618,6 +743,7 @@ def send_installment_reminders():
             if send_installment_reminder_email(anchor, days_until_due=3):
                 _mark_group_reminded(members)
                 sent_pre += 1
+                _commit_reminder_progress()
 
         # 2. 1 天前提醒（未开 Auto Pay；不要求必有 D-3，避免漏发后断档）
         one_day_later = today + timedelta(days=1)
@@ -646,6 +772,7 @@ def send_installment_reminders():
             if send_installment_reminder_email(anchor, days_until_due=1):
                 _mark_group_reminded(members)
                 sent_pre += 1
+                _commit_reminder_progress()
 
         # 3. 到期当天提醒（未开 Auto Pay；已开则由 9:15 扣款任务处理）
         installments_today = (
@@ -673,6 +800,7 @@ def send_installment_reminders():
             if send_installment_reminder_email(anchor, days_until_due=0):
                 _mark_group_reminded(members)
                 sent_pre += 1
+                _commit_reminder_progress()
 
         # 4. 逾期催款（含 status=overdue；每 3 天一次，最多 6 次总提醒）
         overdue_installments = (
@@ -711,6 +839,7 @@ def send_installment_reminders():
             if should_send and send_overdue_reminder_email(anchor, days_overdue):
                 _mark_group_reminded(members, mark_overdue=True)
                 sent_overdue += 1
+                _commit_reminder_progress()
 
         # 5. 逾期 ≥3 天 → 通知管理员（所有分期单，含未开 Auto Pay；同日合并一次）
         admin_overdue_notified = notify_admins_of_overdue_installments(
@@ -725,12 +854,42 @@ def send_installment_reminders():
             f"pre_due={sent_pre} overdue={sent_overdue} "
             f"admin_overdue={admin_overdue_notified}"
         )
+        record_operation(
+            category='job',
+            action='installment_reminders',
+            result='ok',
+            extra={
+                'pacific_today': str(today),
+                'pre_due': sent_pre,
+                'overdue': sent_overdue,
+                'admin_overdue': admin_overdue_notified,
+            },
+        )
 
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error sending installment reminders: {str(e)}")
         import traceback
         traceback.print_exc()
+        record_operation(
+            category='job',
+            action='installment_reminders',
+            result='error',
+            reason=str(e)[:255],
+            extra={'pacific_today': str(today)},
+        )
+        notify_ops_issue(
+            subject='[NH Tours] Installment reminder job failed',
+            body=(
+                f"send_installment_reminders aborted.\n"
+                f"pacific_today={today}\n"
+                f"pre_due_sent={sent_pre} overdue_sent={sent_overdue}\n"
+                f"error={e}\n"
+            ),
+            audience='tech',
+            alert_key=f'reminder_job_error:{today}',
+            headline='Installment reminder job failed',
+        )
 
 
 def notify_admins_of_overdue_installments(
@@ -862,6 +1021,24 @@ def send_installment_reminder_email(installment, days_until_due=3):
             f"InstallmentPayment {installment.id} has no associated booking"
         )
         return False
+    block_reason = customer_installment_notice_block_reason(
+        installment, require_overdue_display=False
+    )
+    if block_reason:
+        current_app.logger.info(
+            'Skip reminder installment_id=%s status=%s order=%s reason=%s',
+            getattr(installment, 'id', None),
+            getattr(installment, 'status', None),
+            getattr(installment.booking, 'order_number', None),
+            block_reason,
+        )
+        from app.ops_log import record_and_alert_blocked_customer_notice
+        record_and_alert_blocked_customer_notice(
+            action='installment_reminder',
+            reason=block_reason,
+            installment=installment,
+        )
+        return False
 
     booking = installment.booking
     trip_title = booking.trip.title if booking.trip else 'Trip Booking'
@@ -870,6 +1047,19 @@ def send_installment_reminder_email(installment, days_until_due=3):
     )
     auto_on = bool(getattr(booking, 'auto_pay_enabled', False))
     group = _same_due_unpaid_group(installment)
+    if not group:
+        current_app.logger.info(
+            'Skip reminder installment_id=%s order=%s (no unpaid same-due group)',
+            getattr(installment, 'id', None),
+            getattr(booking, 'order_number', None),
+        )
+        from app.ops_log import record_and_alert_blocked_customer_notice
+        record_and_alert_blocked_customer_notice(
+            action='installment_reminder',
+            reason='empty_unpaid_group',
+            installment=installment,
+        )
+        return False
     amount = round(sum(float(i.amount or 0) for i in group), 2)
     label = (
         due_label if len(group) > 1 and installment.due_date
@@ -944,6 +1134,24 @@ def send_overdue_reminder_email(installment, days_overdue):
     """
     if not installment.booking:
         return False
+    block_reason = customer_installment_notice_block_reason(
+        installment, require_overdue_display=True
+    )
+    if block_reason:
+        current_app.logger.info(
+            'Skip overdue notice installment_id=%s status=%s order=%s reason=%s',
+            getattr(installment, 'id', None),
+            getattr(installment, 'status', None),
+            getattr(installment.booking, 'order_number', None),
+            block_reason,
+        )
+        from app.ops_log import record_and_alert_blocked_customer_notice
+        record_and_alert_blocked_customer_notice(
+            action='overdue_notice',
+            reason=block_reason,
+            installment=installment,
+        )
+        return False
 
     booking = installment.booking
     trip_title = booking.trip.title if booking.trip else 'Trip Booking'
@@ -952,6 +1160,19 @@ def send_overdue_reminder_email(installment, days_overdue):
     )
     auto_on = bool(getattr(booking, 'auto_pay_enabled', False))
     group = _same_due_unpaid_group(installment)
+    if not group:
+        current_app.logger.info(
+            'Skip overdue notice installment_id=%s order=%s (no unpaid same-due group)',
+            getattr(installment, 'id', None),
+            getattr(booking, 'order_number', None),
+        )
+        from app.ops_log import record_and_alert_blocked_customer_notice
+        record_and_alert_blocked_customer_notice(
+            action='overdue_notice',
+            reason='empty_unpaid_group',
+            installment=installment,
+        )
+        return False
     amount = round(sum(float(i.amount or 0) for i in group), 2)
     label = (
         due_label if len(group) > 1 and installment.due_date
@@ -1034,6 +1255,31 @@ def process_auto_pay_charges():
                 continue
 
             success, detail = charge_installment_via_auto_pay(installment, card_only=True)
+            try:
+                from app.ops_log import record_operation
+
+                record_operation(
+                    category='auto_pay',
+                    action='charge_installment',
+                    result='ok' if success else (
+                        'skipped' if detail in (
+                            'ach_deferred',
+                            'already_settled',
+                            'zero_amount',
+                            'ach_processing',
+                            'open_payment_in_progress',
+                            'auto_pay_disabled',
+                            'missing_payment_method',
+                        ) else 'failed'
+                    ),
+                    reason=None if success else detail,
+                    booking_id=getattr(booking, 'id', None),
+                    order_number=getattr(booking, 'order_number', None),
+                    related_id=getattr(installment, 'id', None),
+                    related_type='installment',
+                )
+            except Exception:
+                pass
             if success:
                 ok_n += 1
                 db.session.commit()
@@ -1079,6 +1325,24 @@ def process_auto_pay_charges():
     except Exception as e:
         db.session.rollback()
         current_app.logger.error('process_auto_pay_charges failed: %s', e, exc_info=True)
+        try:
+            from app.ops_log import notify_ops_issue, record_operation
+
+            record_operation(
+                category='auto_pay',
+                action='process_auto_pay_charges',
+                result='error',
+                reason=str(e)[:255],
+            )
+            notify_ops_issue(
+                subject='[NH Tours] Auto Pay job failed',
+                body=f'process_auto_pay_charges crashed: {e}',
+                audience='tech',
+                alert_key='job:process_auto_pay_charges',
+                headline='Auto Pay job aborted',
+            )
+        except Exception:
+            pass
         return 0
 
 
@@ -1249,6 +1513,143 @@ def send_admin_daily_overdue_digest(today=None):
     return {'count': count, 'sent': bool(ok), 'detail': detail}
 
 
+def scan_stale_processing_payments(days=10):
+    """
+    ACH/异步 Payment 卡在 processing 超过 N 天：Stripe 已成功则 heal，
+    仍 processing 则通知管理员（不自动作废在途银行转账）。
+    """
+    from datetime import datetime, timedelta
+
+    from app.models import Payment
+    from app.payments import heal_payment_from_stripe_succeeded, retrieve_payment_intent
+
+    out = {'scanned': 0, 'healed': 0, 'alerted': 0}
+    cutoff = datetime.utcnow() - timedelta(days=int(days or 10))
+    rows = (
+        Payment.query.filter(
+            Payment.status == 'processing',
+            Payment.created_at <= cutoff,
+        )
+        .order_by(Payment.id.asc())
+        .limit(200)
+        .all()
+    )
+    for pay in rows:
+        out['scanned'] += 1
+        pi_id = (getattr(pay, 'stripe_payment_intent_id', None) or '').strip()
+        stripe_status = None
+        if pi_id:
+            try:
+                intent = retrieve_payment_intent(pi_id)
+                stripe_status = (
+                    intent.get('status') if isinstance(intent, dict)
+                    else getattr(intent, 'status', None)
+                )
+            except Exception as e:
+                current_app.logger.warning(
+                    'stale processing retrieve pi=%s pay=%s: %s', pi_id, pay.id, e
+                )
+        if stripe_status == 'succeeded':
+            try:
+                if heal_payment_from_stripe_succeeded(pay.id):
+                    out['healed'] += 1
+                    continue
+            except Exception as e:
+                current_app.logger.warning(
+                    'stale processing heal pay=%s: %s', pay.id, e
+                )
+        booking = getattr(pay, 'booking', None)
+        order_number = getattr(booking, 'order_number', None)
+        age_days = 0
+        if pay.created_at:
+            age_days = max(0, (datetime.utcnow() - pay.created_at).days)
+        body = (
+            f"Order: {order_number or '-'}\n"
+            f"Payment id: {pay.id}\n"
+            f"Stripe PI: {pi_id or '-'}\n"
+            f"Local status: processing  Stripe: {stripe_status or 'unknown'}\n"
+            f"Created: {pay.created_at} ({age_days} days ago)\n"
+            "Bank transfer still clearing or Stripe lookup failed. "
+            "Do not mark paid or send another charge until it settles.\n"
+        )
+        try:
+            from app.ops_log import notify_ops_issue
+
+            ok, status = notify_ops_issue(
+                subject=f"[NH Tours] ACH processing >{days}d — {order_number or pay.id}",
+                body=body,
+                audience='admin',
+                alert_key=f'stale_ach:{pay.id}',
+                headline='Bank transfer still processing',
+                order_number=order_number,
+            )
+            if ok or status == 'deduped':
+                out['alerted'] += 1
+        except Exception as e:
+            current_app.logger.warning('stale processing alert pay=%s: %s', pay.id, e)
+    current_app.logger.info(
+        'scan_stale_processing_payments scanned=%s healed=%s alerted=%s',
+        out['scanned'], out['healed'], out['alerted'],
+    )
+    return out
+
+
+def scan_over_capacity_packages():
+    """套餐 committed+reserved 超过 capacity 时告警（售罄后仍成单的 leftover）。"""
+    from app.models import TripPackage
+    from app.package_capacity import package_capacity_usage
+    from app.ops_log import notify_ops_issue
+
+    hits = []
+    pkgs = (
+        TripPackage.query.filter(TripPackage.capacity.isnot(None))
+        .order_by(TripPackage.id.asc())
+        .limit(500)
+        .all()
+    )
+    for pkg in pkgs:
+        try:
+            committed, reserved, capacity = package_capacity_usage(pkg.id)
+        except Exception:
+            continue
+        if capacity is None:
+            continue
+        used = int(committed or 0) + int(reserved or 0)
+        if used > int(capacity):
+            hits.append({
+                'package_id': pkg.id,
+                'trip_id': pkg.trip_id,
+                'name': getattr(pkg, 'name', None),
+                'capacity': int(capacity),
+                'committed': int(committed or 0),
+                'reserved': int(reserved or 0),
+            })
+    if not hits:
+        return {'over': 0, 'alerted': 0}
+    lines = [
+        f"package {h['package_id']} ({h.get('name') or '-'}) "
+        f"trip={h['trip_id']} used={h['committed']}+{h['reserved']} "
+        f"capacity={h['capacity']}"
+        for h in hits[:40]
+    ]
+    body = (
+        f"{len(hits)} package(s) over capacity (committed + pending hold).\n"
+        + '\n'.join(lines)
+        + '\nDo not auto-cancel orders; review leftover seats vs. paid bookings.\n'
+    )
+    ok, status = notify_ops_issue(
+        subject=f'[NH Tours] Package over capacity ({len(hits)})',
+        body=body,
+        audience='admin',
+        alert_key='over_capacity_packages',
+        headline='Package capacity leftover',
+    )
+    current_app.logger.info(
+        'scan_over_capacity_packages over=%s alert=%s', len(hits), status
+    )
+    return {'over': len(hits), 'alerted': 1 if (ok or status == 'deduped') else 0}
+
+
 def scan_ledger_anomalies():
     """
     每日账本扫描：本地 reconcile + 抽样/近期单 Stripe 退款对比；发现异常则邮件提醒管理员。
@@ -1288,14 +1689,12 @@ def scan_ledger_anomalies():
             .limit(max_bookings)
         )
         booking_ids = [row[0] for row in pay_q.all() if row[0]]
-        if not booking_ids:
-            current_app.logger.info('scan_ledger_anomalies: no candidate bookings')
-            return out
-
         scanned = 0
         mismatches = 0
         alerted = 0
         healed = 0
+        if not booking_ids:
+            current_app.logger.info('scan_ledger_anomalies: no candidate bookings')
         for bid in booking_ids:
             booking = Booking.query.get(bid)
             if not booking:
@@ -1325,12 +1724,29 @@ def scan_ledger_anomalies():
                     'scan_ledger_anomalies failed booking_id=%s: %s', bid, e
                 )
 
+        stale = {'scanned': 0, 'healed': 0, 'alerted': 0}
+        over_cap = {'over': 0, 'alerted': 0}
+        try:
+            stale = scan_stale_processing_payments(
+                days=int(current_app.config.get('ACH_STALE_ALERT_DAYS', 10))
+            )
+            healed += int(stale.get('healed') or 0)
+        except Exception as e:
+            current_app.logger.exception('scan_stale_processing_payments failed: %s', e)
+        try:
+            over_cap = scan_over_capacity_packages()
+        except Exception as e:
+            current_app.logger.exception('scan_over_capacity_packages failed: %s', e)
+
         current_app.logger.info(
-            'scan_ledger_anomalies done scanned=%s mismatches=%s alerted=%s healed=%s stripe=%s',
+            'scan_ledger_anomalies done scanned=%s mismatches=%s alerted=%s healed=%s '
+            'stale_ach=%s over_cap=%s stripe=%s',
             scanned,
             mismatches,
             alerted,
             healed,
+            stale.get('scanned'),
+            over_cap.get('over'),
             check_stripe,
         )
         out = {
@@ -1338,6 +1754,8 @@ def scan_ledger_anomalies():
             'mismatches': mismatches,
             'alerted': alerted,
             'healed': healed,
+            'stale_ach': stale,
+            'over_capacity': over_cap,
         }
         return out
     finally:

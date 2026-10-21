@@ -143,6 +143,15 @@ def test_charge_skips_when_disabled_or_ach_or_settled(app):
                         ok, detail = charge_installment_via_auto_pay(inst)
     assert ok is False and detail == "already_settled"
 
+    inst.status = "paid"
+    with patch("app.auto_pay.Payment") as P:
+        P.query.filter.return_value.order_by.return_value.all.return_value = []
+        with patch("app.payments.installment_has_processing_ach", return_value=False):
+            with patch("app.payments.booking_has_processing_ach_payment", return_value=False):
+                with patch("app.payments.calculate_booking_total", return_value={"amount_due": 399}):
+                    ok, detail = charge_installment_via_auto_pay(inst)
+    assert ok is False and detail == "already_settled"
+
 
 def test_charge_skips_open_pending_payment(app):
     from app.auto_pay import charge_installment_via_auto_pay
@@ -170,12 +179,16 @@ def test_charge_skips_open_pending_payment(app):
             with patch("app.payments.installment_has_processing_ach", return_value=False):
                 with patch("app.payments.booking_has_processing_ach_payment", return_value=False):
                     with patch("app.payments.payment_covers_installment", return_value=True):
-                        with patch("app.auto_pay._stripe_ready", return_value=True):
-                            with patch(
-                                "app.auto_pay.stripe.PaymentIntent.retrieve",
-                                return_value=SimpleNamespace(status="requires_action"),
-                            ):
-                                ok, detail = charge_installment_via_auto_pay(inst)
+                        with patch(
+                            "app.payments.succeeded_payment_covers_installment",
+                            return_value=False,
+                        ):
+                            with patch("app.auto_pay._stripe_ready", return_value=True):
+                                with patch(
+                                    "app.auto_pay.stripe.PaymentIntent.retrieve",
+                                    return_value=SimpleNamespace(status="requires_action"),
+                                ):
+                                    ok, detail = charge_installment_via_auto_pay(inst)
     assert ok is False and detail == "open_payment_in_progress"
 
 
@@ -334,6 +347,21 @@ def test_installment_unpaid_action_error_paid():
     with patch("app.installment_admin_links.Payment") as P:
         P.query.filter_by.return_value.first.return_value = None
         assert installment_unpaid_action_error(inst) == "This installment is already paid"
+
+
+def test_installment_unpaid_blocks_when_payment_covers(app):
+    from app.installment_admin_links import installment_unpaid_action_error
+
+    booking = SimpleNamespace(id=1)
+    inst = SimpleNamespace(booking=booking, booking_id=1, status="overdue", id=5)
+    with app.app_context():
+        with patch("app.installment_admin_links.Payment") as P:
+            P.query.filter_by.return_value.first.return_value = None
+            with patch("app.payments.installment_has_processing_ach", return_value=False):
+                with patch("app.payments.booking_has_processing_ach_payment", return_value=False):
+                    with patch("app.payments.succeeded_payment_covers_installment", return_value=True):
+                        err = installment_unpaid_action_error(inst)
+    assert err and "successful payment" in err.lower()
 
 
 def test_installment_unpaid_blocks_ach_processing():

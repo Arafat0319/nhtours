@@ -88,7 +88,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 - `_create_booking_from_metadata`：**勿**在函数内再 `from datetime import datetime`（会 UnboundLocalError）
 - 入账：仅 Payment **非 succeeded → succeeded** 时累加 `amount_paid`（防 webhook+status 双加）；已扣款勿因售罄 abort 建单
 - 报名库存口径：`app/package_capacity.py` — **已确认订单**（含 `processing`）+ **有效 PendingBooking 占位**；提交时 **行锁** 先占位再调 Stripe；`expires_at` 过期即不占名额
-- **Auto Pay**：`app/auto_pay.py`；报名勾选 → 首笔成功 attach PM；到期日 Card 扣 catch-up；ACH processing 跳过；Manage 开/关 + 链接；Stripe 已成功的卡死 pending 只 settle、作废 PI 可重建、`open_payment_in_progress` 不发失败信
+- **Auto Pay**：`app/auto_pay.py`；报名勾选 → 首笔成功 attach PM；到期日 Card 扣 catch-up；已付/覆盖该期/`already_settled`/ACH processing 跳过；Manage 开/关 + 链接；Stripe 已成功的卡死 pending 只 settle、作废 PI 可重建、`open_payment_in_progress` 不发失败信
 - **Catch-up 多期**：一笔 PI 只挂锚定期（`installment_payments.payment_intent_id` 唯一）；sibling 只标 paid + `catch_up_ids` 记覆盖；勿给多行写同一 PI；Payment 已 succeeded 可续结 sibling
 - **Payment plan 展示**：多套餐同 due date 在 Manage / 报名预览 / 收据 / 催款邮件 / 付款页摘要合并金额；库内仍可双轨行；期数徽章与催款按 due_date 去重（同日一封）
 - **Manage 后加 Add-on**：`addon_admin.py` / `addon_payment.py`；`/pay-addon/<id>?token=`；`source=admin_manual`；不进 Payoff；**不吃报名折扣**（`total = signup−discount + manual`）；全额退回 unpaid
@@ -180,8 +180,12 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | 分期付款 | 打开某期链接 **强制补齐**此前未付；Payoff=`booking_payoff_due`；Manage 显示 Payoff 徽标；Payments 列表按 booking 分页 |
 | 退款 / 取消 | 退款成功发 **refund notice** 邮件（卡/ACH 文案不同）；$0 仅取消不发；取消订单本身仍不发邮件 |
 | 个人退出 | `BookingParticipant.status`=`withdrawn`；Manage Mark withdrawn / Restore；名单灰行+徽章；不计 Going；不自动退款 |
-| 分期催款 | 美西日历；每天美西 9:00；**仅 1 个 Gunicorn worker 跑 APScheduler**（文件锁防重复发） |
-| 账本告警 | 每天美西 4:00 扫近期订单；本地+可选 Stripe 退款对比；异常邮件 `RECIPIENT_EMAIL`；24h 去重 |
+| 分期催款 | 美西日历；每天美西 9:00；**仅 1 个 Gunicorn worker 跑 APScheduler**（文件锁防重复发）；客户逾期信须 Manage 展示态=Overdue，已付/ACH/已覆盖该期不发；失败信同样守卫；每封成功后立刻 commit；拦截与 SES MessageId 写入 `operation_logs` |
+| 操作留痕 | `operation_logs` + `app/ops_log.py`；催款/失败信双重校验；Mark paid/退款/取消/Auto Pay 留痕；误催拦下通知管理员；任务/守卫失败通知 `TECH_ALERT_EMAIL` |
+| 账本告警 | 每天美西 4:00 扫近期订单；Stripe 已成功本地未入账可 heal；ACH processing>10d、套餐超容量告警；异常邮件管理员；24h 去重 |
+| Manage 账本 | Save Changes **不能**手改 Paid / 用下拉对抗账本；改金额走 Mark paid、Refund、Reconcile。全额退某期收款会重开该期 |
+| Already Paid | 客人点已付链接：说明本笔未再扣，并显示整单尾款或 paid in full |
+| Deploy 窗口 | 尽量避开美西 8:55–9:25（催款 9:00 / Auto Pay 9:15）；Actions 在该窗口会先等 90s 再重启 gunicorn |
 | Overdue digest | 同上 4:00 扫描结束后；**仅有** Manage 展示态=Overdue 时发管理员汇总（明细+客户 `reminder_count`）；无逾期不发 |
 | Payments 标签 | 以 order 分类：Full=全款或定金+单笔尾款；Installment=定金后>1期 |
 | 报名校验 | 前端 `booking.js` + 后端 `booking_validation.py`（email/phone/name/dob/zip）；Promo 未选套餐 → `#discount-message` 琥珀提示 |
@@ -230,4 +234,4 @@ push 前更新 context（至少 `07`）→ 用户确认 → 同一 commit push�
 | UI | `05` |
 | 部署 | `06` |
 
-**最后更新**: 2026-08-29（Auto Pay + Manage 后加 Add-on 上线）
+**最后更新**: 2026-10-20（账本/扣款/催款加固 + operation_logs）

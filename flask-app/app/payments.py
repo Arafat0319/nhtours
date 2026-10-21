@@ -1043,6 +1043,220 @@ def installment_has_processing_ach(installment):
     return find_processing_ach_covering_installment(installment) is not None
 
 
+def succeeded_payment_covers_installment(installment):
+    """是否已有 succeeded Payment 覆盖该分期（含 catch-up / 定金挂链 / PI）。"""
+    from app.models import Payment
+
+    if not installment or not getattr(installment, 'id', None):
+        return False
+    bid = getattr(installment, 'booking_id', None)
+    if not bid:
+        booking = getattr(installment, 'booking', None)
+        bid = getattr(booking, 'id', None)
+    if not bid:
+        return False
+    pays = Payment.query.filter(
+        Payment.booking_id == bid,
+        Payment.status == 'succeeded',
+    ).all()
+    return any(payment_covers_installment(p, installment) for p in pays)
+
+
+def booking_manual_status_edit_error(booking, new_status, new_amount_paid=None):
+    """
+    Manage Save Changes 不得手改账本。
+    new_amount_paid=None 表示不改 Paid。
+    仅当状态相对库内发生变化时校验 status 转换。
+    """
+    if not booking:
+        return 'Booking not found'
+    stored = (booking.status or '').strip()
+    new_status = (new_status or stored).strip()
+    if stored == 'cancelled':
+        return None
+    if new_status == 'cancelled':
+        return 'Use Cancel order to cancel this booking (not Payment Status).'
+
+    if new_amount_paid is not None:
+        try:
+            new_ap = float(new_amount_paid)
+        except (TypeError, ValueError):
+            return 'Invalid paid amount.'
+        current = float(booking.amount_paid or 0)
+        if abs(new_ap - current) > 0.015:
+            computed = current
+            try:
+                computed = float(computed_booking_amount_paid(booking) or 0)
+            except Exception:
+                pass
+            # Manage 表单回传的是展示额；与 computed 一致视为未改账本
+            if abs(new_ap - computed) > 0.015:
+                return (
+                    'Paid amount is calculated from the payment ledger. '
+                    'Use Mark paid, Refund, or Reconcile — do not edit it here.'
+                )
+
+    allowed = ('pending', 'processing', 'deposit_paid', 'fully_paid', 'cancelled')
+    if new_status not in allowed:
+        return 'Invalid payment status.'
+    if new_status == stored:
+        return None
+
+    try:
+        info = calculate_booking_total(booking)
+        due = float(info.get('amount_due') or 0)
+        paid = float(info.get('amount_paid') or 0)
+    except Exception:
+        due = 0.0
+        paid = float(booking.amount_paid or 0)
+
+    if new_status == 'fully_paid' and due > 0.015:
+        return (
+            'Cannot mark Fully paid while a balance remains. '
+            'Collect payment, apply a discount, or use Reconcile.'
+        )
+    if new_status == 'pending' and paid > 0.015:
+        return (
+            'Cannot set Pending while the ledger shows payments. '
+            'Use Refund or Cancel order if this booking should be reopened or closed.'
+        )
+    if new_status == 'processing':
+        bid = getattr(booking, 'id', None)
+        if not bid or not booking_has_processing_ach_payment(bid):
+            return (
+                'Processing is reserved for in-flight bank transfers. '
+                'Do not set it manually.'
+            )
+    if new_status == 'deposit_paid' and due <= 0.015 and paid > 0.015:
+        return (
+            'This order is settled on the ledger. '
+            'Use Refund if you need to reopen a balance.'
+        )
+    return None
+
+
+def reopen_installments_for_refunded_payment(payment):
+    """
+    Payment 全额退款后，把该笔覆盖的分期打回 pending/overdue。
+    payoff 全额退：只重开被 payoff 取消的期，不改动更早已付清的期。
+    另有 succeeded Payment 仍覆盖该期则不重开。
+    """
+    from app.models import InstallmentPayment, Payment
+    from app.utils import pacific_today
+
+    if not payment or (payment.status or '') != 'refunded':
+        return 0
+    bid = getattr(payment, 'booking_id', None)
+    if not bid:
+        return 0
+
+    meta = payment.payment_metadata if isinstance(payment.payment_metadata, dict) else {}
+    step = (meta.get('payment_step') or '').strip().lower()
+    today = pacific_today()
+
+    if step == 'payoff':
+        targets = list(
+            InstallmentPayment.query.filter_by(booking_id=bid, status='cancelled').all()
+        )
+    else:
+        ids = set()
+        if getattr(payment, 'installment_payment_id', None):
+            try:
+                ids.add(int(payment.installment_payment_id))
+            except (TypeError, ValueError):
+                pass
+        ids.update(parse_catch_up_ids(meta))
+        if step in ('initial', 'deposit'):
+            inst0 = InstallmentPayment.query.filter_by(
+                booking_id=bid, installment_number=0
+            ).first()
+            if inst0:
+                ids.add(inst0.id)
+        targets = (
+            InstallmentPayment.query.filter(InstallmentPayment.id.in_(ids)).all()
+            if ids
+            else []
+        )
+
+    n = 0
+    others = Payment.query.filter(
+        Payment.booking_id == bid,
+        Payment.status == 'succeeded',
+        Payment.id != payment.id,
+    ).all()
+    for inst in targets:
+        status = (inst.status or '')
+        if step == 'payoff':
+            if status != 'cancelled':
+                continue
+        elif status != 'paid':
+            continue
+        if any(payment_covers_installment(p, inst) for p in others):
+            continue
+        inst.status = 'overdue' if inst.due_date and inst.due_date < today else 'pending'
+        inst.paid_at = None
+        n += 1
+    if n:
+        current_app.logger.info(
+            'Reopened %s installment(s) after refund payment_id=%s step=%s',
+            n,
+            getattr(payment, 'id', None),
+            step or '-',
+        )
+    return n
+
+
+def link_initial_payment_to_deposit_installment(booking, payment):
+    """
+    报名首笔 Payment 挂到 installment #0，并在 metadata 记下含在首付里的 catch-up 期。
+    不把同一 PI 写到多行 installment.payment_intent_id（该列唯一）。
+    """
+    from app.models import InstallmentPayment
+
+    if not booking or not payment:
+        return False
+    meta = dict(payment.payment_metadata or {}) if isinstance(
+        payment.payment_metadata, dict
+    ) else {}
+    step = (meta.get('payment_step') or '').strip().lower()
+    if step in ('installment', 'payoff', 'addon'):
+        return False
+    deposit = (
+        InstallmentPayment.query.filter_by(
+            booking_id=booking.id, installment_number=0
+        ).first()
+    )
+    if not deposit:
+        return False
+    changed = False
+    if not getattr(payment, 'installment_payment_id', None):
+        payment.installment_payment_id = deposit.id
+        changed = True
+    pi = getattr(payment, 'stripe_payment_intent_id', None)
+    if pi and not getattr(deposit, 'payment_intent_id', None):
+        deposit.payment_intent_id = pi
+        changed = True
+    ids = parse_catch_up_ids(meta)
+    if deposit.id not in ids:
+        ids.append(deposit.id)
+        changed = True
+    catch_paid = InstallmentPayment.query.filter(
+        InstallmentPayment.booking_id == booking.id,
+        InstallmentPayment.installment_number > 0,
+        InstallmentPayment.status == 'paid',
+    ).all()
+    for inst in catch_paid:
+        if inst.id not in ids:
+            ids.append(inst.id)
+            changed = True
+    if ids:
+        meta['catch_up_ids'] = ','.join(str(i) for i in ids)
+        if not step:
+            meta['payment_step'] = 'initial'
+        payment.payment_metadata = meta
+    return changed
+
+
 # Manage Payment History：隐藏未成交尝试，避免与成功收款并列误导管理员
 _ADMIN_PAYMENT_HISTORY_HIDDEN_STATUSES = frozenset({
     'failed',
@@ -2169,8 +2383,10 @@ def apply_refund_to_ledger(payment, booking, refund_amount, reason=None, stripe_
         booking.status = 'deposit_paid' if booking.amount_paid > 0.001 else 'pending'
 
     # 全额退回后付加购行：恢复 unpaid，可再发收款链接（部分退仍保持 paid）
+    # 同期：该笔覆盖的分期打回 pending/overdue（payoff 则重开被取消的期）
     if payment.status == 'refunded':
         _reopen_manual_addons_for_refunded_payment(payment)
+        reopen_installments_for_refunded_payment(payment)
 
     return {
         'refund_amount': refund_amount,

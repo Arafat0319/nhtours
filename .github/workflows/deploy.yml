@@ -60,5 +60,12 @@ jobs:
             export FLASK_ENV=production
             "$PYTHON" -m flask db upgrade
             sudo bash "$DEPLOY_ROOT/deploy/security/setup_audit_log.sh" || true
+            # 避开美西 9:00 催款 / 9:15 Auto Pay：窗口内先等，避免 SIGTERM 杀掉正在发信/扣款的任务
+            PT_HM=$(TZ=America/Los_Angeles date +%H%M)
+            if [ "$PT_HM" -ge 0855 ] && [ "$PT_HM" -le 0925 ]; then
+              echo "WARNING: Deploy during PT 8:55–9:25 (reminders 9:00 / Auto Pay 9:15)."
+              echo "Waiting 90s so in-flight jobs can finish before gunicorn restart."
+              sleep 90
+            fi
             sudo systemctl restart nhtours || true
             echo "Deploy done."

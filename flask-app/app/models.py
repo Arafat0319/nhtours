@@ -744,3 +744,27 @@ class Testimonial(db.Model):
 
     def __repr__(self):
         return f"<Testimonial {self.id} by {self.author_name}>"
+
+
+class OperationLog(db.Model):
+    """客户敏感操作留痕（发信 / 拦截 / 任务）。独立于业务事务写入。"""
+    __tablename__ = 'operation_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    category = db.Column(db.String(40), nullable=False, default='ops')
+    action = db.Column(db.String(80), nullable=False)
+    result = db.Column(db.String(40), nullable=False)
+    actor = db.Column(db.String(80))
+    booking_id = db.Column(db.Integer)
+    order_number = db.Column(db.String(64), index=True)
+    related_id = db.Column(db.String(64))
+    related_type = db.Column(db.String(40))
+    recipient = db.Column(db.String(190))
+    subject = db.Column(db.String(255))
+    message_id = db.Column(db.String(128))
+    reason = db.Column(db.String(255))
+    extra = db.Column(db.JSON)
+
+    def __repr__(self):
+        return f'<OperationLog {self.id} {self.action} {self.result}>'
