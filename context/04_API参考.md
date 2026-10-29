@@ -141,7 +141,7 @@
 
 #### POST /api/payment/intent
 
-更新已有 Stripe PaymentIntent 的金额与 metadata（不创建新 PI；首步创建在报名提交 `POST /trips/<slug>` 的 JSON 流程中完成）。前端在用户填写卡信息后、确认支付前调用，用于按卡种计算手续费并更新 PI 金额。
+更新已有 Stripe PaymentIntent 的金额与 metadata（不创建新 PI；首步创建在报名提交 `POST /trips/<slug>` 的 JSON 流程中完成）。前端在用户填写支付方式后、确认支付前调用，用于按卡 / ACH 计算手续费（卡 2.9%，ACH 0）并更新 PI 金额。
 
 **请求体**（三选一标识支付对象）:
 

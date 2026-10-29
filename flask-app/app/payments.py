@@ -664,14 +664,12 @@ def retrieve_payment_method_details(payment_method_id):
 
 
 def calculate_fee(base_amount_cents, funding, brand):
-    # ACH / debit / prepaid / unknown: no credit-card surcharge
-    if funding != "credit":
+    # ACH: no guest surcharge. All cards (credit / debit / prepaid / any brand): 2.9%.
+    funding = (funding or "").strip().lower()
+    brand = (brand or "").strip().lower()
+    if funding == "ach" or brand == "us_bank":
         return 0
-    if brand == "amex":
-        return int(math.ceil(base_amount_cents * 0.035))
-    if brand in {"visa", "mastercard"}:
-        return int(math.ceil(base_amount_cents * 0.029))
-    return int(math.ceil(base_amount_cents * 0.029))
+    return int(math.ceil(int(base_amount_cents or 0) * 0.029))
 
 
 def extract_stripe_charge_id(payment_intent):

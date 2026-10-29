@@ -370,11 +370,13 @@ def charge_installment_via_auto_pay(installment, *, card_only=True):
     from app.payments import (
         booking_has_processing_ach_payment,
         calculate_booking_total,
+        calculate_fee,
         catch_up_amount_cents,
         catch_up_metadata_fields,
         catch_up_summary_items,
         installment_has_processing_ach,
         payment_covers_installment,
+        retrieve_payment_method_details,
         safe_cancel_payment_intent,
         succeeded_payment_covers_installment,
         _normalize_metadata,
@@ -487,6 +489,14 @@ def charge_installment_via_auto_pay(installment, *, card_only=True):
         except Exception:
             pass
 
+    funding, brand, pm_type = retrieve_payment_method_details(pm_id) if _stripe_ready() else (
+        'unknown',
+        'unknown',
+        'unknown',
+    )
+    fee_cents = calculate_fee(base_cents, funding, brand)
+    final_cents = int(base_cents) + int(fee_cents or 0)
+
     catch_meta = catch_up_metadata_fields(installment, summary_items=summary_items)
     metadata = {
         'payment_flow': 'auto_pay',
@@ -495,6 +505,11 @@ def charge_installment_via_auto_pay(installment, *, card_only=True):
         'installment_id': str(installment.id),
         'auto_pay': '1',
         'base_amount': str(base_cents),
+        'fee': str(fee_cents),
+        'final_amount': str(final_cents),
+        'funding': funding,
+        'brand': brand,
+        'payment_method_type': pm_type,
         'payment_method_id': pm_id,
         **{k: str(v) for k, v in catch_meta.items() if v is not None},
     }
@@ -531,7 +546,7 @@ def charge_installment_via_auto_pay(installment, *, card_only=True):
 
     try:
         intent = stripe.PaymentIntent.create(
-            amount=int(base_cents),
+            amount=int(final_cents),
             currency='usd',
             customer=booking.stripe_customer_id,
             payment_method=pm_id,

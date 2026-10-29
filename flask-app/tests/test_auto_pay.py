@@ -501,3 +501,75 @@ def test_find_due_dedupes_per_booking(app):
         assert len(mine) == 1
         assert mine[0].id == early.id
         db.session.rollback()
+
+
+def test_charge_adds_card_fee_to_intent_amount(app):
+    from app.auto_pay import charge_installment_via_auto_pay
+
+    booking = SimpleNamespace(
+        id=1,
+        auto_pay_enabled=True,
+        auto_pay_payment_method_id="pm_card",
+        stripe_customer_id="cus_x",
+        auto_pay_last_error=None,
+        auto_pay_last_charge_at=None,
+    )
+    inst = SimpleNamespace(
+        id=10,
+        booking=booking,
+        booking_id=1,
+        payment_intent_id=None,
+        status="pending",
+    )
+    created = {}
+
+    def _create(**kwargs):
+        created.update(kwargs)
+        return SimpleNamespace(id="pi_fee", status="processing")
+
+    with app.app_context():
+        with patch("app.auto_pay.Payment") as P:
+            P.query.filter.return_value.order_by.return_value.all.return_value = []
+            with patch("app.auto_pay._stripe_ready", return_value=True):
+                with patch(
+                    "app.auto_pay.stripe.PaymentMethod.retrieve",
+                    return_value=SimpleNamespace(type="card"),
+                ):
+                    with patch("app.payments.installment_has_processing_ach", return_value=False):
+                        with patch("app.payments.booking_has_processing_ach_payment", return_value=False):
+                            with patch(
+                                "app.payments.succeeded_payment_covers_installment",
+                                return_value=False,
+                            ):
+                                with patch(
+                                    "app.payments.calculate_booking_total",
+                                    return_value={"amount_due": 580},
+                                ):
+                                    with patch("app.payments.catch_up_summary_items", return_value=[]):
+                                        with patch(
+                                            "app.payments.catch_up_amount_cents",
+                                            return_value=58000,
+                                        ):
+                                            with patch(
+                                                "app.payments.catch_up_metadata_fields",
+                                                return_value={},
+                                            ):
+                                                with patch(
+                                                    "app.payments.retrieve_payment_method_details",
+                                                    return_value=("debit", "visa", "card"),
+                                                ):
+                                                    with patch(
+                                                        "app.auto_pay.stripe.PaymentIntent.create",
+                                                        side_effect=_create,
+                                                    ):
+                                                        with patch("app.auto_pay.db.session.commit"):
+                                                            ok, detail = charge_installment_via_auto_pay(inst)
+
+    assert ok is False and detail == "status_processing"
+    assert created["amount"] == 59682  # 58000 + ceil(58000 * 0.029)
+    meta = created["metadata"]
+    assert meta["base_amount"] == "58000"
+    assert meta["fee"] == "1682"
+    assert meta["final_amount"] == "59682"
+    assert meta["funding"] == "debit"
+    assert meta["brand"] == "visa"

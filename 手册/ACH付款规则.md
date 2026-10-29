@@ -1,6 +1,6 @@
 # ACH（美国银行转账）付款规则
 
-> **给人看** · 更新 2026-10-08  
+> **给人看** · 更新 2026-10-28  
 > 技术细节另见 `context/`（API / webhook）；日常以本文为准。
 
 ---
@@ -12,7 +12,7 @@
 - **Card**（信用卡 / 借记卡）
 - **US bank account（ACH）**
 
-选 ACH 时手续费为 **$0**（卡仍按原规则计费）。**须为美国银行账户**（加国等非 US 账户通常无法完成 ACH）。
+选 ACH 时手续费为 **$0**；**卡（含借记/预付/Amex）一律 2.9%**。**须为美国银行账户**（加国等非 US 账户通常无法完成 ACH）。
 
 ---
 
@@ -158,7 +158,7 @@ Stripe CLI：stripe listen --forward-to localhost:8080/webhooks/stripe
 | | 卡 | ACH |
 |--|----|-----|
 | 到账 | 通常立即 succeeded | 先 processing，再 succeeded / failed |
-| 手续费 | 按原规则 | $0 |
+| 手续费 | 2.9% | $0 |
 | 建单时机 | 成功时建单 | processing 时先建壳，成功再升级 |
 | 确认信+收据 | 成功时 | **仅成功时**；processing 只发受理通知 |
 

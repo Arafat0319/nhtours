@@ -4254,7 +4254,7 @@ def pay_booking_addon(booking_addon_id):
                 except (TypeError, ValueError):
                     need_rebuild = True
                 try:
-                    # 卡费通常 ≤3.5%；若 PI 远高于 addon 基础额（如误用整单 $3790），须重建
+                    # 卡费 2.9%；若 PI 远高于 addon 基础额（如误用整单 $3790），须重建
                     pi_amt = int(getattr(payment_intent, 'amount', 0) or 0)
                     if pi_amt > int(base_amount_cents * 1.05) + 1:
                         need_rebuild = True

@@ -69,7 +69,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
   **建单失败必须 5xx**（勿吞异常回 200，否则 Stripe 不重试 → 钱到账无订单）
 ```
 
-- PI：`payment_method_types=['card','us_bank_account']`；Element 同序；ACH 无卡费
+- PI：`payment_method_types=['card','us_bank_account']`；Element 同序；**卡手续费一律 2.9%**（含 debit/prepaid/Amex）；**ACH 无卡费**
 - ACH：`processing` 时建 Booking（防 PendingBooking 24h 过期）+ **受理邮件**；确认信+收据仅 `succeeded`
 - ACH 微存款：`requires_action` → 验证邮件；Pending 硬上限 **created_at+12d**；`payment_failed`/超时立刻 expire 放名额；每小时 cleanup 延期/兜底
 - ACH 清算中：整单锁定（提醒跳过、分期页/API 不可再付）；规则见 `手册/ACH付款规则.md`
