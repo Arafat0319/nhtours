@@ -129,10 +129,9 @@
 | 路由 | 方法 | 说明 |
 |------|------|------|
 | `POST /trips/<slug>` | POST | **AJAX 报名首步**：行锁校验名额 → 写 PendingBooking 占位（`pending_*` / `free_*`）→ 应付>0 再建 Stripe PI 返回 `client_secret`；Stripe 失败标 `cancelled` 释放名额 |
-| `/api/payment/quote` | POST | 根据 PendingBooking 计算报价 |
+| `/api/payment/quote` | POST | 根据支付方式报价：卡手续费 2.9%，ACH 0（`calculate_fee`） |
 | `/api/payment/intent` | POST | 更新已有 PaymentIntent 的金额与 metadata（用于确认前写入手续费等） |
 | `/api/payment/status` | GET | 查询支付状态 |
-| `/api/payment/fee` | POST | 计算手续费 |
 | `/api/booking/create-free` | POST | 零元首付直接创建 Booking（幂等；`payment_intent_id` 可为 `pi_…` 或 `free_…`） |
 | `/api/booking/upload` | POST | 报名文件上传；multipart `file` + **`trip_id`（必填）**；魔数校验；落盘 `uploads/booking/trip_<id>/` |
 | `/api/booking/<id>/summary` | GET | 付款后订单摘要；**须** `token`（收据签名）或 `payment_intent_id`（匹配该单），否则 403；含 `receipt_url` |
@@ -172,6 +171,8 @@
 
 - `final_amount`: 更新后的应付金额（分，含手续费）。
 
+手续费在 **`POST /api/payment/quote`**（及随后的 `/api/payment/intent`）里计算，**没有**单独的 `/api/payment/fee` 路由。
+
 #### GET /api/payment/status
 
 查询支付状态（前端轮询）。
@@ -186,30 +187,6 @@
   "status": "succeeded",
   "booking_id": 456,
   "redirect_url": "/booking/success?booking_id=456"
-}
-```
-
-#### POST /api/payment/fee
-
-计算支付手续费。
-
-**请求体**:
-
-```json
-{
-  "amount": 1000,
-  "funding": "credit",
-  "brand": "visa"
-}
-```
-
-**响应**:
-
-```json
-{
-  "base_amount": 1000,
-  "fee": 29,
-  "total": 1029
 }
 ```
 

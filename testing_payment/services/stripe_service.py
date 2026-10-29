@@ -26,6 +26,10 @@ def retrieve_payment_method_card_details(payment_method_id):
     except Exception:
         return "unknown", "unknown"
 
+    pm_type = getattr(payment_method, "type", None) or "unknown"
+    if pm_type == "us_bank_account":
+        return "ach", "us_bank"
+
     card = getattr(payment_method, "card", None)
     if not card:
         return "unknown", "unknown"
@@ -39,13 +43,12 @@ def retrieve_payment_method_funding(payment_method_id):
 
 
 def calculate_fee(base_amount, funding, brand):
-    if funding != "credit":
+    # Match live site: all cards 2.9%; ACH $0.
+    funding = (funding or "").strip().lower()
+    brand = (brand or "").strip().lower()
+    if funding == "ach" or brand == "us_bank":
         return 0
-    if brand == "amex":
-        return int(math.ceil(base_amount * 0.035))
-    if brand in {"visa", "mastercard"}:
-        return int(math.ceil(base_amount * 0.029))
-    return int(math.ceil(base_amount * 0.029))
+    return int(math.ceil(int(base_amount or 0) * 0.029))
 
 
 def create_or_update_payment_intent(order_id, amount, currency, metadata, payment_intent_id=None):

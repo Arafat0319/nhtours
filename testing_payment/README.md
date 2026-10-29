@@ -34,14 +34,14 @@ stripe listen --forward-to localhost:5000/api/stripe/webhook
 ## 业务规则
 
 - base_amount 来自 mock 订单（cents）
-- 信用卡（funding == credit）加收 2% 手续费并向上取整到 cents
-- 其他情况不加手续费
+- **任意卡**（credit / debit / prepaid / Amex）加收 **2.9%**，向上取整到 cents
+- **ACH** 不加手续费（与正式站 `app.payments.calculate_fee` 一致）
 
 ## 自动化测试脚本
 
 前提：服务已启动（`python testing_payment/app.py`）。
 
-运行脚本（验证 credit/debit/prepaid 的报价差异）：
+运行脚本（验证 credit/debit/prepaid 均为 2.9%）：
 ```bash
 python testing_payment/scripts/auto_quote_test.py
 ```
