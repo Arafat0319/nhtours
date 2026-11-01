@@ -2205,11 +2205,13 @@ def booking_payments_plan_kind(booking_id):
     return 'one_time'
 
 
-def validate_package_payment_plan_type(package, requested_type):
+def validate_package_payment_plan_type(package, requested_type, *, allow_full_override=False):
     """
     Validate client payment_plan_type against TripPackage.payment_plan_config.
     Returns (normalized_type, error_message|None).
     allow_full_payment defaults to True when omitted (legacy configs).
+    allow_full_override: signup coupon forces pay-in-full even if the package
+    is installment-only.
     """
     if not package:
         return None, 'Package not found'
@@ -2223,7 +2225,7 @@ def validate_package_payment_plan_type(package, requested_type):
         if not enabled:
             return None, f'Package "{package.name}" does not offer installment payments'
         return 'deposit_installment', None
-    if enabled and allow_full is False:
+    if enabled and allow_full is False and not allow_full_override:
         return None, f'Package "{package.name}" requires installment payment'
     return 'full', None
 

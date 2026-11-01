@@ -59,7 +59,8 @@
 
 ```
 POST /trips/<slug>（AJAX）
-  → 算 Due（定金+逾期+addons − 折扣）
+  → 无折扣：Due = 定金+逾期+addons
+  → 有折扣：`discounting.compute_signup_discount`（100% 全免；其它只打套餐并强制一次付清）
   → >0：PendingBooking + PaymentIntent + client_secret
   → =0：PendingBooking(free_…) + payment_required=false（不调 Stripe）→ create-free
 POST /api/payment/quote     →  算价
@@ -74,7 +75,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 - ACH 微存款：`requires_action` → 验证邮件；Pending 硬上限 **created_at+12d**；`payment_failed`/超时立刻 expire 放名额；每小时 cleanup 延期/兜底
 - ACH 清算中：整单锁定（提醒跳过、分期页/API 不可再付）；规则见 `手册/ACH付款规则.md`
 - `PendingBooking.payment_intent_id`（可以是 `pi_…` 或 `free_…`）
-- 折扣抵「现在应付」；`$0` 勿建 Stripe PI
+- 折扣：100% 免套餐+报名 add-on+$0 无 PI；非 100% 只抵套餐，剩余（含全部 add-on）一次付清；`$0` 勿建 Stripe PI。实现 `app/discounting.py`
 - 未支付空壳草稿：`expires_at=+60min`；关付款页/`pagehide` → `POST /api/payment/abandon-pending`；再提交同行程同邮箱作废旧空壳；**每小时** cleanup → `expired`（**跳过** processing/succeeded；微验证延期至 +12d）
 - 成单后 History 空壳 Payment：打开分期页或 >60min Incomplete → `void_empty_shell_pending_payments`
 - Addon/分期付款页：Stripe **succeeded 禁止重建**；回跳/轮询以 Stripe 为准入账；本地 failed 但 Stripe succeeded → heal（防 2612MT-027）
@@ -188,7 +189,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 | Deploy 窗口 | 尽量避开美西 8:55–9:25（催款 9:00 / Auto Pay 9:15）；Actions 在该窗口会先等 90s 再重启 gunicorn |
 | Overdue digest | 同上 4:00 扫描结束后；**仅有** Manage 展示态=Overdue 时发管理员汇总（明细+客户 `reminder_count`）；无逾期不发 |
 | Payments 标签 | 以 order 分类：Full=全款或定金+单笔尾款；Installment=定金后>1期 |
-| 报名校验 | 前端 `booking.js` + 后端 `booking_validation.py`（email/phone/name/dob/zip）；Promo 未选套餐 → `#discount-message` 琥珀提示 |
+| 报名校验 | 前端 `booking.js` + 后端 `booking_validation.py`（email/phone/name/dob/zip）；Promo 未选套餐 → `#discount-message` 琥珀提示；有效码锁分期并强制 Pay in full |
 | 安全审计 | `/var/log/nhtours/audit.log`；`nh-audit` / `nh-audit --all` / `nh-audit -f` |
 | 安全加固 | ✅ **生产已完成**（2026-07-06）；凭据轮换、审计、限流；详见 `06` / [手册/安全手册.md](../手册/安全手册.md) |
 | 生产 DB | ✅ Lightsail 托管 `nhtours-db`（私有+自动备份）；VM 本机 MySQL 已停用；见 `06`/`08` |

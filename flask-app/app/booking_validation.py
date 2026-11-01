@@ -179,7 +179,7 @@ def validate_booking_payload(buyer_info, participants) -> list[str]:
     return validate_buyer_info(buyer_info) + validate_participants(participants)
 
 
-def validate_and_normalize_booking_packages(packages_data, trip_id):
+def validate_and_normalize_booking_packages(packages_data, trip_id, *, allow_full_override=False):
     """
     Validate package lines for a trip booking.
 
@@ -216,7 +216,9 @@ def validate_and_normalize_booking_packages(packages_data, trip_id):
             return None, f'Quantity must be at least 1 for package "{package.name}"'
 
         plan_type, plan_err = validate_package_payment_plan_type(
-            package, pkg_data.get('payment_plan_type', 'full')
+            package,
+            pkg_data.get('payment_plan_type', 'full'),
+            allow_full_override=allow_full_override,
         )
         if plan_err:
             return None, plan_err

@@ -4,7 +4,7 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/booking-modal.css') }}?v=pay-wait-1">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/booking-modal.css') }}?v=coupon-fullpay-1">
 <style>
     .flatpickr-calendar {
         font-size: 16px !important;
@@ -1291,6 +1291,7 @@ window.parentalWaiverConfig = {
                                     </div>
                                     <button type="button" id="remove-discount-btn" class="remove-discount-btn" aria-label="Remove discount">Remove</button>
                                 </div>
+                                <p id="discount-fullpay-note" class="discount-fullpay-note hidden"></p>
                             </div>
                             <div id="order-summary" class="space-y-2 text-sm text-gray-700 py-2">
                                 <p class="text-gray-500">Select packages to see total.</p>
@@ -1786,7 +1787,7 @@ window.parentalWaiverConfig = {
     window.initFlatpickrOnDates = initFlatpickrOnDates;
 })();
 </script>
-<script src="{{ url_for('static', filename='js/booking.js') }}?v=ach-verify-msg-2"></script>
+<script src="{{ url_for('static', filename='js/booking.js') }}?v=coupon-fullpay-4"></script>
 <script src="{{ url_for('static', filename='js/booking-modal.js') }}?v=waiver-2"></script>
 <script src="https://js.stripe.com/v3/"></script>
 <script>

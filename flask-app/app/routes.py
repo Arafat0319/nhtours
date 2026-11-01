@@ -839,8 +839,19 @@ def handle_booking_submission(request, trip):
                 'errors': format_errors,
             }), 400
 
+        coupon_allows_full = False
+        if discount_code_str:
+            early_code = DiscountCode.query.filter(
+                db.func.upper(DiscountCode.code) == str(discount_code_str).upper()
+            ).first()
+            if early_code and (
+                early_code.trip_id is None or early_code.trip_id == trip.id
+            ):
+                coupon_allows_full = True
         packages_data, pkg_err = validate_and_normalize_booking_packages(
-            packages_data, trip.id
+            packages_data,
+            trip.id,
+            allow_full_override=coupon_allows_full,
         )
         if pkg_err:
             return jsonify({'success': False, 'error': pkg_err}), 400
@@ -938,44 +949,77 @@ def handle_booking_submission(request, trip):
                 quantity = addon_data.get('quantity', 1)
                 addons_total += addon_price * quantity
         
-        # 计算首付款总额：定金 + 过期分期 + 附加项
+        # 计算首付款总额：定金 + 过期分期 + 附加项（无折扣时）
         gross_amount = deposit_amount + overdue_installments_total + addons_total
         
-        # 验证并应用折扣码（只在首次支付时扣减）
         discount_code_id = None
         discount_amount = 0.0
         discount_code_info = None
-        
+        discount_forces_full_pay = False
+        discount_full_waive = False
+        priced = None
+
+        from app.discounting import (
+            compute_signup_discount,
+            force_packages_full_pay,
+            signup_package_and_addon_totals,
+        )
+        pkg_subtotal, addon_subtotal = signup_package_and_addon_totals(
+            packages_data, addons_data, trip_id=trip.id
+        )
+
         if discount_code_str:
             discount_code = DiscountCode.query.filter(
                 db.func.upper(DiscountCode.code) == discount_code_str.upper()
             ).first()
-            
-            if discount_code:
-                # 检查是否适用于该行程
-                if discount_code.trip_id is None or discount_code.trip_id == trip.id:
-                    discount_amount = discount_code.calculate_discount(gross_amount)
-                    discount_code_id = discount_code.id
-                    discount_code_info = {
-                        'id': discount_code.id,
-                        'code': discount_code.code,
-                        'type': discount_code.type,
-                        'value': discount_code.amount,
-                        'discount_amount': discount_amount
-                    }
-                    current_app.logger.info(
-                        f"Discount code {discount_code.code} applied: "
-                        f"type={discount_code.type}, value={discount_code.amount}, "
-                        f"discount_amount={discount_amount}"
-                    )
+            if discount_code and (
+                discount_code.trip_id is None or discount_code.trip_id == trip.id
+            ):
+                priced = compute_signup_discount(
+                    discount_code, pkg_subtotal, addon_subtotal
+                )
+                discount_amount = priced['discount_amount']
+                discount_code_id = discount_code.id
+                discount_forces_full_pay = priced['forces_full_pay']
+                discount_full_waive = priced['full_waive']
+                discount_code_info = {
+                    'id': discount_code.id,
+                    'code': discount_code.code,
+                    'type': discount_code.type,
+                    'value': discount_code.amount,
+                    'discount_amount': discount_amount,
+                    'forces_full_pay': discount_forces_full_pay,
+                    'full_waive': discount_full_waive,
+                }
+                if discount_forces_full_pay:
+                    packages_data = force_packages_full_pay(packages_data)
+                    booking_data['packages'] = packages_data
+                    payment_method = 'full'
+                    booking_data['auto_pay_opt_in'] = False
+                    gross_amount = priced['signup_total']
+                    deposit_amount = pkg_subtotal
+                    overdue_installments_total = 0.0
+                    overdue_details = []
+                current_app.logger.info(
+                    "Discount code %s applied: type=%s value=%s discount=%s "
+                    "due=%s full_waive=%s",
+                    discount_code.code,
+                    discount_code.type,
+                    discount_code.amount,
+                    discount_amount,
+                    priced['due_amount'],
+                    discount_full_waive,
+                )
         
-        # 应用折扣（从「现在应付」中减去；可为 $0，例如免定金 code）
         if gross_amount < 0:
             return jsonify({
                 'success': False,
                 'error': 'Invalid booking amount',
             }), 400
-        base_amount = max(0, gross_amount - discount_amount)
+        if discount_code_id and discount_forces_full_pay:
+            base_amount = max(0.0, float(priced['due_amount']))
+        else:
+            base_amount = max(0.0, gross_amount - discount_amount)
         base_amount_cents = int(round(base_amount * 100))
         if discount_amount and discount_amount >= gross_amount and gross_amount > 0:
             current_app.logger.warning(
@@ -1021,6 +1065,8 @@ def handle_booking_submission(request, trip):
             'discount_code_id': discount_code_id,
             'discount_amount': discount_amount,
             'discount_code_info': discount_code_info,
+            'discount_forces_full_pay': discount_forces_full_pay,
+            'discount_full_waive': discount_full_waive,
             'payment_method': payment_method,
             'payment_flow': booking_data.get('payment_flow', 'embedded'),
             'base_amount_cents': base_amount_cents,
@@ -3113,6 +3159,14 @@ def api_validate_discount():
             'valid': False,
             'message': 'Please enter a discount code'
         }), 200
+
+    try:
+        trip_id = int(trip_id)
+    except (TypeError, ValueError):
+        return jsonify({
+            'valid': False,
+            'message': 'This discount code is not valid for this trip'
+        }), 200
     
     # 查找折扣码
     discount_code = DiscountCode.query.filter(
@@ -3125,16 +3179,24 @@ def api_validate_discount():
             'message': 'Invalid discount code'
         }), 200
     
-    # 检查是否适用于该行程
-    if discount_code.trip_id and trip_id and discount_code.trip_id != int(trip_id):
+    # 检查是否适用于该行程（行程专属码必须带对 trip_id）
+    if discount_code.trip_id and int(discount_code.trip_id) != trip_id:
         return jsonify({
             'valid': False,
             'message': 'This discount code is not valid for this trip'
         }), 200
     
-    # 计算折扣金额
-    discount_amount = discount_code.calculate_discount(order_amount)
-    
+    from app.discounting import compute_signup_discount, signup_package_and_addon_totals
+
+    packages = data.get('packages') or []
+    addons = data.get('addons') or []
+    package_total, addon_total = signup_package_and_addon_totals(
+        packages, addons, trip_id=trip_id
+    )
+    priced = compute_signup_discount(discount_code, package_total, addon_total)
+    discount_amount = priced['discount_amount']
+    due_amount = priced['due_amount']
+
     return jsonify({
         'valid': True,
         'message': 'Discount code applied successfully',
@@ -3144,7 +3206,11 @@ def api_validate_discount():
             'type': discount_code.type,
             'value': discount_code.amount,
             'discount_amount': discount_amount,
-            'final_amount': order_amount - discount_amount
+            'final_amount': due_amount,
+            'package_total': priced['package_total'],
+            'addon_total': priced['addon_total'],
+            'forces_full_pay': priced['forces_full_pay'],
+            'full_waive': priced['full_waive'],
         }
     }), 200
 
@@ -3173,6 +3239,19 @@ def api_apply_discount():
 
     booking_data = dict(pending_booking.booking_data or {})
 
+    from app.discounting import (
+        compute_signup_discount,
+        force_packages_full_pay,
+        signup_package_and_addon_totals,
+    )
+
+    packages = booking_data.get('packages') or []
+    addons = booking_data.get('addons') or []
+    pkg_subtotal, addon_subtotal = signup_package_and_addon_totals(
+        packages, addons, trip_id=booking_data.get('trip_id') or pending_booking.trip_id
+    )
+    signup_total = round(pkg_subtotal + addon_subtotal, 2)
+
     gross_amount = float(booking_data.get('gross_amount', 0) or 0)
     if not gross_amount:
         old_discount = float(booking_data.get('discount_amount', 0) or 0)
@@ -3181,6 +3260,9 @@ def api_apply_discount():
 
     discount_amount = 0.0
     resolved_code_id = None
+    forces_full_pay = False
+    full_waive = False
+    new_base_amount = max(0.0, gross_amount)
     if discount_code_id:
         try:
             discount_code_id = int(discount_code_id)
@@ -3198,12 +3280,23 @@ def api_apply_discount():
                 'message': 'This discount code is not valid for this trip',
             }), 400
 
-        discount_amount = float(discount_code.calculate_discount(gross_amount) or 0)
+        priced = compute_signup_discount(discount_code, pkg_subtotal, addon_subtotal)
+        discount_amount = float(priced['discount_amount'] or 0)
         resolved_code_id = discount_code.id
+        forces_full_pay = bool(priced['forces_full_pay'])
+        full_waive = bool(priced['full_waive'])
+        new_base_amount = max(0.0, float(priced['due_amount']))
+        if forces_full_pay:
+            packages = force_packages_full_pay(packages)
+            booking_data['packages'] = packages
+            booking_data['payment_method'] = 'full'
+            booking_data['auto_pay_opt_in'] = False
+            gross_amount = signup_total
+            booking_data['deposit_amount'] = pkg_subtotal
+            booking_data['overdue_installments_amount'] = 0
+            booking_data['overdue_details'] = []
 
-    new_base_amount = max(0.0, gross_amount - discount_amount)
     new_base_amount_cents = int(round(new_base_amount * 100))
-
     if 0 < new_base_amount_cents < 50:
         return jsonify({
             'success': False,
@@ -3215,6 +3308,8 @@ def api_apply_discount():
     booking_data['base_amount_cents'] = new_base_amount_cents
     booking_data['gross_amount'] = gross_amount
     booking_data['payment_required'] = new_base_amount_cents > 0
+    booking_data['discount_forces_full_pay'] = forces_full_pay
+    booking_data['discount_full_waive'] = full_waive
 
     if discount_amount and discount_amount >= gross_amount and gross_amount > 0:
         current_app.logger.warning(
@@ -3249,6 +3344,9 @@ def api_apply_discount():
         'base_amount': new_base_amount,
         'base_amount_cents': new_base_amount_cents,
         'payment_required': new_base_amount_cents > 0,
+        'forces_full_pay': forces_full_pay,
+        'full_waive': full_waive,
+        'needs_reinit': True,
     }), 200
 
 
@@ -3321,6 +3419,7 @@ def api_create_free_booking():
     packages_norm, pkg_err = validate_and_normalize_booking_packages(
         booking_data.get('packages') or [],
         pending_booking.trip_id,
+        allow_full_override=bool(booking_data.get('discount_code_id')),
     )
     if pkg_err:
         return jsonify({'success': False, 'message': pkg_err}), 400
@@ -4898,17 +4997,21 @@ def _create_booking_from_metadata(payment_intent_id):
         return _abort_create(f"No buyer email in payment_intent {payment_intent_id}")
 
     from app.booking_validation import validate_and_normalize_booking_packages
+    has_coupon = bool(booking_data.get('discount_code_id'))
     packages_data, pkg_err = validate_and_normalize_booking_packages(
         booking_data.get('packages', []),
         trip.id,
+        allow_full_override=has_coupon,
     )
     if pkg_err:
         return _abort_create(
             f"Invalid packages when creating booking for {payment_intent_id}: {pkg_err}"
         )
+    if has_coupon:
+        from app.discounting import force_packages_full_pay
+        packages_data = force_packages_full_pay(packages_data)
+        booking_data['auto_pay_opt_in'] = False
     booking_data['packages'] = packages_data
-    
-    # 查找或创建 Client（支付成功后才创建客户记录）
     client = Client.query.filter_by(email=buyer_email).first()
     if not client:
         client = Client(
@@ -4996,7 +5099,7 @@ def _create_booking_from_metadata(payment_intent_id):
             except ValueError:
                 parsed_at = None
         booking.parental_waiver_accepted_at = parsed_at or datetime.utcnow()
-    if booking_data.get('auto_pay_opt_in'):
+    if booking_data.get('auto_pay_opt_in') and not has_coupon:
         booking.auto_pay_opt_in = True
     if booking_data.get('stripe_customer_id'):
         booking.stripe_customer_id = str(booking_data.get('stripe_customer_id'))[:128]
@@ -5023,12 +5126,17 @@ def _create_booking_from_metadata(payment_intent_id):
                 f"Package missing when creating BookingPackage for {payment_intent_id}"
             )
 
+        requested_plan = pkg_data.get('payment_plan_type', 'full')
+        if has_coupon:
+            requested_plan = 'full'
         plan_type, plan_err = validate_package_payment_plan_type(
-            package, pkg_data.get('payment_plan_type', 'full')
+            package,
+            requested_plan,
+            allow_full_override=has_coupon,
         )
         if plan_err:
             raise ValueError(plan_err)
-        
+
         booking_package = BookingPackage(
             booking_id=booking.id,
             package_id=package.id,

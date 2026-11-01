@@ -416,6 +416,20 @@
   font-weight: 600;
   color: #16a34a;
 }
+#booking-modal .discount-fullpay-note {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.7rem;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  color: #92400e;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+#booking-modal .package-pay-options.is-coupon-locked label:has(input[value="deposit_installment"]) {
+  opacity: 0.45;
+  pointer-events: none;
+}
 #booking-modal .remove-discount-btn {
   flex-shrink: 0;
   height: 32px;

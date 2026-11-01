@@ -41,6 +41,14 @@ def test_validate_rejects_full_when_allow_full_false():
     assert err and 'requires installment' in err
 
 
+def test_validate_coupon_override_allows_full_when_installment_only():
+    plan, err = validate_package_payment_plan_type(
+        _pkg(allow_full=False), 'full', allow_full_override=True
+    )
+    assert err is None
+    assert plan == 'full'
+
+
 def test_validate_legacy_missing_allow_full_defaults_true():
     pkg = SimpleNamespace(
         name='Legacy',

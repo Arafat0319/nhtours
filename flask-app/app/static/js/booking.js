@@ -62,6 +62,12 @@
     let quoteInFlight = false;
     let lastQuote = null;
     let quoteTimer = null;
+    let discountApplyInFlight = false;
+    let discountAutoApplyTimer = null;
+    let lastPlanByPackage = {};
+    let applyingInstallmentLock = false;
+    let discountForcesFullPay = false;
+    let discountFullWaive = false;
 
     // Trip 数据（从 window.tripData 获取）
     let tripData = window.tripData || {};
@@ -302,8 +308,16 @@
                 if (step1) savePackagesData(step1);
                 updateParticipantCount();
                 if (typeof updateOrderSummary === 'function') updateOrderSummary();
+                maybeAutoApplyPendingDiscount();
+                refreshAppliedDiscountFromServer();
             }
             if (e.target.matches('input.package-pay-radio')) {
+                if (applyingInstallmentLock) return;
+                if (couponIsActive() && e.target.value === 'deposit_installment') {
+                    applyingInstallmentLock = true;
+                    try { lockInstallmentRadios(); } finally { applyingInstallmentLock = false; }
+                    return;
+                }
                 var step1Pay = document.querySelector('.booking-step[data-step="1"]');
                 if (step1Pay) savePackagesData(step1Pay);
                 if (typeof updateOrderSummary === 'function') updateOrderSummary();
@@ -332,6 +346,8 @@
                     if (step1) savePackagesData(step1);
                     updateParticipantCount();
                     if (typeof updateOrderSummary === 'function') updateOrderSummary();
+                    maybeAutoApplyPendingDiscount();
+                    refreshAppliedDiscountFromServer();
                 }
             }
         });
@@ -385,6 +401,8 @@
                         if (hasAny && typeof clearStep1ValidationError === 'function') clearStep1ValidationError(step1Container);
                     }
                     if (typeof updateOrderSummary === 'function') updateOrderSummary();
+                    maybeAutoApplyPendingDiscount();
+                    refreshAppliedDiscountFromServer();
                 }
                 // 如果在步骤3（附加项），保存 addon 数据并立即更新订单总结
                 if (currentStep === 3) {
@@ -393,10 +411,12 @@
                         saveAddonsData(step3Container);
                     }
                     if (typeof updateOrderSummary === 'function') updateOrderSummary();
+                    refreshAppliedDiscountFromServer();
                 }
                 // 如果在步骤4（支付），更新订单总结
                 if (currentStep === 4) {
                     if (typeof updateOrderSummary === 'function') updateOrderSummary();
+                    refreshAppliedDiscountFromServer();
                 }
             }
         });
@@ -1280,11 +1300,11 @@
         console.log('saveAllStepsData: final bookingData', bookingData);
     }
 
-    /**
-     * Resolve payment_plan_type for a package from DOM + tripData config.
-     * enabled + allow_full_payment (default true) → customer radio; else forced.
-     */
-    function resolvePaymentPlanTypeForPackage(packageId) {
+    function couponIsActive() {
+        return !!(bookingData && bookingData.discount_code);
+    }
+
+    function readDomPaymentPlan(packageId) {
         const packageData = (tripData.packages || []).find(function(p) {
             return Number(p.id) === Number(packageId);
         });
@@ -1307,6 +1327,91 @@
             }
         }
         return 'full';
+    }
+
+    /**
+     * Resolve payment_plan_type for a package from DOM + tripData config.
+     * Any applied coupon forces pay-in-full (including installment-only packages).
+     */
+    function resolvePaymentPlanTypeForPackage(packageId) {
+        if (couponIsActive()) return 'full';
+        return readDomPaymentPlan(packageId);
+    }
+
+    function rememberPlansBeforeCoupon() {
+        document.querySelectorAll('#booking-modal .package-card').forEach(function(card) {
+            var pid = card.getAttribute('data-package-id');
+            if (!pid) return;
+            if (lastPlanByPackage[pid] == null) {
+                lastPlanByPackage[pid] = readDomPaymentPlan(pid);
+            }
+        });
+    }
+
+    function lockInstallmentRadios() {
+        document.querySelectorAll('#booking-modal .package-pay-options').forEach(function(wrap) {
+            wrap.classList.add('is-coupon-locked');
+            var fullRadio = wrap.querySelector('input.package-pay-radio[type="radio"][value="full"]');
+            var depRadio = wrap.querySelector('input.package-pay-radio[type="radio"][value="deposit_installment"]');
+            if (fullRadio) {
+                fullRadio.checked = true;
+                fullRadio.disabled = false;
+            }
+            if (depRadio) {
+                depRadio.checked = false;
+                depRadio.disabled = true;
+            }
+        });
+        document.querySelectorAll('#booking-modal input.auto-pay-checkbox').forEach(function(cb) {
+            cb.checked = false;
+            cb.disabled = true;
+        });
+        bookingData.payment_method = 'full';
+        bookingData.auto_pay_opt_in = false;
+    }
+
+    function unlockInstallmentRadios() {
+        document.querySelectorAll('#booking-modal .package-pay-options').forEach(function(wrap) {
+            wrap.classList.remove('is-coupon-locked');
+            var pid = wrap.getAttribute('data-package-id');
+            var fullRadio = wrap.querySelector('input.package-pay-radio[type="radio"][value="full"]');
+            var depRadio = wrap.querySelector('input.package-pay-radio[type="radio"][value="deposit_installment"]');
+            if (depRadio) depRadio.disabled = false;
+            if (fullRadio) fullRadio.disabled = false;
+            var remembered = pid ? lastPlanByPackage[pid] : null;
+            if (remembered === 'deposit_installment' && depRadio) {
+                depRadio.checked = true;
+                if (fullRadio) fullRadio.checked = false;
+            } else if (fullRadio) {
+                fullRadio.checked = true;
+                if (depRadio) depRadio.checked = false;
+            }
+        });
+        document.querySelectorAll('#booking-modal input.auto-pay-checkbox').forEach(function(cb) {
+            cb.disabled = false;
+        });
+        lastPlanByPackage = {};
+    }
+
+    function updateDiscountFullpayNote() {
+        var note = document.getElementById('discount-fullpay-note');
+        if (!note) return;
+        if (!couponIsActive()) {
+            note.classList.add('hidden');
+            note.textContent = '';
+            return;
+        }
+        note.classList.remove('hidden');
+        note.textContent = discountFullWaive
+            ? 'This code covers the entire booking, including add-ons.'
+            : 'This code requires paying the remaining balance today.';
+    }
+
+    async function reinitPaymentAfterDiscountChange() {
+        if (!embeddedPaymentSession) return;
+        abandonEmbeddedPendingIfSafe({ reason: 'discount_change' });
+        resetEmbeddedPaymentSession();
+        await initEmbeddedPaymentSession();
     }
 
     /**
@@ -2186,6 +2291,12 @@
         if (!bookingData.packages) bookingData.packages = [];
         if (!bookingData.addons) bookingData.addons = [];
 
+        if (couponIsActive()) {
+            applyingInstallmentLock = true;
+            try { lockInstallmentRadios(); } finally { applyingInstallmentLock = false; }
+        }
+        updateDiscountFullpayNote();
+
         // 按 package_id 合并并汇总 quantity，避免同一套餐多行时重复计费
         var mergedPackages = [];
         bookingData.packages.forEach(function(pkg) {
@@ -2393,10 +2504,70 @@
         messageEl.classList.add('hidden');
     }
 
+    function hasSelectedPackageQty() {
+        for (const pkg of (bookingData.packages || [])) {
+            if ((parseInt(pkg.quantity, 10) || 0) > 0) return true;
+        }
+        return false;
+    }
+
+    /**
+     * 输入框里已有未应用的码：选好套餐后自动 Apply（不必再点一次）。
+     */
+    function maybeAutoApplyPendingDiscount() {
+        if (bookingData.discount_code) return;
+        if (discountApplyInFlight) return;
+        const codeInput = document.getElementById('discount-code-input');
+        if (!codeInput || !codeInput.value.trim()) return;
+        if (!hasSelectedPackageQty()) return;
+        if (discountAutoApplyTimer) clearTimeout(discountAutoApplyTimer);
+        discountAutoApplyTimer = setTimeout(function() {
+            discountAutoApplyTimer = null;
+            if (bookingData.discount_code || discountApplyInFlight) return;
+            if (!hasSelectedPackageQty()) return;
+            applyDiscountCode(true);
+        }, 250);
+    }
+
+    async function refreshAppliedDiscountFromServer() {
+        if (!couponIsActive() || discountApplyInFlight) return;
+        const step1 = document.querySelector('.booking-step[data-step="1"]');
+        if (step1) savePackagesData(step1);
+        const step3 = document.querySelector('.booking-step[data-step="3"]');
+        if (step3) saveAddonsData(step3);
+        try {
+            const response = await fetch('/api/discount/validate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    code: bookingData.discount_code,
+                    trip_id: tripData && tripData.id,
+                    packages: bookingData.packages || [],
+                    addons: bookingData.addons || []
+                })
+            });
+            const result = await response.json();
+            if (!result.valid || !result.discount) return;
+            bookingData.discount_amount = result.discount.discount_amount;
+            bookingData.discount_code_id = result.discount.id;
+            discountForcesFullPay = !!result.discount.forces_full_pay;
+            discountFullWaive = !!result.discount.full_waive;
+            const discountAmountDisplay = document.getElementById('discount-amount-display');
+            if (discountAmountDisplay) {
+                discountAmountDisplay.textContent = '-$' + formatCurrency(result.discount.discount_amount);
+            }
+            updateDiscountFullpayNote();
+            if (typeof updateOrderSummary === 'function') updateOrderSummary();
+        } catch (err) {
+            console.warn('refreshAppliedDiscountFromServer', err);
+        }
+    }
+
     /**
      * 应用折扣码
      */
-    async function applyDiscountCode() {
+    async function applyDiscountCode(fromAuto) {
+        fromAuto = fromAuto === true;
         const codeInput = document.getElementById('discount-code-input');
         const applyBtn = document.getElementById('apply-discount-btn');
         const discountInputSection = document.getElementById('discount-input-section');
@@ -2405,63 +2576,51 @@
         const discountAmountDisplay = document.getElementById('discount-amount-display');
         
         if (!codeInput || !codeInput.value.trim()) {
+            if (fromAuto) return;
             showDiscountMessage('Please enter a discount code.', 'error');
             return;
         }
+        var step1ForDiscount = document.querySelector('.booking-step[data-step="1"]');
+        if (step1ForDiscount) savePackagesData(step1ForDiscount);
 
         // 未选套餐时不要调 API（固定额折扣会变成 $0 并显示已应用）
-        var hasPackage = false;
-        for (const pkg of (bookingData.packages || [])) {
-            if ((parseInt(pkg.quantity, 10) || 0) > 0) {
-                hasPackage = true;
-                break;
-            }
-        }
-        if (!hasPackage) {
+        if (!hasSelectedPackageQty()) {
             showDiscountMessage('Please select a package before applying a discount code.', 'warn');
             return;
         }
+
+        if (discountApplyInFlight) return;
+        discountApplyInFlight = true;
         
         const code = codeInput.value.trim().toUpperCase();
-        
-        // 计算订单金额（与 updateOrderSummary / Due at Booking 一致：分期时 = 定金×数量 + 逾期分期×数量）
-        let orderAmount = 0;
-        var now = new Date();
-        var todayStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+        rememberPlansBeforeCoupon();
+
+        let packageAmount = 0;
         for (const pkg of (bookingData.packages || [])) {
-            const pkgData = tripData.packages?.find(p => p.id === pkg.package_id);
+            const pkgData = (tripData.packages || []).find(function(p) {
+                return Number(p.id) === Number(pkg.package_id);
+            });
             if (!pkgData || !pkgData.price) continue;
             var qty = Math.max(0, parseInt(pkg.quantity, 10) || 0);
             if (qty <= 0) continue;
-            var ppc = pkgData.payment_plan_config;
-            if (pkg.payment_plan_type === 'deposit_installment' && ppc && ppc.enabled) {
-                var depositAmount = parseFloat(ppc.deposit_amount || ppc.deposit || 0) || 0;
-                orderAmount += depositAmount * qty;
-                var installments = ppc.installments || [];
-                for (var i = 0; i < installments.length; i++) {
-                    var inst = installments[i];
-                    if (inst && inst.date) {
-                        var dueStr = String(inst.date).substring(0, 10);
-                        if (dueStr.length === 10 && dueStr < todayStr) orderAmount += (parseFloat(inst.amount) || 0) * qty;
-                    }
-                }
-            } else {
-                orderAmount += (parseFloat(pkgData.price) || 0) * qty;
-            }
+            packageAmount += (parseFloat(pkgData.price) || 0) * qty;
         }
+        let addonAmount = 0;
         for (const addon of (bookingData.addons || [])) {
-            const addonData = tripData.addons?.find(a => a.id === addon.addon_id);
+            const addonData = (tripData.addons || []).find(function(a) {
+                return Number(a.id) === Number(addon.addon_id);
+            });
             if (addonData && addonData.price) {
-                orderAmount += addonData.price * (addon.quantity || 1);
+                addonAmount += addonData.price * (addon.quantity || 1);
             }
         }
-        
-        // 显示加载状态
+        const orderAmount = packageAmount + addonAmount;
+
         if (applyBtn) {
             applyBtn.disabled = true;
             applyBtn.textContent = '...';
         }
-        
+
         try {
             const response = await fetch('/api/discount/validate', {
                 method: 'POST',
@@ -2469,21 +2628,28 @@
                 body: JSON.stringify({
                     code: code,
                     trip_id: tripData.id,
-                    order_amount: orderAmount
+                    order_amount: orderAmount,
+                    packages: bookingData.packages || [],
+                    addons: bookingData.addons || []
                 })
             });
-            
+
             const result = await response.json();
-            
+
             if (result.valid) {
-                // 保存折扣信息
                 bookingData.discount_code = result.discount.code;
                 bookingData.discount_code_id = result.discount.id;
                 bookingData.discount_amount = result.discount.discount_amount;
-                
+                discountForcesFullPay = !!result.discount.forces_full_pay;
+                discountFullWaive = !!result.discount.full_waive;
+
                 hideDiscountMessage();
 
-                // 更新 UI - 隐藏输入框，显示已应用状态
+                applyingInstallmentLock = true;
+                try { lockInstallmentRadios(); } finally { applyingInstallmentLock = false; }
+                var step1AfterDiscount = document.querySelector('.booking-step[data-step="1"]');
+                if (step1AfterDiscount) savePackagesData(step1AfterDiscount);
+
                 if (discountInputSection) discountInputSection.classList.add('hidden');
                 if (discountApplied) {
                     discountApplied.classList.remove('hidden');
@@ -2492,62 +2658,29 @@
                         discountAmountDisplay.textContent = '-$' + formatCurrency(result.discount.discount_amount);
                     }
                 }
-                
-                // 更新订单总结
+                updateDiscountFullpayNote();
                 updateOrderSummary();
-                
-                // 如果支付已初始化，更新 PendingBooking 中的折扣信息并重新请求 quote
-                if (embeddedPaymentSession && embeddedPaymentSession.payment_intent_id) {
-                    console.log('Updating discount on PendingBooking...');
-                    try {
-                        const applyResponse = await fetch('/api/discount/apply', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                payment_intent_id: embeddedPaymentSession.payment_intent_id,
-                                discount_code_id: result.discount.id,
-                                discount_amount: result.discount.discount_amount
-                            })
-                        });
-                        const applyResult = await applyResponse.json();
-                        console.log('Discount applied to PendingBooking:', applyResult);
 
-                        if (applyResult.success && applyResult.payment_required === false) {
-                            if (paymentElementInstance) {
-                                try { paymentElementInstance.unmount(); } catch (e) { /* ignore */ }
-                            }
-                            paymentElementInstance = null;
-                            elementsInstance = null;
-                            stripeInstance = null;
-                            lastPaymentMethodId = null;
-                            embeddedPaymentSession.payment_required = false;
-                            embeddedPaymentSession.client_secret = null;
-                            embeddedPaymentSession.base_amount_cents = 0;
-                            showFreePaymentUI();
-                        } else if (paymentElementInstance && elementsInstance) {
-                            console.log('Requesting new quote after discount applied...');
-                            await requestEmbeddedQuote(true);
-                        }
-                    } catch (applyError) {
-                        console.error('Error applying discount to PendingBooking:', applyError);
-                    }
+                if (embeddedPaymentSession && embeddedPaymentSession.payment_intent_id) {
+                    await reinitPaymentAfterDiscountChange();
                 }
-                
                 console.log('Discount applied:', result.discount);
             } else {
+                lastPlanByPackage = {};
                 showDiscountMessage(result.message || 'Invalid discount code.', 'error');
             }
         } catch (error) {
             console.error('Error validating discount code:', error);
             showDiscountMessage('Error validating discount code. Please try again.', 'error');
         } finally {
+            discountApplyInFlight = false;
             if (applyBtn) {
                 applyBtn.disabled = false;
                 applyBtn.textContent = 'Apply';
             }
         }
     }
-    
+
     /**
      * 移除折扣码
      */
@@ -2555,52 +2688,28 @@
         const codeInput = document.getElementById('discount-code-input');
         const discountInputSection = document.getElementById('discount-input-section');
         const discountApplied = document.getElementById('discount-applied');
-        
-        // 清除折扣数据
+
         bookingData.discount_code = null;
         bookingData.discount_code_id = null;
         bookingData.discount_amount = 0;
-        
-        // 更新 UI - 显示输入框，隐藏已应用状态
+        discountForcesFullPay = false;
+        discountFullWaive = false;
+
+        applyingInstallmentLock = true;
+        try { unlockInstallmentRadios(); } finally { applyingInstallmentLock = false; }
+        var step1AfterRemove = document.querySelector('.booking-step[data-step="1"]');
+        if (step1AfterRemove) savePackagesData(step1AfterRemove);
+
         if (discountInputSection) discountInputSection.classList.remove('hidden');
-        if (codeInput) {
-            codeInput.value = '';
-        }
+        if (codeInput) codeInput.value = '';
         if (discountApplied) discountApplied.classList.add('hidden');
         hideDiscountMessage();
-        
-        // 更新订单总结
+        updateDiscountFullpayNote();
         updateOrderSummary();
-        
-        // 如果支付已初始化，更新 PendingBooking 中的折扣信息并重新请求 quote
-        if (embeddedPaymentSession && embeddedPaymentSession.payment_intent_id) {
-            console.log('Removing discount from PendingBooking...');
-            try {
-                const applyResponse = await fetch('/api/discount/apply', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        payment_intent_id: embeddedPaymentSession.payment_intent_id,
-                        discount_code_id: null,
-                        discount_amount: 0
-                    })
-                });
-                const applyResult = await applyResponse.json();
-                console.log('Discount removed from PendingBooking:', applyResult);
 
-                // 从 $0 免改回需付款：整段支付会话重初始化
-                if (embeddedPaymentSession.payment_required === false || !paymentElementInstance) {
-                    resetEmbeddedPaymentSession();
-                    await initEmbeddedPaymentSession();
-                } else if (paymentElementInstance && elementsInstance) {
-                    console.log('Requesting new quote after discount removed...');
-                    await requestEmbeddedQuote(true);
-                }
-            } catch (applyError) {
-                console.error('Error removing discount from PendingBooking:', applyError);
-            }
+        if (embeddedPaymentSession && embeddedPaymentSession.payment_intent_id) {
+            await reinitPaymentAfterDiscountChange();
         }
-        
         console.log('Discount removed');
     }
 
@@ -2702,9 +2811,10 @@
                         </svg>
                     </div>
                     <div class="free-checkout-body">
-                        <p class="free-checkout-title">No payment due right now</p>
-                        <p class="free-checkout-text">Your discount covers the amount due at booking. Click <strong>Confirm Booking</strong> to reserve your spot.</p>
-                        <p class="free-checkout-note">Any remaining balance will be collected later as scheduled.</p>
+                        <p class="free-checkout-title">No payment due</p>
+                        <p class="free-checkout-text">${discountFullWaive
+                            ? 'This code covers the entire booking, including add-ons. Click <strong>Confirm Booking</strong> to reserve your spot.'
+                            : 'Your discount covers the amount due today. Click <strong>Confirm Booking</strong> to reserve your spot.'}</p>
                     </div>
                 </div>
             `;
@@ -3201,6 +3311,9 @@
             if (codeInput) codeInput.value = '';
             var discountInputSection = document.getElementById('discount-input-section');
             var discountApplied = document.getElementById('discount-applied');
+            discountForcesFullPay = false;
+            discountFullWaive = false;
+            lastPlanByPackage = {};
             var discountMessage = document.getElementById('discount-message');
             if (discountInputSection) discountInputSection.classList.remove('hidden');
             if (discountApplied) discountApplied.classList.add('hidden');

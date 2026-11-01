@@ -192,10 +192,18 @@
 
 ### 折扣码
 
+报名折扣由 `app/discounting.py` 计算，**不以**客户端 `order_amount` / `discount_amount` 为准。
+
+| 规则 | 行为 |
+|------|------|
+| `percent >= 100` | 免套餐 + 报名 add-on（Due $0，无 Stripe、无分期、无卡费） |
+| 其它 percent / 任意 fixed | **只抵套餐**；add-on 全额；剩余一次付清（强制 `payment_plan_type=full`） |
+
 | 路由 | 方法 | 说明 |
 |------|------|------|
-| `/api/discount/validate` | POST | 验证折扣码并返回折扣金额 |
-| `/api/discount/apply` | POST | 应用折扣到 PendingBooking；**折扣金额服务端重算**，忽略客户端 `discount_amount` |
+| `/api/discount/validate` | POST | 验证折扣码；有 `packages`/`addons` 时按库内现价算 |
+| `/api/discount/apply` | POST | 应用到 PendingBooking；服务端重算；忽略客户端 `discount_amount`；改写套餐为 full 并 `needs_reinit` |
+| `POST /trips/<slug>` | POST | 有效码时强制 full、Due = 剩余套餐 + 全部 add-on（100% 则 $0 `free_`） |
 
 **POST /api/discount/validate 请求体**:
 
@@ -203,7 +211,8 @@
 {
   "trip_id": 1,
   "code": "SAVE10",
-  "order_amount": 2000
+  "packages": [{"package_id": 1, "quantity": 1}],
+  "addons": [{"addon_id": 2, "quantity": 1}]
 }
 ```
 
@@ -218,13 +227,17 @@
     "code": "SAVE10",
     "type": "percent",
     "value": 10,
-    "discount_amount": 200,
-    "final_amount": 1800
+    "discount_amount": 449,
+    "final_amount": 4326,
+    "package_total": 4490,
+    "addon_total": 285,
+    "forces_full_pay": true,
+    "full_waive": false
   }
 }
 ```
 
-> `type` 取值：`percent` / `fixed`（非 `percentage`）。
+> `type` 取值：`percent` / `fixed`（非 `percentage`）。`final_amount` 为报名应付（剩余套餐 + add-on）。`order_amount` 仅在未传套餐/附加时作为套餐额回退。
 
 ---
 
