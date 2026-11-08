@@ -218,6 +218,110 @@ def test_charge_defers_ach_default_pm(app):
     assert ok is False and detail == "ach_deferred"
 
 
+def test_charge_ach_processing_creates_payment_and_ok(app):
+    """ACH Auto Pay: processing PI must lock via Payment and return success (not fail)."""
+    from app.auto_pay import charge_installment_via_auto_pay
+
+    booking = SimpleNamespace(
+        id=41,
+        client_id=1,
+        trip_id=1,
+        order_number="2706ERJP-011",
+        auto_pay_enabled=True,
+        auto_pay_payment_method_id="pm_ach",
+        stripe_customer_id="cus_x",
+        auto_pay_last_error=None,
+        auto_pay_last_charge_at=None,
+    )
+    inst = SimpleNamespace(
+        id=241,
+        booking=booking,
+        booking_id=41,
+        payment_intent_id=None,
+        status="overdue",
+    )
+    pm = SimpleNamespace(type="us_bank_account")
+    intent = SimpleNamespace(id="pi_ach_auto_1", status="processing")
+    created = {}
+
+    def _payment_ctor(**kwargs):
+        pay = SimpleNamespace(id=999, **kwargs)
+        if not hasattr(pay, "installment_payment_id"):
+            pay.installment_payment_id = None
+        created["pay"] = pay
+        return pay
+
+    with app.app_context():
+        with patch("app.auto_pay.Payment") as P:
+            P.side_effect = _payment_ctor
+            P.query.filter.return_value.order_by.return_value.all.return_value = []
+            P.query.filter_by.return_value.first.side_effect = lambda: created.get("pay")
+            with patch("app.auto_pay.db") as mock_db:
+                mock_db.session.add = MagicMock()
+                mock_db.session.commit = MagicMock()
+                mock_db.session.flush = MagicMock()
+                mock_db.session.rollback = MagicMock()
+                with patch("app.auto_pay._stripe_ready", return_value=True):
+                    with patch("app.auto_pay.stripe.PaymentMethod.retrieve", return_value=pm):
+                        with patch(
+                            "app.auto_pay.stripe.PaymentIntent.create",
+                            return_value=intent,
+                        ) as create_pi:
+                            with patch("app.payments.installment_has_processing_ach", return_value=False):
+                                with patch(
+                                    "app.payments.booking_has_processing_ach_payment",
+                                    return_value=False,
+                                ):
+                                    with patch(
+                                        "app.payments.succeeded_payment_covers_installment",
+                                        return_value=False,
+                                    ):
+                                        with patch(
+                                            "app.payments.calculate_booking_total",
+                                            return_value={"amount_due": 1287},
+                                        ):
+                                            with patch(
+                                                "app.payments.catch_up_summary_items",
+                                                return_value=[{"amount_cents": 128700}],
+                                            ):
+                                                with patch(
+                                                    "app.payments.catch_up_amount_cents",
+                                                    return_value=128700,
+                                                ):
+                                                    with patch(
+                                                        "app.payments.catch_up_metadata_fields",
+                                                        return_value={
+                                                            "payment_step": "installment",
+                                                            "catch_up_ids": "241",
+                                                        },
+                                                    ):
+                                                        with patch(
+                                                            "app.payments.retrieve_payment_method_details",
+                                                            return_value=(
+                                                                "ach",
+                                                                "us_bank",
+                                                                "us_bank_account",
+                                                            ),
+                                                        ):
+                                                            with patch(
+                                                                "app.routes.send_order_processing_email",
+                                                                return_value=True,
+                                                            ):
+                                                                ok, detail = charge_installment_via_auto_pay(
+                                                                    inst, card_only=False
+                                                                )
+    assert ok is True
+    assert detail == "ach_processing"
+    assert inst.payment_intent_id == "pi_ach_auto_1"
+    assert booking.auto_pay_last_charge_at is not None
+    assert booking.auto_pay_last_error is None
+    assert created["pay"].status == "processing"
+    kwargs = create_pi.call_args.kwargs
+    assert kwargs["payment_method_types"] == ["us_bank_account"]
+    assert kwargs["amount"] == 128700
+    assert kwargs["metadata"]["fee"] == "0"
+
+
 def test_admin_overdue_skips_already_notified(app):
     from app import db
     from app.models import Booking, Client, InstallmentPayment, Trip

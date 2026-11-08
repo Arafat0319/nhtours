@@ -8,6 +8,7 @@
 请先读：context/AI_快速参考.md → context/00_项目概览.md → 按任务读 context/ 其它文档。
 07_开发日志 只看最近条目；与 04/02/代码冲突时以代码和 04/02 为准。
 遵守 .cursorrules；未经我同意不要 git push。
+工时记在 手册/工时记录.md（收尾补一行大约小时即可）。
 
 本地：cd flask-app && python run.py（8080）
 读完后 3～5 条总结，再执行。

@@ -153,6 +153,13 @@ Stripe CLI：stripe listen --forward-to localhost:8080/webhooks/stripe
 
 ---
 
+## 9.1 Auto Pay + ACH
+
+- 客户可将 **US bank account** 设为 Auto Pay 默认方式（与卡相同入口）。
+- 美西到期日 **9:15** 任务对默认 ACH 发起 off-session 扣款：立刻写入 `Payment=processing`（整单锁定，防与 Pay now 双扣），到账后 webhook 标分期 paid。
+- Processing 期间：不发逾期催款；Manage 展示 Processing 优先于 Overdue。
+- 手续费 **$0**（不加 2.9%）。
+
 ## 10. 和刷卡的对比（一句话）
 
 | | 卡 | ACH |
@@ -160,6 +167,7 @@ Stripe CLI：stripe listen --forward-to localhost:8080/webhooks/stripe
 | 到账 | 通常立即 succeeded | 先 processing，再 succeeded / failed |
 | 手续费 | 2.9% | $0 |
 | 建单时机 | 成功时建单 | processing 时先建壳，成功再升级 |
+| Auto Pay | 到期离线扣卡 | 到期离线扣银行（processing 锁定） |
 | 确认信+收据 | 成功时 | **仅成功时**；processing 只发受理通知 |
 
 ---

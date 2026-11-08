@@ -5535,7 +5535,13 @@ def handle_payment_intent_processing(payment_intent):
         base_amount_cents = max(0, total_amount_cents - fee_cents)
     total_amount = total_amount_cents / 100.0
 
-    if booking and (installment or metadata.get('payment_step') == 'payoff' or metadata.get('payment_flow') == 'installment'):
+    payment_flow = (metadata.get('payment_flow') or '').strip().lower()
+    if booking and (
+        installment
+        or metadata.get('payment_step') == 'payoff'
+        or payment_flow in ('installment', 'auto_pay')
+        or metadata.get('auto_pay') == '1'
+    ):
         payment = existing
         if not payment:
             payment = Payment(

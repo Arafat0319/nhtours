@@ -1184,9 +1184,10 @@ def send_overdue_reminder_email(installment, days_overdue):
     subject = f"OVERDUE Payment Notice - {trip_title}"
     if auto_on:
         urgency_text = (
-            f"We could not complete your Auto Pay charge. Your payment is now "
-            f"{days_overdue} day(s) overdue. Please pay using the link below or "
-            f"update your payment method under Manage Auto Pay."
+            f"Your Auto Pay installment is now {days_overdue} day(s) overdue. "
+            f"Please pay using the link below, or check Manage Auto Pay if your "
+            f"bank account / card needs an update. If a bank transfer is already "
+            f"processing, you can ignore this notice."
         )
         footer_note = (
             "If you have already made this payment, please contact us so we can update "
@@ -1221,8 +1222,9 @@ def send_overdue_reminder_email(installment, days_overdue):
 
 def process_auto_pay_charges():
     """
-    美西到期日：对已开启 Auto Pay 的订单尝试 Card 离线扣款（当期 + 以往未付）。
-    ACH 默认方式暂跳过（后续版本）。失败则催客户 + 通知管理员。
+    美西到期日：对已开启 Auto Pay 的订单尝试离线扣款（当期 + 以往未付）。
+    卡：即时 succeeded 入账；ACH：processing 落库锁定，到账后 webhook 入账。
+    真正失败则催客户 + 通知管理员（ACH 已提交 processing 不算失败）。
     """
     from app.auto_pay import (
         charge_installment_via_auto_pay,
@@ -1254,25 +1256,34 @@ def process_auto_pay_charges():
                 skip_n += 1
                 continue
 
-            success, detail = charge_installment_via_auto_pay(installment, card_only=True)
+            # card_only=False: charge saved card or ACH (ACH → processing Payment + lock)
+            success, detail = charge_installment_via_auto_pay(installment, card_only=False)
             try:
                 from app.ops_log import record_operation
+
+                if success:
+                    op_result = 'ok'
+                    op_reason = detail if detail == 'ach_processing' else None
+                elif detail in (
+                    'ach_deferred',
+                    'already_settled',
+                    'zero_amount',
+                    'ach_processing',
+                    'open_payment_in_progress',
+                    'auto_pay_disabled',
+                    'missing_payment_method',
+                ):
+                    op_result = 'skipped'
+                    op_reason = detail
+                else:
+                    op_result = 'failed'
+                    op_reason = detail
 
                 record_operation(
                     category='auto_pay',
                     action='charge_installment',
-                    result='ok' if success else (
-                        'skipped' if detail in (
-                            'ach_deferred',
-                            'already_settled',
-                            'zero_amount',
-                            'ach_processing',
-                            'open_payment_in_progress',
-                            'auto_pay_disabled',
-                            'missing_payment_method',
-                        ) else 'failed'
-                    ),
-                    reason=None if success else detail,
+                    result=op_result,
+                    reason=op_reason,
                     booking_id=getattr(booking, 'id', None),
                     order_number=getattr(booking, 'order_number', None),
                     related_id=getattr(installment, 'id', None),

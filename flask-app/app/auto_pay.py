@@ -1,5 +1,5 @@
 """
-Auto Pay helpers: Stripe Customer / PaymentMethod, enable/disable, due-day card charge.
+Auto Pay helpers: Stripe Customer / PaymentMethod, enable/disable, due-day card or ACH charge.
 """
 
 from __future__ import annotations
@@ -362,10 +362,14 @@ def find_due_auto_pay_installments(today=None):
     return out
 
 
-def charge_installment_via_auto_pay(installment, *, card_only=True):
+def charge_installment_via_auto_pay(installment, *, card_only=False):
     """
-    Off-session charge for catch-up amount on due day (Card first).
-    Returns (ok, detail). Settles ledger via handle_payment_intent_succeeded when succeeded.
+    Off-session charge for catch-up amount on due day (card or ACH).
+
+    Returns (ok, detail).
+    - Card succeeded → settle ledger immediately.
+    - ACH processing → create local Payment(processing) immediately (lock), return ok.
+    - card_only=True keeps legacy ach_deferred for tests / forced card-only runs.
     """
     from app.payments import (
         booking_has_processing_ach_payment,
@@ -418,6 +422,41 @@ def charge_installment_via_auto_pay(installment, *, card_only=True):
                 'Auto Pay settle failed pi=%s: %s', pi_id, e, exc_info=True
             )
             return False, f'settle_failed:{e}'
+
+    def _ensure_processing_payment(pi_id, *, amount_dollars, meta, funding_v, brand_v, pm_type_v,
+                                   base_cents_v, fee_cents_v, final_cents_v, pm_id_v):
+        """Create/upgrade Payment to processing so ACH locks apply before webhook."""
+        pay = Payment.query.filter_by(stripe_payment_intent_id=pi_id).first()
+        if pay and pay.status == 'succeeded':
+            return pay
+        if not pay:
+            pay = Payment(
+                booking_id=booking.id,
+                client_id=booking.client_id,
+                trip_id=booking.trip_id,
+                amount=amount_dollars,
+                stripe_payment_intent_id=pi_id,
+                installment_payment_id=installment.id,
+                status='processing',
+                currency='usd',
+                payment_metadata=meta,
+            )
+            db.session.add(pay)
+        else:
+            if pay.status != 'succeeded':
+                pay.status = 'processing'
+            pay.amount = amount_dollars
+            pay.payment_metadata = meta
+            pay.installment_payment_id = pay.installment_payment_id or installment.id
+        pay.payment_method_type = pm_type_v
+        pay.funding = funding_v
+        pay.brand = brand_v
+        pay.base_amount_cents = base_cents_v
+        pay.fee_cents = fee_cents_v
+        pay.final_amount_cents = final_cents_v
+        pay.payment_method_id = pm_id_v
+        pay.stripe_customer_id = booking.stripe_customer_id
+        return pay
 
     # 客户可能已打开付款链接留下 pending Payment / PI — 避免双扣；
     # Stripe 已成功 → 只 settle；已作废 → 作废本地 pending 后可新建；真正进行中才 block。
@@ -480,27 +519,40 @@ def charge_installment_via_auto_pay(installment, *, card_only=True):
     if base_cents <= 0:
         return False, 'zero_amount'
 
-    pm_id = booking.auto_pay_payment_method_id
-    if card_only and _stripe_ready():
-        try:
-            pm = stripe.PaymentMethod.retrieve(pm_id)
-            if getattr(pm, 'type', None) == 'us_bank_account':
-                return False, 'ach_deferred'
-        except Exception:
-            pass
+    if not _stripe_ready():
+        return False, 'stripe_not_configured'
 
-    funding, brand, pm_type = retrieve_payment_method_details(pm_id) if _stripe_ready() else (
-        'unknown',
-        'unknown',
-        'unknown',
-    )
-    fee_cents = calculate_fee(base_cents, funding, brand)
+    pm_id = booking.auto_pay_payment_method_id
+    try:
+        pm_obj = stripe.PaymentMethod.retrieve(pm_id)
+        stripe_pm_type = getattr(pm_obj, 'type', None) or ''
+    except Exception as e:
+        booking.auto_pay_last_error = f'pm_retrieve_failed:{e}'[:500]
+        current_app.logger.error(
+            'Auto Pay PM retrieve failed booking=%s pm=%s: %s',
+            booking.id,
+            pm_id,
+            e,
+        )
+        return False, 'pm_retrieve_failed'
+
+    if stripe_pm_type == 'us_bank_account' and card_only:
+        return False, 'ach_deferred'
+
+    is_ach = stripe_pm_type == 'us_bank_account'
+    funding, brand, pm_type = retrieve_payment_method_details(pm_id)
+    if is_ach:
+        funding, brand, pm_type = 'ach', 'us_bank', 'us_bank_account'
+        fee_cents = 0
+    else:
+        fee_cents = calculate_fee(base_cents, funding, brand)
     final_cents = int(base_cents) + int(fee_cents or 0)
 
     catch_meta = catch_up_metadata_fields(installment, summary_items=summary_items)
     metadata = {
         'payment_flow': 'auto_pay',
         'payment_plan': 'installment',
+        'payment_step': catch_meta.get('payment_step') or 'installment',
         'booking_id': str(booking.id),
         'installment_id': str(installment.id),
         'auto_pay': '1',
@@ -513,9 +565,9 @@ def charge_installment_via_auto_pay(installment, *, card_only=True):
         'payment_method_id': pm_id,
         **{k: str(v) for k, v in catch_meta.items() if v is not None},
     }
-
-    if not _stripe_ready():
-        return False, 'stripe_not_configured'
+    order_number = getattr(booking, 'order_number', None)
+    if order_number:
+        metadata['order_number'] = str(order_number)
 
     # 已有 PI：succeeded 只 settle；进行中 block；其它先 cancel 再 create
     existing_pi_id = getattr(installment, 'payment_intent_id', None)
@@ -544,18 +596,21 @@ def charge_installment_via_auto_pay(installment, *, card_only=True):
             # retrieve 失败时不盲目 create，避免可能双扣
             return False, 'open_payment_in_progress'
 
+    create_kwargs = {
+        'amount': int(final_cents),
+        'currency': 'usd',
+        'customer': booking.stripe_customer_id,
+        'payment_method': pm_id,
+        'off_session': True,
+        'confirm': True,
+        'payment_method_types': ['us_bank_account'] if is_ach else ['card'],
+        'metadata': _normalize_metadata(metadata),
+    }
+    if not is_ach:
+        create_kwargs['error_on_requires_action'] = True
+
     try:
-        intent = stripe.PaymentIntent.create(
-            amount=int(final_cents),
-            currency='usd',
-            customer=booking.stripe_customer_id,
-            payment_method=pm_id,
-            off_session=True,
-            confirm=True,
-            payment_method_types=['card'],
-            metadata=_normalize_metadata(metadata),
-            error_on_requires_action=True,
-        )
+        intent = stripe.PaymentIntent.create(**create_kwargs)
     except stripe.error.CardError as e:
         err = getattr(e, 'user_message', None) or str(e)
         booking.auto_pay_last_error = (err or 'card_error')[:500]
@@ -581,7 +636,55 @@ def charge_installment_via_auto_pay(installment, *, card_only=True):
     installment.payment_intent_id = intent.id
     booking.auto_pay_last_charge_at = datetime.utcnow()
     booking.auto_pay_last_error = None
-    # 尽早落库 PI，缩小 webhook 竞态窗（webhook 靠 metadata 识别分期流）
+    amount_dollars = round(final_cents / 100.0, 2)
+
+    if is_ach and status == 'requires_action':
+        booking.auto_pay_last_error = 'requires_action'
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            db.session.flush()
+        return False, 'requires_action'
+
+    if is_ach and status == 'processing':
+        # ACH 异步：立刻落 processing Payment，缩小与 Pay now 的双扣窗口
+        _ensure_processing_payment(
+            intent.id,
+            amount_dollars=amount_dollars,
+            meta=metadata,
+            funding_v=funding,
+            brand_v=brand,
+            pm_type_v=pm_type,
+            base_cents_v=base_cents,
+            fee_cents_v=fee_cents,
+            final_cents_v=final_cents,
+            pm_id_v=pm_id,
+        )
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            db.session.flush()
+        try:
+            from app.routes import send_order_processing_email
+
+            pay_row = Payment.query.filter_by(stripe_payment_intent_id=intent.id).first()
+            if pay_row:
+                send_order_processing_email(booking, pay_row, is_new_order=False)
+        except Exception as e:
+            current_app.logger.warning(
+                'Auto Pay ACH processing email failed booking=%s: %s', booking.id, e
+            )
+        current_app.logger.info(
+            'Auto Pay ACH submitted booking=%s installment=%s pi=%s',
+            booking.id,
+            installment.id,
+            intent.id,
+        )
+        return True, 'ach_processing'
+
+    # 卡成功 / ACH 测试环境瞬成功：尽早落库 PI 再 settle
     try:
         db.session.commit()
     except Exception:
@@ -595,6 +698,11 @@ def charge_installment_via_auto_pay(installment, *, card_only=True):
             return False, detail
         return True, intent.id
 
+    booking.auto_pay_last_error = f'status_{status}'[:500]
+    try:
+        db.session.commit()
+    except Exception:
+        pass
     return False, f'status_{status}'
 
 

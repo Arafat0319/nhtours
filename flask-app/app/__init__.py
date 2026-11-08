@@ -216,7 +216,7 @@ def create_app(config_name=None):
                     id='send_installment_reminders',
                     replace_existing=True,
                 )
-                # 每天美西上午 9:15：Auto Pay Card 扣款（到期日 + catch-up）
+                # 每天美西上午 9:15：Auto Pay 扣款（卡即时 / ACH processing；到期日 + catch-up）
                 scheduler.add_job(
                     _run_auto_pay_charges,
                     'cron',

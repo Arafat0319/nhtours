@@ -11,3 +11,4 @@
 - **发给客户的邮件**：一律项目品牌 HTML 模板（禁止裸 HTML）；见 `.cursor/rules/customer-email-brand-template.mdc`
 - **后台弹窗**：一律 `customAlert` / `customConfirm`，禁止 `window.alert` / `confirm`；见 `.cursor/rules/admin-alerts-project-style.mdc`
 - **功能验收测试**：用户要求「按测试准则测 / 全面测」时，对照 `context/12_功能测试准则.md` 执行并出报告；见 `.cursor/rules/feature-testing-criteria.mdc`
+- **工时**：实质性工作收尾时在 `手册/工时记录.md` 补一行大约时长；见 `.cursor/rules/work-hours-log.mdc`

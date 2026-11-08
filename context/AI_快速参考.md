@@ -89,7 +89,7 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 - `_create_booking_from_metadata`：**勿**在函数内再 `from datetime import datetime`（会 UnboundLocalError）
 - 入账：仅 Payment **非 succeeded → succeeded** 时累加 `amount_paid`（防 webhook+status 双加）；已扣款勿因售罄 abort 建单
 - 报名库存口径：`app/package_capacity.py` — **已确认订单**（含 `processing`）+ **有效 PendingBooking 占位**；提交时 **行锁** 先占位再调 Stripe；`expires_at` 过期即不占名额
-- **Auto Pay**：`app/auto_pay.py`；报名勾选 → 首笔成功 attach PM；到期日 Card 扣 catch-up；已付/覆盖该期/`already_settled`/ACH processing 跳过；Manage 开/关 + 链接；Stripe 已成功的卡死 pending 只 settle、作废 PI 可重建、`open_payment_in_progress` 不发失败信
+- **Auto Pay**：`app/auto_pay.py`；报名勾选 → 首笔成功 attach PM；到期日用已存 **卡或 ACH** 扣 catch-up（卡即时；ACH→`Payment.processing` 锁定再 webhook 入账）；已付/覆盖/`already_settled`/整单 ACH processing 跳过；Manage 开/关 + 链接；`open_payment_in_progress` 不发失败信
 - **Catch-up 多期**：一笔 PI 只挂锚定期（`installment_payments.payment_intent_id` 唯一）；sibling 只标 paid + `catch_up_ids` 记覆盖；勿给多行写同一 PI；Payment 已 succeeded 可续结 sibling
 - **Payment plan 展示**：多套餐同 due date 在 Manage / 报名预览 / 收据 / 催款邮件 / 付款页摘要合并金额；库内仍可双轨行；期数徽章与催款按 due_date 去重（同日一封）
 - **Manage 后加 Add-on**：`addon_admin.py` / `addon_payment.py`；`/pay-addon/<id>?token=`；`source=admin_manual`；不进 Payoff；**不吃报名折扣**（`total = signup−discount + manual`）；全额退回 unpaid
