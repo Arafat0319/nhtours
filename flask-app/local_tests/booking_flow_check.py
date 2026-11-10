@@ -85,7 +85,7 @@ def run():
                 "payment_method": "deposit_installment",
                 "parental_waiver": {
                     "accepted": True,
-                    "version": "2026-08-parental-v1",
+                    "version": "2026-11-parental-v2",
                     "accepted_at": datetime.utcnow().isoformat() + "Z",
                 },
             }

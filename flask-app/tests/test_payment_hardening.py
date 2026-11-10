@@ -20,6 +20,7 @@ from app.models import (
     Trip,
     TripPackage,
 )
+from app.parental_waiver import VERSION as WAIVER_VERSION
 from app.routes import (
     _create_booking_from_metadata,
     handle_booking_payment_intent_succeeded,
@@ -87,7 +88,7 @@ def _pending_payload(trip, pkg, *, email=None, pi_id=None, qty=1):
         "discount_amount": 0,
         "parental_waiver": {
             "accepted": True,
-            "version": "2026-08-parental-v1",
+            "version": WAIVER_VERSION,
             "accepted_at": datetime.utcnow().isoformat() + "Z",
         },
     }
@@ -145,7 +146,7 @@ def test_create_booking_with_waiver_and_dob_no_unboundlocal(app_ctx):
         booking = _create_booking_from_metadata(pi_id)
         assert booking is not None
         assert booking.buyer_email == email
-        assert booking.parental_waiver_version == "2026-08-parental-v1"
+        assert booking.parental_waiver_version == WAIVER_VERSION
         assert booking.parental_waiver_accepted_at is not None
         parts = list(booking.participants)
         assert len(parts) == 1

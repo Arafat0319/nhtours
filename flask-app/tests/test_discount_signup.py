@@ -11,6 +11,7 @@ import pytest
 
 from app import db
 from app.models import DiscountCode, PendingBooking, Trip, TripAddOn, TripPackage
+from app.parental_waiver import VERSION as WAIVER_VERSION
 
 
 def _uniq(prefix: str) -> str:
@@ -20,7 +21,7 @@ def _uniq(prefix: str) -> str:
 def _waiver():
     return {
         "accepted": True,
-        "version": "2026-08-parental-v1",
+        "version": WAIVER_VERSION,
         "accepted_at": datetime.utcnow().isoformat() + "Z",
     }
 

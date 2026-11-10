@@ -229,6 +229,31 @@
         text-transform: uppercase;
         color: #64748b;
     }
+    .trip-sidebar-price-row {
+        text-align: center;
+    }
+    .trip-sidebar-price-anchor {
+        position: relative;
+        display: inline-block;
+    }
+    .trip-sidebar-price-anchor #sidebar-total-price {
+        font-size: 2.25rem;
+        font-weight: 700;
+        line-height: 1;
+        color: #1f2937;
+    }
+    .trip-sidebar-per-person {
+        position: absolute;
+        left: 100%;
+        bottom: 0.2em;
+        margin-left: 0.4rem;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+        color: #64748b;
+        line-height: 1;
+        white-space: nowrap;
+    }
     .trip-package-card { transition: box-shadow 0.2s, border-color 0.2s; }
     .trip-package-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); border-color: #d97706; }
     .hero-price-card { background: rgba(255,255,255,0.95); border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
@@ -525,10 +550,26 @@
         flex-shrink: 0;
         min-width: 8.5rem;
     }
+    .trip-packages-box .package-price-wrap {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0.15rem;
+        line-height: 1;
+    }
     .trip-packages-box .package-price {
         font-weight: 700;
         color: #111827;
         font-size: 1rem;
+        line-height: 1;
+    }
+    .trip-packages-box .package-per-person {
+        font-size: 0.75rem;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+        color: #64748b;
+        line-height: 1;
+        white-space: nowrap;
     }
     /* 第二行：Available until ... | Only X left，Only X left 橙色 */
     .trip-packages-box .package-availability {
@@ -862,7 +903,10 @@
                             {% endif %}
                         </div>
                         <div class="package-right">
-                            <span class="package-price">${{ "%.2f"|format(package.price) }}</span>
+                            <span class="package-price-wrap">
+                                <span class="package-price">${{ "%.2f"|format(package.price) }}</span>
+                                <span class="package-per-person">per person</span>
+                            </span>
                             <button type="button" class="package-book-now book-now-trigger"{% if registration_open is defined and not registration_open %} disabled aria-disabled="true"{% endif %}>Book Now</button>
                         </div>
                     </div>
@@ -922,7 +966,12 @@
                 {% if packages %}
                 {% set from_price = packages|map(attribute='price')|min %}
                 <p class="trip-sidebar-from-label">Buy from</p>
-                <div class="font-bold text-gray-800 leading-none" id="sidebar-total-price" style="font-size: 2.25rem;">${{ "%.2f"|format(from_price) }}</div>
+                <div class="trip-sidebar-price-row">
+                    <div class="trip-sidebar-price-anchor">
+                        <div id="sidebar-total-price">${{ "%.2f"|format(from_price) }}</div>
+                        <span class="trip-sidebar-per-person">per person</span>
+                    </div>
+                </div>
                 {% else %}
                 <div class="text-xl font-semibold text-gray-500">—</div>
                 {% endif %}

@@ -15,6 +15,7 @@ import pytest
 from app import db
 from app.models import Booking, BookingPackage, Client, PendingBooking, Trip, TripPackage
 from app.package_capacity import package_spots_available, validate_packages_capacity
+from app.parental_waiver import VERSION as WAIVER_VERSION
 
 
 def _uniq(prefix: str) -> str:
@@ -69,7 +70,7 @@ def _booking_payload(trip, pkg, *, email=None, waiver=True):
     if waiver:
         payload["parental_waiver"] = {
             "accepted": True,
-            "version": "2026-08-parental-v1",
+            "version": WAIVER_VERSION,
             "accepted_at": datetime.utcnow().isoformat() + "Z",
         }
     return payload
@@ -179,7 +180,7 @@ def test_submission_success_reserves_and_returns_pi(app_ctx, client):
         assert pb is not None
         assert pb.status == "pending"
         waiver = (pb.booking_data or {}).get("parental_waiver") or {}
-        assert waiver.get("version") == "2026-08-parental-v1"
+        assert waiver.get("version") == WAIVER_VERSION
     finally:
         for pb in PendingBooking.query.filter_by(trip_id=trip.id).all():
             db.session.delete(pb)

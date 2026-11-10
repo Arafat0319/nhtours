@@ -3,7 +3,7 @@ Parental Waiver 文案与版本号（客户报名 Book Now 门禁）。
 改文案时务必升 VERSION，以便订单存证可区分同意的是哪一版。
 """
 
-VERSION = '2026-08-parental-v1'
+VERSION = '2026-11-parental-v2'
 
 TITLE = 'Parental Waiver, Release of Liability, Indemnification, and Consent Form'
 
@@ -20,7 +20,7 @@ SECTIONS = [
             ),
             (
                 'I acknowledge that the Trip is arranged by the Company in accordance with the itinerary '
-                'agreed upon with the school. I understand that the Company assumes no responsibility for '
+                'agreed upon with the organizer. I understand that the Company assumes no responsibility for '
                 'activities or travel outside the official itinerary, including but not limited to travel '
                 'to and from the trip destination by bus, train, or flight.'
             ),

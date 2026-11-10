@@ -80,7 +80,8 @@ Webhook                     →  /webhooks/stripe 或 /api/stripe/webhook
 - 成单后 History 空壳 Payment：打开分期页或 >60min Incomplete → `void_empty_shell_pending_payments`
 - Addon/分期付款页：Stripe **succeeded 禁止重建**；回跳/轮询以 Stripe 为准入账；本地 failed 但 Stripe succeeded → heal（防 2612MT-027）
 - 报名在 `/trips/<slug>` **弹窗内** 5 步；正式页 `use_experimental_modal=True` → `_modal_steps_experimental.html`（产品套餐 + Travelers；有分期时产品内选 Pay in full / Deposit+installments）
-- **Book Now → Parental Waiver**：滚到底 → 5s 倒计时 → 勾选（`app/parental_waiver.py`）→ 报名弹窗；订单存 `parental_waiver_accepted_at` / `version`；滚动提示黑色加粗
+- **Book Now → Parental Waiver**：滚到底 → 5s 倒计时 → 勾选（`app/parental_waiver.py`，版本 `2026-11-parental-v2`）→ 报名弹窗；订单存 `parental_waiver_accepted_at` / `version`；滚动提示黑色加粗
+- **报名价展示**：侧栏 Buy from 与 Available Packages 金额旁/下有小号 `per person`
 - File Upload：`POST /api/booking/upload`（UI：自定义 dropzone，见 `05` / `booking-modal.css`）
 - DOB 日历：月/年 Uiverse 下拉（同 Gender）；选月年不关日历；逻辑在 `trip_booking.html`
 - 付款后摘要 `GET /api/booking/<id>/summary`：须 `token` 或 `payment_intent_id`；`trip_total` 用订单套餐/附加**快照单价**（$0 Payment 时勿用 `base_amount_cents`）
